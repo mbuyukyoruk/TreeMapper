@@ -1,0 +1,2018 @@
+.layout-toggle {
+  background-color: transparent;
+}
+.layout-toggle svg {
+  background: transparent; 
+  fill: none;
+  stroke: var(--layout-stroke-color);
+}
+:root {
+  --layout-stroke-color: black;
+  --bg-gradient: linear-gradient(to bottom,#f3f4f6,#14b8a6);
+  --bg:          #f6f7fb;
+  --panel:       #ffffff;
+  --text:        #374151;
+  --muted:       #6b7280;
+  --chip:        #f3f4f6;
+  --ring:        #d1d5db;
+  --tree:        #626467;
+  --shadow:      0 10px 24px rgba(0,0,0,.08);
+  --accent:      #14b8a6;
+  --blue:        #3b82f6;
+  --chip-border: 1px solid var(--ring); 
+}
+[data-theme="dark"] {
+  --layout-stroke-color: white;
+  --bg-gradient: linear-gradient(to bottom,#1f2937,#065f46);
+  --bg:          #1f2937;
+  --panel:       #111922;
+  --text:        #e5e7eb;
+  --muted:       #9ca3af;
+  --chip:        #1b2633;
+  --ring:        #374151;
+  --tree:        #424448;
+  --shadow:      0 10px 30px rgba(0,0,0,.35);
+  --accent:      #5eead4;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  display:flex;
+  flex-direction:column;
+  min-height:100dvh;
+  background:var(--bg-gradient) fixed;
+  background-repeat:no-repeat;
+  background-size:cover;
+  color:var(--text);
+  font:15px/1.55 'Inter',ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+}
+.main{flex:1}
+.wrap{max-width:1680px; margin:32px auto; padding:0 16px}
+.grid{display:grid; gap:16px}
+.card{background:var(--panel); border:var(--chip-border); border-radius:28px; box-shadow:var(--shadow)}
+.pad{padding:22px}
+h1{margin:0; font-weight:800; font-size:clamp(22px,3.2vw,30px)}
+.sub{color:var(--muted); margin-top:6px}
+.hdr{display:flex; flex-direction:column; align-items:flex-start; gap:8px}
+
+.titlebar{display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%}
+
+label{display:block; font-size:11px; color:var(--muted); margin-bottom:4px; letter-spacing:.2px}
+input[type="file"], select, button{
+  background:var(--chip); color:var(--text); border:var(--chip-border); border-radius:10px; padding:6px 8px; font-weight:600; cursor:pointer; font-size:12px
+}
+button:hover{ box-shadow:0 0 0 1px var(--accent), 0 2px 18px rgba(37,99,235,0.13); filter:brightness(1.03); transition:box-shadow .15s, filter .12s }
+button:disabled:hover{ box-shadow:none; background:none; filter:none; cursor:not-allowed; }
+
+/* Bootstrap tab specific styling */
+.bootstrap-tab:hover {
+  opacity: 1 !important;
+  background: var(--panel) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+  transform: translateY(-1px) !important;
+}
+.bootstrap-tab.active:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+  transform: translateY(-1px) !important;
+}
+
+#loadSelected.highlighted,
+#generateTreeBtn.highlighted {
+  background: rgba(20,184,166,0.12) !important;
+  color: var(--accent) !important;
+  border-color: var(--ring) !important;
+}
+
+#loadSelected.highlighted:hover,
+#generateTreeBtn.highlighted:hover {
+  background: rgba(20,184,166,0.18) !important;
+  border-color: var(--accent) !important;
+}
+
+#loadSelected.loaded,
+#generateTreeBtn.loaded {
+  background: var(--muted) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--muted) !important;
+  cursor: not-allowed !important;
+}
+
+#loadSelected.loaded:hover,
+#generateTreeBtn.loaded:hover {
+  background: var(--muted) !important;
+  border-color: var(--muted) !important;
+}
+.toolbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.toolbar.split{display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap}
+.controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+ .actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.canvas-toolbar{ margin-bottom: 10px; }
+input[type=range]{ width: 140px; }
+.exportbar{ display:flex; justify-content:flex-end; gap:10px; margin-top:8px }
+.footer{padding:18px 16px 24px; display:flex; justify-content:center; align-items:center; gap:6px; font-size:13px; color:var(--muted)}
+.footer a{color:#4f46e5; text-decoration:none; font-weight:600}
+[data-theme="dark"] .footer a{color:#99f6e4}
+.row{display:grid; grid-template-columns:repeat(12,1fr); gap:12px}
+.col-4{grid-column:span 4} .col-6{grid-column:span 6} .col-8{grid-column:span 8}
+
+
+.panels-container {
+  position: absolute;
+  background-color: transparent;
+  overflow: hidden;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* REMOVABLE DEBUG ITEM: Panel background colors and labels - can be removed when ready */
+.panel {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 18px;
+  transition: none;
+  z-index: 110; /* Panels above tree content */
+  pointer-events: none; /* Allow clicks to pass through */
+}
+
+/* REMOVABLE DEBUG ITEM: Panel background colors - can be removed when ready */
+.panel-tree {
+  background-color: transparent; /* Red tree panel background - hidden by default */
+}
+
+/* Promote splitters and panels to their own layers for smooth compositing */
+.splitter, .panel {
+  will-change: transform, left, width;
+  transform: translateZ(0);
+}
+
+/* Make CSS splitters visually invisible but keep them functional for dragging */
+.splitter {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
+.splitter::after {
+  color: transparent !important;
+}
+
+.panel-labels {
+  background-color: transparent; /* Green labels panel background - hidden by default */
+}
+
+.panel-dataframe {
+  background-color: transparent; /* Blue dataframe panel background - hidden by default */
+}
+
+.panel-dataframe-2 {
+  background-color: transparent; /* Orange dataframe-2 panel background - hidden by default */
+}
+
+.panel-heatmap {
+  background-color: transparent; /* Purple heatmap panel background - hidden by default */
+}
+
+.panel-heatmap-2 {
+  background-color: transparent; /* Pink heatmap-2 panel background - hidden by default */
+}
+
+.panel-chart {
+  background-color: transparent; /* Chart panel background - hidden by default */
+}
+
+.panel-chart-2 {
+  background-color: transparent; /* Chart-2 panel background - hidden by default */
+}
+
+/* CORE SPLITTER FUNCTIONALITY - DO NOT REMOVE */
+.splitter {
+  position: absolute;
+  top: 0;
+  width: 1px; /* Thin splitter when idle */
+  height: 100%;
+  background-color: var(--accent);
+  background-color: rgba(var(--accent-rgb, 94, 234, 212), 0.1); /* 10% visible by default */
+  cursor: col-resize;
+  z-index: 120; /* Splitters above panels */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--accent);
+  border-color: rgba(var(--accent-rgb, 94, 234, 212), 0.1); /* 10% visible border by default */
+  pointer-events: auto; /* Splitters should be clickable */
+  transition: all 0.2s ease; /* Smooth transitions for all properties */
+}
+
+.splitter:hover {
+  width: 3px; /* Wider splitter when hovered */
+  background-color: var(--accent);
+  border-color: var(--accent); /* Show border on hover */
+  /* Glow effect removed */
+}
+
+/* Symbol removed from CSS splitters - now handled by SVG */
+
+.splitter::after {
+  /* Symbol removed - now handled by SVG splitters */
+  display: none;
+}
+
+/* Tree viewer content should be below panels */
+.tree-content {
+  position: relative;
+  z-index: 1; /* Below panels */
+}
+
+/* REMOVABLE DEBUG ITEM: Splitter info display - can be removed when ready */
+.splitter-info {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 10px;
+  border-radius: 5px;
+  font-family: monospace;
+  font-size: 12px;
+  z-index: 130; /* Above everything */
+  border: 1px solid #5eead4;
+}
+
+.panel-widths {
+  margin-bottom: 10px;
+}
+
+.constraint-status {
+  margin-top: 10px;
+  padding: 5px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.constraint-ok {
+  background: rgba(46, 204, 113, 0.3);
+  border: 1px solid #2ecc71;
+}
+
+.constraint-error {
+  background: rgba(231, 76, 60, 0.3);
+  border: 1px solid #e74c3c;
+}
+
+/* RADIAL PANELS CONTAINER */
+.radial-panels-container {
+  position: absolute;
+  background-color: transparent;
+  overflow: hidden;
+  z-index: 100;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+}
+
+.radial-panel {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 18px;
+  transition: none;
+  z-index: 110;
+  pointer-events: none;
+  transform-origin: center center;
+}
+
+.radial-panel-tree {
+  background-color: transparent;
+}
+
+.radial-panel-labels {
+  background-color: transparent;
+}
+
+.radial-panel-dataframe {
+  background-color: transparent;
+}
+
+.radial-panel-heatmap {
+  background-color: transparent;
+}
+
+.radial-panel-chart {
+  background-color: transparent;
+}
+
+.radial-splitter {
+  position: absolute;
+  background-color: var(--accent);
+  background-color: rgba(var(--accent-rgb, 94, 234, 212), 0.1);
+  cursor: pointer;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--accent);
+  border-color: rgba(var(--accent-rgb, 94, 234, 212), 0.1);
+  pointer-events: auto;
+  transition: all 0.2s ease;
+  transform-origin: center center;
+}
+
+.radial-splitter:hover {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.radial-splitter, .radial-panel {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.canvas{height:90vh; background:var(--panel); border:var(--chip-border); border-radius:18px; position:relative; box-shadow:var(--shadow)}
+ #svg{ cursor:grab; }
+/* PERF: give the tree SVG its own compositing layer. Without this, every repaint makes
+   Chrome re-layerize tens of thousands of SVG paint chunks against the sticky sidebar
+   (measured ~1.2 s per frame with a 1500-tip tree vs ~10 ms with it). */
+#svg{ will-change: transform; }
+ /* :active cursor removed — caused 1s+ browser style recalc on large SVGs.
+    Cursor is now managed via JS in the zoom start/end callbacks below. */
+ #svg.no-pan{ cursor: default !important; }
+.links path{ stroke-linecap:round; pointer-events:none; }
+.clade-background-highlights, .clade-background-highlight{ pointer-events:none; }
+.node circle{ cursor:pointer; }
+text.label{ fill: var(--text); }
+
+/* Legend & badges */
+.legend{display:flex; gap:12px; align-items:center; font-size:12px; color:var(--muted)}
+.sw{width:14px; height:14px; border-radius:4px; border:1px solid var(--ring)}
+.sw-bar{background:rgba(59,130,246,.35)}
+.pill{display:inline-block; padding:4px 10px; border-radius:999px; background:var(--chip); border:var(--chip-border); color:var(--text); font-size:11px; font-weight:700}
+
+/* Tooltip */
+.tooltip{position:absolute; pointer-events:none; background:var(--panel); border:var(--chip-border); border-radius:10px; padding:8px 10px; font-size:12px; color:var(--text); display:none; box-shadow:var(--shadow)}
+
+/* Dark/light toggle */
+.toggle-switch{ position:relative; display:inline-block; width:60px; height:34px; }
+.toggle-switch input{ opacity:0; width:0; height:0 }
+.slider{ position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#ccc; transition:.4s; border-radius:34px; }
+.slider:before{ position:absolute; content:"☀️"; height:26px; width:26px; left:4px; bottom:4px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:16px; border-radius:50%; transition:.4s; color:#000 }
+input:checked + .slider{ background:#0d9488 }
+input:checked + .slider:before{ content:"🌙"; transform:translateX(26px); background:#fff; color:#065f46 }
+
+/* File upload card styling */
+.file-upload-card {
+  background: var(--chip);
+  border: var(--chip-border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.file-input-section {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.file-input-section label {
+  margin-bottom: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.button-section {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 8px;
+}
+
+/* Sidebar / accordion */
+.workspace{display:grid; grid-template-columns: 224px 1fr; gap:16px}
+.sidepanel{border-right:var(--chip-border); padding-right:12px; position:sticky; top:12px; align-self:start; max-height:70vh; overflow:auto}
+.sidepanel details{ border:var(--chip-border); border-radius:10px; background:var(--chip); margin-bottom:6px }
+.sidepanel summary{ cursor:pointer; list-style:none; padding:5px 8px; font-weight:700; color:var(--text); position:relative; }
+.sidepanel summary::-webkit-details-marker{ display:none }
+.sidepanel summary::before{
+  content: "▸"; 
+  display:inline-block;
+  margin-right:8px;
+  font-weight:800;
+  transform-origin:center;
+  transition: transform .18s ease, color .18s ease;
+  color: var(--muted);
+}
+.sidepanel details[open] summary::before{
+  content: "▾";
+  color: var(--accent);
+}
+.sidepanel .section{ padding:6px 8px; display:grid; grid-template-columns:1fr; gap:6px }
+.sidepanel .row2{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px}
+.sidepanel label{margin:0}
+.sidepanel select, .sidepanel button, .sidepanel input[type=file]{ font-size:12px; padding:6px 8px }
+.toolbar label{ font-size:11px }
+.toolbar select, .toolbar button, .toolbar input[type=file]{ font-size:12px; padding:6px 8px }
+
+/* Sidebar Card Sections */
+.sidebar-divider {
+  height: 0px;
+  background: var(--accent);
+  margin: 0px 0 6px 0;
+  display: none; /* Hidden by default */
+}
+
+.sidebar-divider.show-dividers {
+  display: block;
+}
+
+/* Sidebar Card Sections */
+.sidebar-divider-visual {
+  height: 5px;
+  background: var(--accent);
+  margin: 0px 0 6px 0;
+  display: none; /* Hidden by default */
+}
+
+.sidebar-divider-visual.show-dividers {
+  display: block;
+}
+
+.card-section {
+  margin-bottom: 0px; /* Reduced from 8px */
+}
+
+.section-header h4 {
+  margin-bottom: 5px; /* Reduced from 8px */
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: none; /* Hidden by default */
+}
+
+.section-header h4.show-titles {
+  display: block;
+}
+
+.card-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0px; /* Use default margin-bottom from .sidepanel details */
+  min-height: 20px;
+}
+
+/* Hide entire section when no cards are present */
+.card-section:has(.card-container:empty) {
+  display: none;
+}
+
+/* Alternative hiding method for browsers that don't support :has() */
+.card-section.empty-section {
+  display: none;
+}
+
+/* When a card container is empty, show it more minimized */
+.card-container:empty {
+  min-height: 8px;
+  opacity: 0.6;
+}
+
+.clade-toolbar {
+  background: var(--bg-primary);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  margin: 8px 0;
+  box-sizing: border-box;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15), 0 1px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Dark mode specific enhancements */
+[data-theme="dark"] .clade-toolbar {
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Dark mode button borders */
+[data-theme="dark"] .clade-toolbar-btn {
+  border: var(--chip-border);
+}
+
+/* PERF: the shimmer used to animate background-position, which forces a repaint on
+   every frame (continuous CPU use, worse with large trees). The strip is now twice the
+   toolbar width and slides with transform, which runs on the GPU compositor. The visual
+   result is the same: a 200%-wide gradient moving left by one toolbar width and back. */
+.clade-toolbar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 5px;
+  background: linear-gradient(90deg, var(--accent), #667eea, var(--accent));
+  background-size: 100% 100%;
+  animation: shimmer 3s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes shimmer {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-50%); }
+}
+
+.clade-toolbar-header {
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--accent) 100%);
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--ring);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 32px;
+}
+
+/* Dark mode header border enhancement */
+[data-theme="dark"] .clade-toolbar-header {
+  border-bottom: 2px solid #4a5568;
+}
+
+.clade-toolbar-title {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  transform: translateY(1px);
+}
+
+.clade-icon {
+  color: var(--accent);
+}
+
+.clade-toolbar-status {
+  font-size: 11px;
+  color: var(--text-muted, #6c757d);
+  padding: 3px 8px;
+  background: var(--bg-primary);
+  border-radius: 12px;
+  border: 1px solid var(--ring);
+  text-align: center;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(2px);
+}
+
+.clade-toolbar-content {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--bg-secondary);
+  border-radius: 0 0 7px 7px;
+}
+
+/* .clade-toolbar-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 12px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent) 100%);
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+} */
+
+.clade-toolbar-btn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: var(--chip);
+  color: var(--text);
+  cursor: pointer;
+  transition: box-shadow .15s ease, filter .12s ease, background-color .15s ease;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+/* Ensure SVG icons are properly centered */
+.clade-toolbar-btn svg {
+  flex-shrink: 0;
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.clade-toolbar-btn:hover {
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 12px rgba(20,184,166,0.25);
+  background: rgba(20, 184, 165, 0.589);
+  filter: brightness(1.03);
+}
+
+.clade-toolbar-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
+  background: rgb(20, 184, 165);
+
+}
+
+.clade-toolbar-btn.active {
+  background: var(--accent);
+  color: var(--ring);
+  border-color: var(--accent);
+}
+
+.clade-toolbar-btn.clear-btn {
+  background: #dc3545;
+  border-color: #dc3545;
+  color: white;
+  display: none; /* Hidden by default */
+}
+
+.clade-toolbar-btn.clear-btn:hover {
+  background: #c82333;
+  border-color: #c82333;
+  box-shadow: 0 0 0 1px #dc3545, 0 2px 12px rgba(220,53,69,0.25);
+  filter: brightness(1.03);
+}
+
+/* Inactive state styling */
+.clade-toolbar:not(.visible) .clade-toolbar-btn {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.3);
+}
+
+/* Reset rotations button is always active, even when toolbar is inactive */
+.reset-rotations-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+.clade-toolbar:not(.visible) .reset-rotations-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+/* Reset root button is always active, even when toolbar is inactive */
+.reset-root-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+.clade-toolbar:not(.visible) .reset-root-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+/* Copy features button is active even when toolbar is inactive */
+.clade-toolbar:not(.visible) .copy-features-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+/* Reset collapses button is always active, even when toolbar is inactive */
+.reset-collapses-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+/* Restore dropped button is always active, even when toolbar is inactive */
+.restore-dropped-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+.clade-toolbar:not(.visible) .restore-dropped-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+.clade-toolbar:not(.visible) .reset-collapses-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+/* Reset cartoons button is always active, even when toolbar is inactive */
+.reset-cartoons-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+.clade-toolbar:not(.visible) .reset-cartoons-btn {
+  opacity: 1 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  filter: none !important;
+}
+
+.clade-color-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.clade-color-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.clade-color-picker {
+  width: 28px;
+  height: 28px;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  background: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode color picker uses theme variables */
+[data-theme="dark"] .clade-color-picker {
+  border: 2px solid var(--ring);
+}
+
+/* Color Picker Wrapper and Card Styles */
+.clade-color-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.clade-color-card {
+  position: absolute;
+  background: var(--chip);
+  border: var(--chip-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  z-index: 99999 !important;
+  width: 200px;
+  padding: 6px;
+  /* Ensure it's not clipped */
+  overflow: visible !important;
+  pointer-events: auto !important;
+}
+
+/* Make the add dataframe subcard wider */
+#addDataframeSubcard {
+  width: 220px;
+}
+
+.clade-color-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
+.clade-color-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.clade-color-section .clade-color-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  margin: 0;
+}
+
+.clade-color-section .clade-color-picker {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  max-width: 24px !important;
+  max-height: 24px !important;
+  border: 2px solid var(--ring);
+  border-radius: 4px;
+  cursor: pointer;
+  background: none;
+  transition: all 0.2s ease;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+}
+
+.clade-color-section .clade-color-picker:hover {
+  border-color: var(--accent);
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Ensure the color swatch inside is also square */
+.clade-color-section .clade-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0 !important;
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.clade-color-section .clade-color-picker::-webkit-color-swatch {
+  border: none !important;
+  border-radius: 2px !important;
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.clade-color-section .clade-color-picker::-moz-color-swatch {
+  border: none !important;
+  border-radius: 2px !important;
+  width: 20px !important;
+  height: 20px !important;
+}
+
+/* Add Dataframe Subcard Styles */
+.add-dataframe-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.add-dataframe-section .clade-toolbar-btn {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.add-dataframe-section .clade-toolbar-btn:hover {
+  background: var(--accent);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.add-dataframe-section .clade-toolbar-btn svg {
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.clade-color-picker:hover {
+  border-color: var(--accent);
+  border-width: 2px;
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 0 1px var(--accent);
+}
+
+/* Inactive state for color picker */
+.clade-toolbar:not(.visible) .clade-color-picker {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.3);
+}
+.btnrow{display:flex; gap:8px; flex-wrap:wrap}
+/* Layout grid for layout card */
+.layout-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:end}
+/* layout card sizing + overflow safety */
+.layout-grid > *{ min-width:0; }
+.layout-grid select, .layout-grid .segbtn{ width:100%; }
+.span-2{ grid-column:1 / -1; }
+/* always-visible layout card */
+.layout-card{border:var(--chip-border); border-radius:12px; background:var(--chip); margin-bottom:10px; padding:10px 12px}
+/* segmented buttons */
+.segbtn{display:inline-flex; border:var(--chip-border); border-radius:10px; overflow:hidden; background:var(--chip)}
+.segbtn .seg{appearance:none; border:none; padding:6px 10px; font-weight:700; cursor:pointer; background:transparent}
+.segbtn .seg + .seg{border-left:var(--chip-border)}
+.segbtn .seg.active{background:var(--panel)}
+/* icon sizing for geometry buttons */
+.segbtn .seg svg{ width:22px; height:22px; display:block; }
+.segbtn .seg{ padding:6px 8px; }
+.segbtn .seg.disabled{ opacity:.5; cursor:not-allowed }
+
+/* --- Make geometry (rect/radial) look like real buttons --- */
+.layout-toggle{
+  /* override segmented container to look like two separate pill buttons */
+  display:inline-flex;
+  gap:12px;
+  border:none !important;
+  background:transparent !important;
+  overflow:visible;
+  padding:0;
+}
+.layout-toggle .seg{
+  /* Completely override segmented button inheritance */
+  appearance: none !important;
+  background: var(--chip) !important;
+  border: var(--chip-border) !important;
+  border-radius: 10px !important;
+  padding: 8px 10px !important;
+  transition: box-shadow .15s ease, filter .12s ease, background-color .15s ease;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  /* Ensure complete borders for each button */
+  border-left: var(--chip-border) !important;
+  border-right: var(--chip-border) !important;
+  border-top: var(--chip-border) !important;
+  border-bottom: var(--chip-border) !important;
+  /* Override any inherited segmented button styles */
+  overflow: visible !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.layout-toggle .seg:hover{
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 12px rgba(20,184,166,0.25);
+  filter: brightness(1.03);
+}
+.layout-toggle .seg:focus{
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.layout-toggle .seg.active{
+  background: var(--panel) !important;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.layout-toggle .seg svg{
+  /* keep icons clean and theme-driven; size already set above */
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+}
+/* keep controls contained within cards */
+.sidepanel .section label input[type="range"],
+.layout-card label input[type="range"]{ width: 100%; max-width: 100%; }
+.layout-card .segbtn{ width: 100%; justify-content: center; }
+.layout-card label{ display:block; }
+.layout-card label > .pill{ margin-left: 6px; }
+/* prevent overflow of pills/labels */
+.sidepanel .section{ overflow:visible }
+/* ensure controls don't spill horizontally */
+.sidepanel select, .sidepanel button{ max-width:100% }
+
+/* --- Tree tab compact two-line layout --- */
+.tree-form .group{
+  display:flex; align-items:center; gap:8px;
+  font-weight:700; margin:4px 0 1px;
+  font-size:13px;
+}
+.tree-form .subrow{
+  display:grid; grid-template-columns: auto 1fr;
+  align-items:center; gap:6px; padding-left:6px;
+  margin:1px 0 6px;
+}
+/* Tree form polish */
+.tree-form .subrow label{
+  margin:0; font-size:11px; color:var(--muted); padding:0;
+}
+.tree-form select{
+  height:24px;
+  padding:2px 4px;
+}
+.tree-form select:disabled{ opacity:.6; filter:saturate(0.7); }
+.tree-form input[type="checkbox"]{ width:16px; height:16px; padding:2px; }
+
+/* Sidebar font adjustments */
+.tree-form, .tree-form label, .tree-form select, .tree-form input, .tree-form button {
+  font-size: 12px;
+}
+.tree-form input[type="number"], .tree-form input[type="text"], .tree-form input[type="range"] {
+  font-size:12px;
+}
+
+/* Fit controls within narrower sidebar */
+.sidepanel .layout-grid{ grid-template-columns: 1fr; }
+.sidepanel .row2{ grid-template-columns: 1fr; }
+.sidepanel select, .sidepanel button, .sidepanel input[type=file]{ width: 100%; }
+.sidepanel .segbtn{ width: 100%; }
+
+.sidepanel input[type="range"]{ width: 100%; max-width: 100%; }
+
+/* Slider progress fill (left side colored) */
+.sidepanel input[type="range"],
+.layout-card input[type="range"]{
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(to right,
+              var(--accent) 0%,
+              var(--accent) var(--range-fill, 0%),
+              var(--muted)  var(--range-fill, 0%),
+              var(--muted)  100%);
+}
+.sidepanel input[type="range"]::-webkit-slider-runnable-track,
+.layout-card input[type="range"]::-webkit-slider-runnable-track{
+  height: 6px; background: transparent; border-radius: 9999px;
+}
+.sidepanel input[type="range"]::-webkit-slider-thumb,
+.layout-card input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--panel); /* create a crisp ring so the dot is clearly filled */
+  box-shadow: 0 0 0 1px var(--accent) inset;
+  margin-top: -5px; /* center on 8px track */
+}
+.sidepanel input[type="range"]::-moz-range-track,
+.layout-card input[type="range"]::-moz-range-track{ height:8px; background: var(--muted); border-radius:9999px; }
+.sidepanel input[type="range"]::-moz-range-progress,
+.layout-card input[type="range"]::-moz-range-progress{ height:8px; background: var(--accent); border-radius:9999px; }
+.sidepanel input[type="range"]::-moz-range-thumb,
+.layout-card input[type="range"]::-moz-range-thumb{ width:18px; height:18px; border-radius:50%; background: var(--accent); border:2px solid var(--panel); }
+
+/* Ensure dragging lines stay visible */
+line.dragging {
+  stroke-width: 1 !important;
+}
+
+/* Compact color squares in gene cards */
+.gene-card input[type="color"]{
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; padding:0; border:none; background:transparent; cursor:pointer;
+}
+.gene-card input[type="color"]::-webkit-color-swatch-wrapper{ padding:0; }
+.gene-card input[type="color"]::-webkit-color-swatch{ border:none; border-radius: 4px; }
+.gene-card input[type="color"]::-moz-color-swatch{ border:none; border-radius: 4px; }
+/* Align all color squares to a vertical column (push to right edge) */
+.gene-card .gene-color{ margin-left: 8px; }
+/* Align mini toggle switches into the same right-side column */
+.gene-card .gene-orient{ margin-left: auto; }
+
+/* Compact color squares in heatmap value cards */
+.heatmap-value-card input[type="color"]{
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; padding:0; border:none; background:transparent; cursor:pointer;
+}
+.heatmap-value-card input[type="color"]::-webkit-color-swatch-wrapper{ padding:0; }
+.heatmap-value-card input[type="color"]::-webkit-color-swatch{ border:none; border-radius: 4px; }
+.heatmap-value-card input[type="color"]::-moz-color-swatch{ border:none; border-radius: 4px; }
+/* Align all color squares to a vertical column (push to right edge) */
+.heatmap-value-card .heatmap-value-color{ margin-left: 8px; }
+
+/* Compact color squares in chart value cards */
+.chart-value-card input[type="color"]{
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; padding:0; border:none; background:transparent; cursor:pointer;
+}
+.chart-value-card input[type="color"]::-webkit-color-swatch-wrapper{ padding:0; }
+.chart-value-card input[type="color"]::-webkit-color-swatch{ border:none; border-radius: 4px; }
+.chart-value-card input[type="color"]::-moz-color-swatch{ border:none; border-radius: 4px; }
+
+/* Align all color squares to a vertical column (push to right edge) */
+.chart-value-card .chart-value-color{ margin-left: 8px; }
+
+/* Compact color squares in highlight value cards */
+.highlight-value-card input[type="color"]{
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; padding:0; border:none; background:transparent; cursor:pointer;
+}
+.highlight-value-card input[type="color"]::-webkit-color-swatch-wrapper{ padding:0; }
+.highlight-value-card input[type="color"]::-webkit-color-swatch{ border:none; border-radius: 4px; }
+.highlight-value-card input[type="color"]::-moz-color-swatch{ border:none; border-radius: 4px; }
+/* Align all color squares to a vertical column (push to right edge) */
+.highlight-value-card .highlight-value-color{ margin-left: 8px; }
+
+/* Compact color squares in clade value cards */
+.clade-value-card input[type="color"]{
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; padding:0; border:none; background:transparent; cursor:pointer;
+}
+.clade-value-card input[type="color"]::-webkit-color-swatch-wrapper{ padding:0; }
+.clade-value-card input[type="color"]::-webkit-color-swatch{ border:none; border-radius: 4px; }
+.clade-value-card input[type="color"]::-moz-color-swatch{ border:none; border-radius: 4px; }
+/* Align all color squares to a vertical column (push to right edge) */
+.clade-value-card .clade-value-color{ margin-left: 8px; }
+/* Pointer-drag visuals for gene cards */
+.gene-card.dragging{ opacity:.5; }
+.gene-placeholder{ border:2px dashed var(--accent); background:transparent; border-radius:8px; margin:4px 0; }
+
+/* Card content visibility control */
+.card-content-hidden {
+  display: none !important;
+}
+
+/* Pointer-drag visuals for dataframe cards */
+.dataframe-panel.dragging{
+  opacity:.9;
+  transform: scale(1.02);
+  box-shadow: 0 6px 18px rgba(0,0,0,.25), 0 0 0 2px var(--accent) inset;
+  border-color: var(--accent);
+}
+/* Emphasize the header row while dragging */
+.dataframe-panel.dragging > summary,
+.dataframe-panel.dragging summary{
+  background: rgba(20,184,166,0.12);
+  border-radius: 8px;
+}
+
+/* Pointer-drag visuals for dataframe cards */
+.heatmap-panel.dragging{
+  opacity:.9;
+  transform: scale(1.02);
+  box-shadow: 0 6px 18px rgba(0,0,0,.25), 0 0 0 2px var(--accent) inset;
+  border-color: var(--accent);
+}
+/* Emphasize the header row while dragging */
+.heatmap-panel.dragging > summary,
+.heatmap-panel.dragging summary{
+  background: rgba(20,184,166,0.12);
+  border-radius: 8px;
+}
+
+.chart-panel.dragging{
+  opacity:.9;
+  transform: scale(1.02);
+  box-shadow: 0 6px 18px rgba(0,0,0,.25), 0 0 0 2px var(--accent) inset;
+  border-color: var(--accent);
+}
+/* Emphasize the header row while dragging */
+.chart-panel.dragging > summary,
+.chart-panel.dragging summary{
+  background: rgba(20,184,166,0.12);
+  border-radius: 8px;
+}
+
+/* Pointer-drag visuals for highlight cards */
+
+/* Drag handle shows grabbing hand while dragging */
+.drag-handle.grabbing{ cursor: grabbing !important; }
+.dataframe-placeholder{ border:2px dashed var(--accent); background:transparent; border-radius:8px; margin:4px 0; }
+.heatmap-placeholder{ border:2px dashed var(--accent); background:transparent; border-radius:8px; margin:4px 0; }
+.chart-placeholder{ border:2px dashed var(--accent); background:transparent; border-radius:8px; margin:4px 0; }
+.dataframe-placeholder.active{ background: rgba(20,184,166,0.08); }
+/* Compact mini toggle switch for per-gene orientation */
+.mini-toggle{ -webkit-appearance:none; appearance:none; width:34px; height:16px; border-radius:9999px; background:var(--ring); position:relative; cursor:pointer; border:none; outline:none; }
+.mini-toggle:before{ content:""; position:absolute; top:2px; left:2px; width:12px; height:12px; background:#fff; border-radius:50%; transition: transform .18s ease; box-shadow:0 0 0 1px rgba(0,0,0,.08); }
+.mini-toggle:checked{ background: var(--accent); }
+.mini-toggle:checked:before{ transform: translateX(18px); }
+
+/* mini toggle labels - show ORF when off, DNA when on */
+.mini-toggle-label{ transition: opacity .18s ease; }
+.mini-toggle-label-off{ transition: opacity .18s ease; }
+  .mini-toggle:not(:checked) + .mini-toggle-label{ opacity: 1; }
+  .mini-toggle:not(:checked) + .mini-toggle-label + .mini-toggle-label-off{ opacity: 0; }
+  .mini-toggle:checked + .mini-toggle-label{ opacity: 0; }
+  .mini-toggle:checked + .mini-toggle-label + .mini-toggle-label-off{ opacity: 1; }
+
+/* Grayed out orientation toggle when gene is in DNA mode */
+.gene-orient.dna-mode{
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Disabled operon dropdown when checkbox is unchecked */
+.operon-dropdown:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Operon toggle switch - wider for text labels */
+.operon-toggle{ -webkit-appearance:none; appearance:none; width:38px; height:16px; border-radius:9999px; background:var(--ring); position:relative; cursor:pointer; border:none; outline:none; }
+.operon-toggle:before{ content:""; position:absolute; top:2px; left:2px; width:12px; height:12px; background:#fff; border-radius:50%; transition: transform .18s ease; box-shadow:0 0 0 1px rgba(0,0,0,.08); }
+.operon-toggle:checked{ background: var(--accent); }
+.operon-toggle:checked:before{ transform: translateX(22px); }
+
+/* Operon toggle labels - show ORF when off, DNA when on */
+.operon-toggle-label{ transition: opacity .18s ease; }
+.operon-toggle-label-dna{ transition: opacity .18s ease; }
+.operon-toggle:not(:checked) + .operon-toggle-label{ opacity: 1; }
+.operon-toggle:not(:checked) + .operon-toggle-label + .operon-toggle-label-dna{ opacity: 0; }
+.operon-toggle:checked + .operon-toggle-label{ opacity: 0; }
+.operon-toggle:checked + .operon-toggle-label + .operon-toggle-label-dna{ opacity: 1; }
+
+
+/* Value box styling for slider inputs */
+.value-box {
+  width: 56px;
+  height: 28px;
+  border: 1px solid var(--chip-border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  padding: 0 6px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.value-box:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.value-box:hover {
+  border-color: var(--accent);
+}
+
+/* Checkbox label styling */
+.checkbox-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  user-select: none;
+  cursor: default;
+}
+
+/* Metadata legend panel styling */
+.metadata-legend {
+  background: var(--chip);
+  border: var(--chip-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.legend-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.legend-title.heatmap-legend-title {
+  margin-top: 8px;
+}
+
+.legend-title.chart-legend-title {
+  margin-top: 8px;
+}
+
+.legend-title.highlight-legend-title {
+  margin-top: 8px;
+}
+
+.legend-title.clade-legend-title {
+  margin-top: 8px;
+}
+
+.legend-title.bootstrap-symbol-legend-title{
+  margin-top: 8px;
+}
+
+.legend-title.bootstrap-color-legend-title{
+  margin-top: 8px;
+}
+
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.legend-item:hover {
+  background-color: var(--chip);
+}
+
+/* Highlight effect for matching colors in canvas - 0%/100% match no-hover state (no flicker), pulse only at 50% */
+.legend-highlight {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+  /* stroke-width: 3px !important; */
+}
+
+@keyframes pulse-glow {
+  from {
+    opacity: inherit;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  to {
+    opacity: inherit;
+  }
+}
+
+.legend-color {
+  width: 16px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--chip-border);
+}
+
+.legend-colors {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.legend-colors .legend-color {
+  width: 16px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--chip-border);
+}
+
+/* Search bar styling */
+.search-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  background: var(--panel);
+  color: var(--text);
+  border: 2px solid var(--ring);
+  border-radius: 8px;
+  padding: 6px 12px;
+  padding-right: 32px;
+  font-size: 12px;
+  width: 200px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+  border-width: 2px;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.search-input:hover {
+  border-color: var(--accent);
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.search-clear {
+  position: absolute;
+  right: 4px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: none;
+  line-height: 1;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.search-clear:hover {
+  color: var(--text);
+  background: var(--chip);
+}
+
+.search-container.has-text .search-clear {
+  display: block;
+}
+
+/* Color path card styling */
+.color-path-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--chip);
+  border: var(--chip-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  margin-left: 8px;
+  animation: slideIn 0.2s ease-out;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.color-path-label {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.path-color-picker {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--ring);
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  transition: border-color 0.2s ease;
+}
+
+.path-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.path-color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.path-color-picker::-moz-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.path-color-picker:hover {
+  border-color: var(--accent);
+}
+
+.apply-path-color {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  height: 24px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.apply-path-color:hover {
+  background: var(--blue);
+  transform: translateY(-1px);
+}
+
+.apply-path-color:active {
+  transform: translateY(0);
+}
+
+.reset-path-colors {
+  background: var(--muted);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  margin-left: 8px;
+  height: auto;
+  min-height: auto;
+  line-height: normal;
+}
+
+.reset-path-colors:hover {
+  background: var(--text);
+  transform: translateY(-1px);
+}
+
+.reset-path-colors:active {
+  transform: translateY(0);
+}
+
+/* Delete metadata button styling */
+#deleteMeta:hover {
+  background: rgba(20,184,166,0.22) !important;
+  border-color: var(--accent) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(20,184,166,0.25);
+  /* Add highlight effect */
+  /* filter: brightness(0.2) drop-shadow(0 0 3px var(--accent)); */
+}
+
+#deleteMeta:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(20,184,166,0.2);
+}
+/* Sidebar / accordion */
+.workspace{display:grid; grid-template-columns: 224px 1fr; gap:16px}
+…
+
+/* === Dataframe summary row: 4-part layout (title | spacer | delete | drag) === */
+summary.df-summary{
+display:flex !important;
+align-items:center;
+}
+summary.df-summary .df-spacer{
+flex:1 1 auto;
+}
+summary.df-summary .df-delete{
+width:auto !important;
+background: rgba(239,68,68,0.12);
+border:1px solid var(--ring);
+border-radius:6px;
+color: #ef4444;
+padding:4px 8px;
+height:24px;
+line-height:24px;
+display:flex; align-items:center; justify-content:center;
+}
+
+summary.df-summary .df-delete:hover{
+border:1px solid #ef4444 !important;
+background: rgba(239,68,68,0.2) !important;
+box-shadow: none !important;
+filter: none !important;
+}
+summary.df-summary .drag-handle{
+margin-left:8px;
+cursor:grab;
+color:var(--muted-foreground);
+font-size:14px;
+}
+
+/* === Robust Dataframe summary layout (title left, delete + drag flush-right; chevron removed from flow) === */
+.sidepanel summary[id^="dataframeSummary"]{
+position: relative;                         /* anchor chevron */
+display: flex !important;                   /* force one-line alignment */
+align-items: center;
+padding: 5px 8px;
+padding-left: 24px;                          /* room for chevron */
+gap: 8px;
+min-width: 0;
+}
+/* Take the chevron (::before) out of document flow so it doesn't become a grid item */
+.sidepanel summary[id^="dataframeSummary"]::before{
+position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+margin-right: 0;                             /* remove inline gap */
+}
+/* If a wrapper <div> exists around right controls, flatten it so its children are inline */
+.sidepanel summary[id^="dataframeSummary"] > div{ display: contents; }
+/* Title styling + truncate if very narrow sidebar; prevent wrapping */
+.sidepanel summary[id^="dataframeSummary"] > [id^="dataframeTitle"]{
+font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+flex: 1 1 auto;
+min-width: 0;
+}
+/* Compact delete button (override any 100% width rules), inline and flush right */
+.sidepanel summary[id^="dataframeSummary"] button[id^="deleteDataframe"]{
+width: auto !important; height: 24px; line-height: 24px; padding: 4px 8px;
+background: rgba(239,68,68,0.12);
+border: 1px solid var(--ring); border-radius: 6px; color: #ef4444;
+display: flex; align-items: center; justify-content: center;
+margin-left: 8px;
+white-space: nowrap;
+}
+
+.sidepanel summary[id^="dataframeSummary"] button[id^="deleteDataframe"]:hover{
+border: 1px solid #ef4444 !important;
+background: rgba(239,68,68,0.2) !important;
+box-shadow: none !important;
+filter: none !important;
+}
+/* Drag handle pinned at far right; keep on one line */
+.sidepanel summary[id^="dataframeSummary"] .drag-handle{
+cursor: grab; color: var(--muted-foreground); font-size: 14px; margin-left: 4px; white-space: nowrap;
+display: flex; align-items: center;
+}
+    
+/* ==== Dataframe summary: force 1-line header (works in sidebar AND drag ghost) ==== */
+summary[id^="dataframeSummary"]{
+  display: grid;                             /* single row */
+  grid-template-columns: auto 1fr auto auto; /* title | spacer | delete | drag */
+  align-items: center;
+  column-gap: 8px;
+  padding-left: 24px;                        /* room for the disclosure triangle */
+  white-space: nowrap;                       /* prevent wrapping while dragging */
+}
+/* The right-side wrapper <div> should not create a new column */
+summary[id^="dataframeSummary"] > div{
+  display: contents;
+}
+/* Title truncates instead of pushing controls down */
+summary[id^="dataframeSummary"] > [id^="dataframeTitle"]{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+/* Keep delete compact even if global rules set width:100% */
+summary[id^="dataframeSummary"] button[id^="deleteDataframe"]{
+  width: auto !important;
+  height: 24px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+/* Drag handle at the far right; show grabbing cursor while dragging */
+summary[id^="dataframeSummary"] .drag-handle{ margin-left: 4px; cursor: grab; }
+.dataframe-panel.dragging summary[id^="dataframeSummary"] .drag-handle{ cursor: grabbing; }
+
+.sidepanel summary[id^="heatmapSummary"]{
+position: relative;                         /* anchor chevron */
+display: flex !important;                   /* force one-line alignment */
+align-items: center;
+padding: 5px 8px;
+padding-left: 24px;                          /* room for chevron */
+gap: 8px;
+min-width: 0;
+}
+/* Take the chevron (::before) out of document flow so it doesn't become a grid item */
+.sidepanel summary[id^="heatmapSummary"]::before{
+position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+margin-right: 0;                             /* remove inline gap */
+}
+
+/* If a wrapper <div> exists around right controls, flatten it so its children are inline */
+.sidepanel summary[id^="heatmapSummary"] > div{ display: contents; }
+/* Title styling + truncate if very narrow sidebar; prevent wrapping */
+.sidepanel summary[id^="heatmapSummary"] > [id^="heatmapTitle"]{
+font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+flex: 1 1 auto;
+min-width: 0;
+}
+
+/* Compact delete button (override any 100% width rules), inline and flush right */
+.sidepanel summary[id^="heatmapSummary"] button[id^="deleteHeatmap"]{
+width: auto !important; height: 24px; line-height: 24px; padding: 4px 8px;
+background: rgba(239,68,68,0.12);
+border: 1px solid var(--ring); border-radius: 6px; color: #ef4444;
+display: flex; align-items: center; justify-content: center;
+margin-left: 8px;
+white-space: nowrap;
+}
+
+.sidepanel summary[id^="heatmapSummary"] button[id^="deleteHeatmap"]:hover{
+border: 1px solid #ef4444 !important;
+background: rgba(239,68,68,0.2) !important;
+box-shadow: none !important;
+filter: none !important;
+}
+
+.sidepanel summary[id^="chartSummary"]{
+position: relative;                         /* anchor chevron */
+display: flex !important;                   /* force one-line alignment */
+align-items: center;
+padding: 5px 8px;
+padding-left: 24px;                          /* room for chevron */
+gap: 8px;
+min-width: 0;
+}
+/* Take the chevron (::before) out of document flow so it doesn't become a grid item */
+.sidepanel summary[id^="chartSummary"]::before{
+position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+margin-right: 0;                             /* remove inline gap */
+}
+
+/* If a wrapper <div> exists around right controls, flatten it so its children are inline */
+.sidepanel summary[id^="chartSummary"] > div{ display: contents; }
+/* Title styling + truncate if very narrow sidebar; prevent wrapping */
+.sidepanel summary[id^="chartSummary"] > [id^="chartTitle"]{
+font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+flex: 1 1 auto;
+min-width: 0;
+}
+
+/* Compact delete button (override any 100% width rules), inline and flush right */
+.sidepanel summary[id^="chartSummary"] button[id^="deletechart"]{
+width: auto !important; height: 24px; line-height: 24px; padding: 4px 8px;
+background: rgba(239,68,68,0.12);
+border: 1px solid var(--ring); border-radius: 6px; color: #ef4444;
+display: flex; align-items: center; justify-content: center;
+margin-left: 8px;
+white-space: nowrap;
+}
+
+.sidepanel summary[id^="chartSummary"] button[id^="deletechart"]:hover{
+  border: 1px solid #ef4444 !important;
+  background: rgba(239,68,68,0.2) !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+/* Drag handle pinned at far right; keep on one line */
+.sidepanel summary[id^="chartSummary"] .drag-handle{
+cursor: grab; color: var(--muted-foreground); font-size: 14px; margin-left: 4px; white-space: nowrap;
+display: flex; align-items: center;
+}
+
+summary[id^="chartSummary"]{
+  display: grid;                             /* single row */
+  grid-template-columns: auto 1fr auto auto; /* title | spacer | delete | drag */
+  align-items: center;
+  column-gap: 8px;
+  padding-left: 24px;                        /* room for the disclosure triangle */
+  white-space: nowrap;                       /* prevent wrapping while dragging */
+}
+
+/* The right-side wrapper <div> should not create a new column */
+  summary[id^="chartSummary"] > div{
+  display: contents;
+}
+
+/* Title truncates instead of pushing controls down */
+summary[id^="chartSummary"] > [id^="dataframeTitle"]{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+/* Keep delete compact even if global rules set width:100% */
+summary[id^="chartSummary"] button[id^="deletechart"]{
+  width: auto !important;
+  height: 24px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+/* Drag handle at the far right; show grabbing cursor while dragging */
+summary[id^="chartSummary"] .drag-handle{ margin-left: 4px; cursor: grab; }
+.chart-panel.dragging summary[id^="chartSummary"] .drag-handle{ cursor: grabbing; }
+
+/* Drag handle pinned at far right; keep on one line */
+.sidepanel summary[id^="heatmapSummary"] .drag-handle{
+cursor: grab; color: var(--muted-foreground); font-size: 14px; margin-left: 4px; white-space: nowrap;
+display: flex; align-items: center;
+}
+
+summary[id^="heatmapSummary"]{
+  display: grid;                             /* single row */
+  grid-template-columns: auto 1fr auto auto; /* title | spacer | delete | drag */
+  align-items: center;
+  column-gap: 8px;
+  padding-left: 24px;                        /* room for the disclosure triangle */
+  white-space: nowrap;                       /* prevent wrapping while dragging */
+}
+
+/* The right-side wrapper <div> should not create a new column */
+  summary[id^="heatmapSummary"] > div{
+  display: contents;
+}
+
+/* Title truncates instead of pushing controls down */
+summary[id^="heatmapSummary"] > [id^="dataframeTitle"]{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+/* Keep delete compact even if global rules set width:100% */
+summary[id^="heatmapSummary"] button[id^="deleteHeatmap"]{
+  width: auto !important;
+  height: 24px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+/* Drag handle at the far right; show grabbing cursor while dragging */
+summary[id^="heatmapSummary"] .drag-handle{ margin-left: 4px; cursor: grab; }
+.heatmap-panel.dragging summary[id^="heatmapSummary"] .drag-handle{ cursor: grabbing; }
+
+.sidepanel summary[id^="highlightSummary"]{
+position: relative;                         /* anchor chevron */
+display: flex !important;                   /* force one-line alignment */
+align-items: center;
+padding: 5px 8px;
+padding-left: 24px;                          /* room for chevron */
+gap: 8px;
+min-width: 0;
+}
+/* Take the chevron (::before) out of document flow so it doesn't become a grid item */
+.sidepanel summary[id^="highlightSummary"]::before{
+position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+margin-right: 0;                             /* remove inline gap */
+}
+
+/* If a wrapper <div> exists around right controls, flatten it so its children are inline */
+.sidepanel summary[id^="highlightSummary"] > div{ display: contents; }
+/* Title styling + truncate if very narrow sidebar; prevent wrapping */
+.sidepanel summary[id^="highlightSummary"] > [id^="highlightTitle"]{
+font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+flex: 1 1 auto;
+min-width: 0;
+}
+
+/* Compact delete button (override any 100% width rules), inline and flush right */
+.sidepanel summary[id^="highlightSummary"] button[id^="deletehighlight"]{
+width: auto !important; height: 24px; line-height: 24px; padding: 4px 8px;
+background: rgba(239,68,68,0.12);
+border: 1px solid var(--ring); border-radius: 6px; color: #ef4444;
+display: flex; align-items: center; justify-content: center;
+margin-left: 8px;
+white-space: nowrap;
+}
+
+.sidepanel summary[id^="highlightSummary"] button[id^="deletehighlight"]:hover{
+border: 1px solid #ef4444 !important;
+background: rgba(239,68,68,0.2) !important;
+box-shadow: none !important;
+filter: none !important;
+}
+
+/* Drag handle pinned at far right; keep on one line */
+
+summary[id^="highlightSummary"]{
+  display: grid;                             /* single row */
+  grid-template-columns: auto 1fr auto auto; /* title | spacer | delete | drag */
+  align-items: center;
+  column-gap: 8px;
+  padding-left: 24px;                        /* room for the disclosure triangle */
+  white-space: nowrap;                       /* prevent wrapping */
+}
+
+/* Disabled drag handle for highlights */
+.sidepanel summary[id^="highlightSummary"] .drag-handle.disabled{
+  cursor: not-allowed;
+  color: #ccc;
+  opacity: 0.2;
+  font-size: 14px;
+  margin-left: 4px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+
+/* The right-side wrapper <div> should not create a new column */
+  summary[id^="highlightSummary"] > div{
+  display: contents;
+}
+
+/* Title truncates instead of pushing controls down */
+summary[id^="highlightSummary"] > [id^="dataframeTitle"]{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+/* Keep delete compact even if global rules set width:100% */
+summary[id^="highlightSummary"] button[id^="deletehighlight"]{
+  width: auto !important;
+  height: 24px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.sidepanel summary[id^="cladeSummary"]{
+position: relative;                         /* anchor chevron */
+display: flex !important;                   /* force one-line alignment */
+align-items: center;
+padding: 5px 8px;
+padding-left: 24px;                          /* room for chevron */
+gap: 8px;
+min-width: 0;
+}
+/* Take the chevron (::before) out of document flow so it doesn't become a grid item */
+.sidepanel summary[id^="cladeSummary"]::before{
+position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+margin-right: 0;                             /* remove inline gap */
+}
+
+/* If a wrapper <div> exists around right controls, flatten it so its children are inline */
+.sidepanel summary[id^="cladeSummary"] > div{ display: contents; }
+/* Title styling + truncate if very narrow sidebar; prevent wrapping */
+.sidepanel summary[id^="cladeSummary"] > [id^="cladeTitle"]{
+font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+flex: 1 1 auto;
+min-width: 0;
+}
+
+/* Compact delete button (override any 100% width rules), inline and flush right */
+.sidepanel summary[id^="cladeSummary"] button[id^="deleteclade"]{
+width: auto !important; height: 24px; line-height: 24px; padding: 4px 8px;
+background: rgba(239,68,68,0.12);
+border: 1px solid var(--ring); border-radius: 6px; color: #ef4444;
+display: flex; align-items: center; justify-content: center;
+margin-left: 8px;
+white-space: nowrap;
+}
+
+.sidepanel summary[id^="cladeSummary"] button[id^="deleteclade"]:hover{
+border: 1px solid #ef4444 !important;
+background: rgba(239,68,68,0.2) !important;
+box-shadow: none !important;
+filter: none !important;
+}
+
+/* Drag handle pinned at far right; keep on one line */
+
+summary[id^="cladeSummary"]{
+  display: grid;                             /* single row */
+  grid-template-columns: auto 1fr auto auto; /* title | spacer | delete | drag */
+  align-items: center;
+  column-gap: 8px;
+  padding-left: 24px;                        /* room for the disclosure triangle */
+  white-space: nowrap;                       /* prevent wrapping */
+}
+
+/* Disabled drag handle for clades */
+.sidepanel summary[id^="cladeSummary"] .drag-handle.disabled{
+  cursor: not-allowed;
+  color: #ccc;
+  opacity: 0.2;
+  font-size: 14px;
+  margin-left: 4px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+
+/* The right-side wrapper <div> should not create a new column */
+  summary[id^="cladeSummary"] > div{
+  display: contents;
+}
+
+/* Title truncates instead of pushing controls down */
+summary[id^="cladeSummary"] > [id^="dataframeTitle"]{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+/* Keep delete compact even if global rules set width:100% */
+summary[id^="cladeSummary"] button[id^="deleteclade"]{
+  width: auto !important;
+  height: 24px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+/* Drag handle at the far right; show grabbing cursor while dragging */
+
