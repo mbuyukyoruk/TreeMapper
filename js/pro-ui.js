@@ -14,6 +14,9 @@
   window.updateSidebarHeight = function () {};
   if (aside) { aside.style.removeProperty('max-height'); aside.style.removeProperty('overflow'); }
 
+  // diagnostic switch: ?nocontain turns off the CSS layout containment
+  if (/[?&]nocontain\b/.test(location.search)) document.documentElement.classList.add('pro-no-contain');
+
   // ------------------------------------------------------------------ tabs
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.pro-tab'));
   function showTab(name) {
@@ -111,11 +114,28 @@
     }).observe(card, { attributes: true, attributeFilter: ['style'] });
   });
 
+  // ------------------------------------------- states formerly done with :has()
+  var legend = $('metadataLegend'), legendBody = legend ? legend.parentElement : null;
+  function updateLegendEmpty() { if (legendBody) legendBody.classList.toggle('pro-legend-is-empty', legend.style.display === 'none'); }
+  if (legend) new MutationObserver(updateLegendEmpty).observe(legend, { attributes: true, attributeFilter: ['style'] });
+  updateLegendEmpty();
+  var nodesInput = $('hideInternalClade'), nodesLabel = nodesInput ? nodesInput.closest('.pro-toggle') : null;
+  function updateNodesToggle() { if (nodesLabel) nodesLabel.classList.toggle('is-on', !!nodesInput.checked); }
+  ['hideInternalClade', 'hideInternal'].forEach(function (id) { var el = $(id); if (el) el.addEventListener('change', function () { setTimeout(updateNodesToggle, 0); }); });
+  updateNodesToggle();
+
   // ------------------------------------------------ document / tree status
   var docName = $('proDocName'), docMeta = $('proDocMeta'), counts = $('proCounts');
   function treeRoot() { try { return root; } catch (e) { return null; } }
   function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+  function updateLayersEmpty() {
+    if (!aside) return;
+    var any = false, cs = aside.querySelectorAll('.card-container');
+    for (var i = 0; i < cs.length && !any; i++) if (cs[i].firstElementChild) any = true;
+    aside.classList.toggle('pro-no-layers', !any);
+  }
   function updateDoc() {
+    updateLayersEmpty();
     var r = treeRoot();
     body.classList.toggle('pro-has-tree', !!r);
     if (!r) {

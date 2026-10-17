@@ -77,7 +77,10 @@ html.pro body {
 }
 html.pro button, html.pro input, html.pro select, html.pro textarea { font-family: var(--pro-font); }
 html.pro input[type="checkbox"], html.pro input[type="radio"], html.pro input[type="range"] { accent-color: var(--accent); }
-html.pro :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* No :has() and no universal selectors here: Safari 17/18 re-check such rules for every
+   element inserted, and a tree redraw inserts tens of thousands of SVG elements. */
+html.pro button:focus-visible, html.pro input:focus-visible, html.pro select:focus-visible,
+html.pro summary:focus-visible, html.pro a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 html.pro button:hover { box-shadow: none; filter: none; }
 
 .pro-app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
@@ -142,7 +145,7 @@ html.pro body:not(.pro-has-tree) #exportSVG { opacity: .5; pointer-events: none;
 .pro-doc-meta { color: var(--muted); white-space: nowrap; }
 .pro-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 html.pro .pro-theme-toggle { position: relative; }
-html.pro .pro-theme-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+html.pro .pro-theme-toggle:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 html.pro .pro-when-dark { display: none; }
 html.pro #themeToggle:checked ~ .pro-when-light { display: none; }
 html.pro #themeToggle:checked ~ .pro-when-dark { display: inline-flex; }
@@ -186,7 +189,7 @@ html.pro .sidepanel > details > summary {
   display: none; margin: 0; padding: 14px; border: 1px dashed var(--pro-border-strong); border-radius: 8px;
   color: var(--muted); line-height: 1.5;
 }
-html.pro aside[data-pro-tab="layers"]:not(:has(.card-container > *)) > .pro-layers-empty { display: block; }
+html.pro aside[data-pro-tab="layers"].pro-no-layers > .pro-layers-empty { display: block; }  /* class set by pro-ui.js */
 
 /* data cards */
 html.pro .sidebar-divider-visual, html.pro .sidebar-divider { display: none !important; }
@@ -301,8 +304,8 @@ html.pro .pro-toggle {
   border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font: 500 12.5px var(--pro-font); cursor: pointer; user-select: none;
 }
 html.pro .pro-toggle:hover { background: var(--pro-hover); color: var(--text); }
-html.pro .pro-toggle:has(input:checked) { color: var(--accent); background: var(--pro-accent-soft); border-color: var(--pro-accent-border); }
-html.pro .pro-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+html.pro .pro-toggle.is-on { color: var(--accent); background: var(--pro-accent-soft); border-color: var(--pro-accent-border); }  /* class set by pro-ui.js */
+html.pro .pro-toggle:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* canvas */
 html.pro .canvas {
@@ -391,7 +394,7 @@ html.pro body.pro-legend-hidden .pro-legend-panel { display: none; }
 .pro-panel-title { font-weight: 600; }
 .pro-legend-body { flex: 1; min-height: 0; overflow: auto; padding: 14px; }
 .pro-legend-empty { display: none; margin: 0; color: var(--muted); line-height: 1.5; }
-.pro-legend-body:has(> #metadataLegend[style*="display: none"]) .pro-legend-empty { display: block; }
+.pro-legend-body.pro-legend-is-empty .pro-legend-empty { display: block; }  /* class set by pro-ui.js */
 html.pro #metadataLegend {
   background: none; border: 0; border-radius: 0; padding: 0; margin: 0; box-shadow: none; max-height: none;
 }
@@ -445,7 +448,9 @@ html.pro .pro-modal #generateTreeBtn:disabled { opacity: .5; }
    The canvas, side panel and legend are fixed-size regions: changes inside one
    (e.g. thousands of tree labels restyled, a data card opened) must not make the
    browser re-measure the rest of the page. Safari/WebKit benefits most. */
-html.pro .canvas { flex: 1 1 0; contain: strict; }
-html.pro .sidepanel { contain: strict; }
-.pro-legend-panel { contain: strict; }
-.pro-center { contain: layout style; }
+html.pro .canvas { flex: 1 1 0; }
+html.pro:not(.pro-no-contain) .canvas { contain: strict; }
+html.pro:not(.pro-no-contain) .sidepanel { contain: strict; }
+html.pro:not(.pro-no-contain) .pro-legend-panel { contain: strict; }
+html.pro:not(.pro-no-contain) .pro-center { contain: layout style; }
+/* diagnostic: open index-pro.html?nocontain to turn containment off (class set by pro-ui.js) */
