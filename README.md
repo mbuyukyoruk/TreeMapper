@@ -35,7 +35,6 @@ The earlier classic-layout interface is kept in git history under the tag
 
 ```
 index.html                 the application page
-index-pro.html             redirect for old links to index.html
 css/
   tailwind.css             the few Tailwind CSS rules the app uses
   styles.css               base app styles
