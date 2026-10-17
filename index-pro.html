@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind-pro.css?v=202610171748" rel="stylesheet">
-<link href="css/styles.css?v=202610171748" rel="stylesheet">
-<link href="css/pro.css?v=202610171748" rel="stylesheet">
+<link href="css/tailwind-pro.css?v=202610171751" rel="stylesheet">
+<link href="css/styles.css?v=202610171751" rel="stylesheet">
+<link href="css/pro.css?v=202610171751" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -320,23 +320,19 @@
           <input type="color" id="pathColorPicker" class="path-color-picker" value="#ff6b35" title="Choose color for highlighted paths">
           <button id="applyPathColor" class="apply-path-color" title="Apply color to highlighted paths">Apply</button>
         </div>
-        <button id="resetPathColors" class="reset-path-colors" style="display: none;" title="Reset all colored branches and clades to original">Reset Colors</button>
-        <button id="resetHighlights" class="reset-path-colors" style="display: none;" title="Reset all clade background highlights">Reset Highlights</button>
+        <button id="resetPathColors" class="reset-path-colors" style="display: none;" title="Reset all colored branches and clades to original"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg><span>Reset colours</span></button>
+        <button id="resetHighlights" class="reset-path-colors" style="display: none;" title="Reset all clade background highlights"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg><span>Reset highlights</span></button>
         <button id="resetRoot" class="clade-toolbar-btn reset-root-btn" title="Reset tree to original root" style="display: none;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12S6.48 22 12 22 22 17.52 22 12 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12S7.59 4 12 4 20 7.59 20 12 16.41 20 12 20Z"/>
-          </svg>
-          <span>Reset Root</span>
+          <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
+          <span>Reset root</span>
         </button>
         <button id="clearAllColors" class="clade-toolbar-btn clear-btn" title="Clear all clade colors">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19 13H5v-2h14v2z"/>
-          </svg>
-          <span>Clear Colors</span>
+          <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+          <span>Clear colours</span>
         </button>
         <div class="pro-spacer"></div>
         <div class="search-container">
-          <input type="text" id="accessionSearch" placeholder="Search accessions or genes (comma-separated)..." class="search-input">
+          <input type="text" id="accessionSearch" placeholder="Search accessions or genes" title="Search accessions or genes (separate several with commas)" class="search-input">
           <button id="clearSearch" class="search-clear" title="Clear search">×</button>
         </div>
         <button type="button" class="pro-icon-btn" id="proLegendToggle" aria-pressed="true" aria-label="Show or hide the legend panel" title="Legend"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
@@ -348,72 +344,48 @@
         </div>
         <div class="clade-toolbar-content">
           <button id="rotateClade" class="clade-toolbar-btn" title="Rotate the selected clade">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M7.11 8.53L5.7 7.12C7.56 5.26 10.44 5.26 12.3 7.12C14.16 8.98 14.16 11.86 12.3 13.72C10.44 15.58 7.56 15.58 5.7 13.72L4.29 15.13C6.83 17.67 11.17 17.67 13.71 15.13C16.25 12.59 16.25 8.25 13.71 5.71L12.3 7.12L7.11 8.53Z"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
             <span>Rotate</span>
           </button>
           <button id="collapseClade" class="clade-toolbar-btn" title="Collapse the selected clade">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 13H5V11H19V13Z"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>
             <span>Collapse</span>
           </button>
           <button id="cartoonClade" class="clade-toolbar-btn" title="Replace clade with triangle placeholder">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L2 19H22L12 2Z"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l16-8v16z"/></svg>
             <span>Cartoon</span>
           </button>
           <button id="cladeColorBtn" class="clade-toolbar-btn" title="Choose and apply color to clade branches">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2M21 9V7L15 1H5C3.89 1 3 1.89 3 3V21C3 22.11 3.89 23 5 23H19C20.11 23 21 22.11 21 21V9M19 9H14V4H5V21H19V9Z"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="16" cy="10" r="1.2"/><path d="M12 21a2 2 0 0 1 0-4h2a3 3 0 0 0 3-3"/></svg>
             <span>Color</span>
           </button>
           <button id="highlightCladeBackground" class="clade-toolbar-btn" title="Add background highlight to clade">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12S6.48 22 12 22 22 17.52 22 12 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12S7.59 4 12 4 20 7.59 20 12 16.41 20 12 20Z"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 11h6"/></svg>
             <span>Highlight</span>
           </button>
           <button id="copySelectedFeatures" class="clade-toolbar-btn copy-features-btn" title="Copy dataframe rows for selected gene(s) to clipboard" style="display: none;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
             <span>Copy Features</span>
           </button>
           <button id="rerootTree" class="clade-toolbar-btn" title="Re-root the tree at the selected node" style="display: none;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2"/><path d="M12 7v14M5 13a7 7 0 0 0 14 0M8 11h8"/></svg>
             <span>Re-root</span>
           </button>
           <button id="dropNode" class="clade-toolbar-btn" title="Drop (remove) the selected end node" style="display: none;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 13H5v-2h14v2z"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
             <span>Drop Node</span>
           </button>
           <button id="isolateNodes" class="clade-toolbar-btn" title="Isolate selected nodes (drop all others)" style="display: none;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12S6.48 22 12 22 22 17.52 22 12 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12S7.59 4 12 4 20 7.59 20 12 16.41 20 12 20Z"/>
-              <path d="M8 8H16V16H8V8Z" fill="var(--bg-primary)"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
             <span>Isolate</span>
           </button>
           <button id="isolateLUCA" class="clade-toolbar-btn" title="Select LUCA (lowest common ancestor) of selected tip nodes, then isolate it" style="display: none;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12S6.48 22 12 22 22 17.52 22 12 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12S7.59 4 12 4 20 7.59 20 12 16.41 20 12 20Z"/>
-              <path d="M12 7a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3Zm-6 11h12v-2H6v2Zm3.5-6h5v-2h-5v2Z" fill="var(--bg-primary)"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="19" r="2"/><circle cx="6" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7M12 12v5"/></svg>
             <span>LUCA Isolate</span>
           </button>
           <div style="flex: 1;"></div> <!-- Spacer to push Clear button to the very end -->
           <button id="clearCladeSelection" class="clade-toolbar-btn clear-btn" title="Clear clade selection">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z"/>
-            </svg>
+            <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
             <span>Clear</span>
           </button>
         </div>
@@ -447,7 +419,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610171748"></script>
+      <script src="js/drag-fastpath.js?v=202610171751"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -481,19 +453,19 @@
       <div class="pro-legend-body">
         <p class="pro-legend-empty">Colour keys for your data layers appear here.</p>
         <div id="metadataLegend" class="metadata-legend" style="display: none;">
-          <div class="legend-title">Gene Legend:</div>
+          <div class="legend-title">Genes</div>
           <div id="legendItems" class="legend-items"></div>
-            <div class="legend-title heatmap-legend-title">Heatmap Legend:</div>
+            <div class="legend-title heatmap-legend-title">Heatmap</div>
             <div id="heatmapLegendItems" class="legend-items"></div>
-            <div class="legend-title highlight-legend-title">Highlight Legend:</div>
+            <div class="legend-title highlight-legend-title">Highlight</div>
             <div id="highlightLegendItems" class="legend-items"></div>
-          <div class="legend-title clade-legend-title">Clade Legend:</div>
+          <div class="legend-title clade-legend-title">Clade groups</div>
           <div id="cladeLegendItems" class="legend-items"></div>
-            <div class="legend-title chart-legend-title">Chart Legend:</div>
+            <div class="legend-title chart-legend-title">Chart</div>
             <div id="chartLegendItems" class="legend-items"></div>
-            <div class="legend-title bootstrap-symbol-legend-title">Bootstrap Legend:</div>
+            <div class="legend-title bootstrap-symbol-legend-title">Support values</div>
             <div id="bootstrapSymbolLegendItems" class="legend-items"></div>
-            <div class="legend-title bootstrap-color-legend-title">Bootstrap Color Scale:</div>
+            <div class="legend-title bootstrap-color-legend-title">Support value colours</div>
             <div id="bootstrapColorLegendItems" class="legend-items"></div>
         </div>
       </div>
@@ -517,9 +489,7 @@
       <label class="clade-color-label">Color:</label>
       <input type="color" id="cladeColorPicker" class="clade-color-picker" value="#ff6b35" title="Choose color for clade branches">
       <button id="applyCladeColor" class="clade-toolbar-btn" title="Apply color to clade branches">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z"/>
-        </svg>
+        <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
         <span>Apply</span>
       </button>
     </div>
@@ -531,9 +501,7 @@
       <label class="clade-color-label">Background:</label>
       <input type="color" id="highlightBackgroundPicker" class="clade-color-picker" value="#ff6b6b" title="Choose background color for clade highlight">
       <button id="applyHighlightBackground" class="clade-toolbar-btn" title="Apply background highlight to clade">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M9 16.17L4.83 12L3.41 13.41L9 19L21 7L19.59 5.59L9 16.17Z"/>
-        </svg>
+        <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
         <span>Apply</span>
       </button>
     </div>
@@ -543,51 +511,38 @@
   <div class="clade-color-card-content">
     <div class="add-dataframe-section">
       <button id="addDataframeOption" class="clade-toolbar-btn" title="Add Dataframe">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M19 13H5V11H19V13Z"/>
-          <path d="M13 19V5H11V19H13Z"/>
-        </svg>
-        <span>+ Add Dataframe</span>
+        <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>
+        <span>Dataframe</span>
       </button>
     </div>
     <div class="add-dataframe-section">
       <button id="addHeatmapOption" class="clade-toolbar-btn" title="Add Heatmap">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M3 13H11V3H3V13ZM3 21H11V15H3V21ZM13 21H21V11H13V21ZM13 3V9H21V3H13Z"/>
-        </svg>
-        <span>+ Add Heatmap</span>
+        <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>Heatmap</span>
       </button>
     </div>
     <div class="add-dataframe-section">
       <button id="addHighlightOption" class="clade-toolbar-btn" title="Add Highlight">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C6.48 2 2 6.48 2 12S6.48 22 12 22 22 17.52 22 12 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12S7.59 4 12 4 20 7.59 20 12 16.41 20 12 20Z"/>
-        </svg>
-        <span>+ Add Highlight</span>
+        <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 11h6"/></svg>
+        <span>Highlight</span>
       </button>
     </div>
     <div class="add-dataframe-section">
       <button id="addCladeDataOption" class="clade-toolbar-btn" title="Add Clade Data">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2M21 9V7L15 1H5C3.89 1 3 1.89 3 3V21C3 22.11 3.89 23 5 23H19C20.11 23 21 22.11 21 21V9M19 9H14V4H5V21H19V9Z"/>
-        </svg>
-        <span>+ Add Clade Data</span>
+        <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="16" cy="10" r="1.2"/><path d="M12 21a2 2 0 0 1 0-4h2a3 3 0 0 0 3-3"/></svg>
+        <span>Clade groups</span>
       </button>
     </div>
     <div class="add-dataframe-section">
       <button id="addChartOption" class="clade-toolbar-btn" title="Add Chart">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M3 13H11V3H3V13ZM3 21H11V15H3V21ZM13 21H21V11H13V21ZM13 3V9H21V3H13Z"/>
-        </svg>
-        <span>+ Add Chart</span>
+        <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span>Chart</span>
       </button>
     </div>
     <div class="add-dataframe-section">
       <button id="addTextOption" class="clade-toolbar-btn" title="Add Text" style="display: none;">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M5 4V7H10.5V19H13.5V7H19V4H5Z"/>
-        </svg>
-        <span>+ Add Text</span>
+        <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 6h14M12 6v14"/></svg>
+        <span>Text</span>
       </button>
     </div>
   </div>
@@ -670,9 +625,9 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610171748"></script>
-<script src="js/app-pro.js?v=202610171748"></script>
-<script src="js/pro-ui.js?v=202610171748"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610171751"></script>
+<script src="js/app-pro.js?v=202610171751"></script>
+<script src="js/pro-ui.js?v=202610171751"></script>
 <script>
   // Opt-in debug monitor: open index-pro.html?debug to enable it
   (function () {
