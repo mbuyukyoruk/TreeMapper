@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPU Tree Prototype</title>
+<style>
+  :root { --bg:#EEF0F3; --panel:#FFFFFF; --border:#E1E4E9; --text:#1B1F24; --muted:#57606C; --accent:#0B7A72; --hi:#D9480F; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+         font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; overflow: hidden; }
+  header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px;
+           background: var(--panel); border-bottom: 1px solid var(--border); }
+  header b { font-size: 14px; margin-right: 6px; }
+  button, select, label.file { height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px;
+           background: var(--panel); color: var(--text); font: 500 12.5px system-ui, sans-serif; cursor: pointer;
+           display: inline-flex; align-items: center; gap: 6px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  label.check { display: inline-flex; align-items: center; gap: 6px; }
+  .sep { width: 1px; height: 22px; background: var(--border); }
+  #stage { flex: 1; position: relative; min-height: 0; background: var(--panel); }
+  #stats { flex: none; padding: 5px 12px; border-top: 1px solid var(--border); background: var(--panel);
+           color: var(--muted); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; }
+  #hint { position: absolute; left: 12px; bottom: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+</style>
+</head>
+<body>
+<header>
+  <b>GPU tree prototype</b>
+  <label class="file">Open Newick… <input id="file" type="file" accept=".nwk,.newick,.tree,.txt" hidden></label>
+  <button id="gen3k" class="primary">Generate 3,000 tips</button>
+  <button id="gen150k">Generate 150,000 tips</button>
+  <span class="sep"></span>
+  <select id="layout"><option value="rect">Rectangular</option><option value="circ">Circular</option></select>
+  <label class="check"><input id="tracks" type="checkbox"> Test data tracks (5 genes + 3 heatmap cells per tip)</label>
+  <button id="fit">Fit</button>
+  <button id="clear">Clear selection</button>
+</header>
+<div id="stage"><div id="hint">Wheel = zoom (vertical), drag = pan, click a branch or node = select its clade.</div></div>
+<div id="stats">Load or generate a tree.</div>
+
+<script src="vendor/deck.gl-9.1.14.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var stage = document.getElementById('stage'), statsEl = document.getElementById('stats');
+  var LIGHT_TREE = [58, 66, 77, 255], HI = [217, 72, 15, 255];
+  var PAL = [[78,121,167],[242,142,43],[89,161,79],[225,87,89],[118,183,178],[237,201,72],[176,122,161],[255,157,167],[156,117,95],[140,209,125]];
+  var VIR = [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]];
+
+  // ------------------------------------------------------------ tree model
+  // Nodes in DFS preorder: parent[], len[], name[]; a subtree is a contiguous range.
+  function parseNewick(s) {
+    var parent = [], len = [], name = [], stack = [], cur = -1, i = 0, n = s.length;
+    function add(p) { parent.push(p); len.push(0); name.push(''); return parent.length - 1; }
+    cur = add(-1);
+    while (i < n) {
+      var c = s[i];
+      if (c === '(') { stack.push(cur); cur = add(cur); i++; }
+      else if (c === ',') { cur = add(stack[stack.length - 1]); i++; }
+      else if (c === ')') { cur = stack.pop(); i++; }
+      else if (c === ':') { var j = i + 1; while (j < n && ',)(;'.indexOf(s[j]) < 0) j++; len[cur] = parseFloat(s.slice(i + 1, j)) || 0; i = j; }
+      else if (c === ';') break;
+      else if (c === '[') { while (i < n && s[i] !== ']') i++; i++; }
+      else if (c === "'" || c === '"') { var q = c, k = i + 1; while (k < n && s[k] !== q) k++; name[cur] = s.slice(i + 1, k); i = k + 1; }
+      else if (/\s/.test(c)) i++;
+      else { var e = i; while (e < n && ':,)(;['.indexOf(s[e]) < 0) e++; name[cur] = s.slice(i, e).trim(); i = e; }
+    }
+    return finishTree(parent, len, name);
+  }
+
+  function generateTree(nTips) {
+    // random binary tree built top-down (iterative), emitted in preorder
+    var parent = [], len = [], name = [];
+    var rnd = mulberry(nTips);
+    var stack = [[-1, nTips]];
+    while (stack.length) {
+      var it = stack.pop(), p = it[0], k = it[1];
+      var id = parent.length; parent.push(p); len.push(p < 0 ? 0 : 0.02 + rnd() * 0.3); name.push('');
+      if (k === 1) { name[id] = 'ACC' + String(id).padStart(6, '0') + '.1'; continue; }
+      var a = 1 + Math.floor(rnd() * (k - 1));
+      stack.push([id, k - a]); stack.push([id, a]);   // left child processed first (preorder)
+    }
+    return finishTree(parent, len, name);
+  }
+
+  function mulberry(seed) { return function () { seed = (seed + 0x6D2B79F5) | 0; var t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+  function finishTree(parentArr, lenArr, nameArr) {
+    var N = parentArr.length, parent = Int32Array.from(parentArr), len = Float64Array.from(lenArr);
+    var size = new Int32Array(N).fill(1), firstChild = new Int32Array(N).fill(-1), lastChild = new Int32Array(N).fill(-1);
+    for (var i = N - 1; i > 0; i--) size[parent[i]] += size[i];
+    for (var j = 1; j < N; j++) { var p = parent[j]; if (firstChild[p] < 0) firstChild[p] = j; lastChild[p] = j; }
+    var depth = new Float64Array(N), leafIdx = new Int32Array(N).fill(-1), leaves = [];
+    for (var k = 0; k < N; k++) { if (k > 0) depth[k] = depth[parent[k]] + len[k]; if (firstChild[k] < 0) { leafIdx[k] = leaves.length; leaves.push(k); } }
+    return { N: N, parent: parent, len: len, name: nameArr, size: size, firstChild: firstChild, lastChild: lastChild, depth: depth, leafIdx: leafIdx, leaves: Int32Array.from(leaves) };
+  }
+
+  // ------------------------------------------------------------ layout
+  // World units: x in [0, W] for the tree, rows 1 unit apart (y = leaf index).
+  var W = 1000, TREE_W = 520, LABEL_GAP = 8;
+  function layout(T, mode) {
+    var N = T.N, x = new Float64Array(N), y = new Float64Array(N);
+    var maxD = 0; for (var i = 0; i < N; i++) if (T.depth[i] > maxD) maxD = T.depth[i];
+    var sx = maxD > 0 ? TREE_W / maxD : 1;
+    for (var a = 0; a < N; a++) x[a] = T.depth[a] * sx;
+    for (var b = N - 1; b >= 0; b--) {
+      if (T.firstChild[b] < 0) y[b] = T.leafIdx[b];
+      else y[b] = (y[T.firstChild[b]] + y[T.lastChild[b]]) / 2;  // children have higher indices: already set
+    }
+    return { x: x, y: y };
+  }
+
+  // ------------------------------------------------------------ geometry buffers
+  // Two segments per node: [2i] horizontal (parent.x,y_i)->(x_i,y_i); [2i+1] vertical connector of node i.
+  function buildRect(T, L) {
+    var N = T.N, src = new Float32Array(N * 4), dst = new Float32Array(N * 4);
+    for (var i = 0; i < N; i++) {
+      var p = T.parent[i], o = i * 4;
+      if (p >= 0) { src[o] = L.x[p]; src[o + 1] = L.y[i]; dst[o] = L.x[i]; dst[o + 1] = L.y[i]; }
+      if (T.firstChild[i] >= 0) { src[o + 2] = L.x[i]; src[o + 3] = L.y[T.firstChild[i]]; dst[o + 2] = L.x[i]; dst[o + 3] = L.y[T.lastChild[i]]; }
+      else { src[o + 2] = dst[o + 2] = L.x[i]; src[o + 3] = dst[o + 3] = L.y[i]; }
+    }
+    return { src: src, dst: dst, count: N * 2 };
+  }
+
+  function polar(theta, r) { return [Math.cos(theta) * r, Math.sin(theta) * r]; }
+  function buildCirc(T, L) {
+    var N = T.N, nLeaves = T.leaves.length, TWO_PI = Math.PI * 2 * 0.98;
+    var ang = function (yy) { return (yy / Math.max(1, nLeaves)) * TWO_PI; };
+    var R0 = 30;
+    var src = new Float32Array(N * 4 * 1), dst = new Float32Array(N * 4 * 1);
+    // radial lines in LineLayer (index 2i), arcs as paths in PathLayer
+    var arcPts = [], arcStarts = [0], arcNode = [];
+    for (var i = 0; i < N; i++) {
+      var p = T.parent[i], o = i * 4, th = ang(L.y[i]);
+      if (p >= 0) { var a0 = polar(th, R0 + L.x[p]), a1 = polar(th, R0 + L.x[i]); src[o] = a0[0]; src[o + 1] = a0[1]; dst[o] = a1[0]; dst[o + 1] = a1[1]; }
+      if (T.firstChild[i] >= 0) {
+        var t0 = ang(L.y[T.firstChild[i]]), t1 = ang(L.y[T.lastChild[i]]), r = R0 + L.x[i];
+        var steps = Math.max(2, Math.min(64, Math.ceil((t1 - t0) * r / 6)));
+        for (var s = 0; s <= steps; s++) { var q = polar(t0 + (t1 - t0) * s / steps, r); arcPts.push(q[0], q[1]); }
+        arcStarts.push(arcPts.length / 2); arcNode.push(i);
+      }
+    }
+    arcStarts.pop();  // one start index per arc
+    return { src: src, dst: dst, count: N * 2, arcPts: Float32Array.from(arcPts), arcStarts: Int32Array.from(arcStarts), arcNode: Int32Array.from(arcNode), ang: ang, R0: R0 };
+  }
+
+  // ------------------------------------------------------------ picking (CPU)
+  // Branch geometry is known exactly, so the branch under the cursor is found with
+  // binary searches over nodes sorted by y (horizontal branches) and by x
+  // (vertical connectors): O(log N) per query, independent of the GPU.
+  var byY = null, byX = null;
+  function buildPickIndex() {
+    var N = T.N, all = new Array(N);
+    for (var i = 0; i < N; i++) all[i] = i;
+    byY = all.slice().sort(function (a, b) { return L.y[a] - L.y[b]; });
+    byX = all.filter(function (i) { return T.firstChild[i] >= 0; }).sort(function (a, b) { return L.x[a] - L.x[b]; });
+  }
+  function lowerBound(arr, key, v) { var lo = 0, hi = arr.length; while (lo < hi) { var m = (lo + hi) >> 1; if (key(arr[m]) < v) lo = m + 1; else hi = m; } return lo; }
+  // wx, wy in tree units (x = depth, y = leaf index); tolX/tolY in the same units
+  function hitTree(wx, wy, tolX, tolY) {
+    var best = -1, bestD = Infinity, k, i, d;
+    for (k = lowerBound(byY, function (n) { return L.y[n]; }, wy - tolY); k < byY.length && L.y[byY[k]] <= wy + tolY; k++) {
+      i = byY[k]; var p = T.parent[i]; if (p < 0) continue;
+      if (wx >= L.x[p] - tolX && wx <= L.x[i] + tolX) { d = Math.abs(L.y[i] - wy) / tolY; if (d < bestD) { bestD = d; best = i; } }
+    }
+    for (k = lowerBound(byX, function (n) { return L.x[n]; }, wx - tolX); k < byX.length && L.x[byX[k]] <= wx + tolX; k++) {
+      i = byX[k];
+      if (wy >= L.y[T.firstChild[i]] - tolY && wy <= L.y[T.lastChild[i]] + tolY) { d = Math.abs(L.x[i] - wx) / tolX; if (d < bestD) { bestD = d; best = i; } }
+    }
+    return best;
+  }
+  // screen tolerance (px) converted to tree units, for either layout
+  function pickAt(coord) {
+    if (!T || !coord || !viewState) return -1;
+    var z = Array.isArray(viewState.zoom) ? viewState.zoom : [viewState.zoom, viewState.zoom];
+    var pxX = Math.pow(2, z[0]), pxY = Math.pow(2, z[1]), TOL = 5;
+    if (mode === 'rect') return hitTree(coord[0], coord[1], TOL / pxX, TOL / pxY);
+    var r = Math.hypot(coord[0], coord[1]), th = Math.atan2(coord[1], coord[0]); if (th < 0) th += Math.PI * 2;
+    var span = Math.PI * 2 * 0.98, nLeaves = T.leaves.length, yy = th / span * nLeaves;
+    var tolY = (TOL / pxX) / Math.max(r, 1) / span * nLeaves;
+    return hitTree(r - G.R0, yy, TOL / pxX, Math.max(tolY, 0.5));
+  }
+  var tipEl = document.createElement('div');
+  tipEl.style.cssText = 'position:absolute;pointer-events:none;padding:4px 8px;border-radius:6px;background:#1B1F24;color:#fff;font:12px system-ui,sans-serif;white-space:nowrap;display:none;z-index:5';
+  stage.appendChild(tipEl);
+
+  // ------------------------------------------------------------ state
+  var T = null, L = null, G = null, mode = 'rect', selected = -1, deckgl = null, tracks = null;
+  var segColors = null, arcColors = null, viewState = null, labelLayerData = { length: 0 };
+
+  function makeTracks(T) {
+    var n = T.leaves.length, rnd = mulberry(7 + n);
+    var GX = TREE_W + 180, GW = 260, HX = GX + GW + 20;
+    var gs = new Float32Array(n * 5 * 2), gd = new Float32Array(n * 5 * 2), gc = new Uint8Array(n * 5 * 4), gCount = 0;
+    var hs = new Float32Array(n * 3 * 2), hd = new Float32Array(n * 3 * 2), hc = new Uint8Array(n * 3 * 4);
+    for (var i = 0; i < n; i++) {
+      var x = rnd() * 30;
+      for (var k = 0; k < 5 && x < GW - 10; k++) {
+        var w = 15 + rnd() * 45, c = PAL[Math.floor(rnd() * 10)], o = gCount * 2, oc = gCount * 4;
+        gs[o] = GX + x; gs[o + 1] = i; gd[o] = GX + Math.min(GW, x + w); gd[o + 1] = i;
+        gc[oc] = c[0]; gc[oc + 1] = c[1]; gc[oc + 2] = c[2]; gc[oc + 3] = 255; gCount++; x += w + 3 + rnd() * 12;
+      }
+      for (var h = 0; h < 3; h++) {
+        var v = rnd() * 4, vi = Math.min(3, Math.floor(v)), f = v - vi, a = VIR[vi], bb = VIR[vi + 1], oh = (i * 3 + h) * 2, ohc = (i * 3 + h) * 4;
+        hs[oh] = HX + h * 14; hs[oh + 1] = i; hd[oh] = HX + h * 14 + 12; hd[oh + 1] = i;
+        hc[ohc] = a[0] + (bb[0] - a[0]) * f; hc[ohc + 1] = a[1] + (bb[1] - a[1]) * f; hc[ohc + 2] = a[2] + (bb[2] - a[2]) * f; hc[ohc + 3] = 255;
+      }
+    }
+    return { genes: { src: gs, dst: gd, col: gc, count: gCount }, heat: { src: hs, dst: hd, col: hc, count: n * 3 }, shapes: gCount + n * 3 };
+  }
+
+  function colorAll() {
+    segColors = new Uint8Array(T.N * 2 * 4);
+    for (var i = 0; i < T.N * 2; i++) segColors.set(LIGHT_TREE, i * 4);
+    if (G.arcNode) { arcColors = new Uint8Array(G.arcNode.length * 4); for (var a = 0; a < G.arcNode.length; a++) arcColors.set(LIGHT_TREE, a * 4); }
+    if (selected >= 0) paintClade(selected, HI);
+  }
+  function paintClade(node, col) {
+    var end = node + T.size[node];
+    for (var i = node; i < end; i++) { segColors.set(col, i * 8 + 4); if (i !== node) segColors.set(col, i * 8); }
+    segColors.set(col, node * 8);  // the branch leading into the clade
+    if (arcColors) for (var a = 0; a < G.arcNode.length; a++) { var nd = G.arcNode[a]; if (nd >= node && nd < end) arcColors.set(col, a * 4); }
+  }
+
+  // ------------------------------------------------------------ deck.gl layers
+  var colorVersion = 0;
+  function layers() {
+    var out = [];
+    var common = { coordinateSystem: deck.COORDINATE_SYSTEM.CARTESIAN };
+    out.push(new deck.LineLayer(Object.assign({
+      id: 'branches', data: { length: G.count, attributes: { getSourcePosition: { value: G.src, size: 2 }, getTargetPosition: { value: G.dst, size: 2 }, getColor: { value: segColors, size: 4, normalized: true } } },
+      getWidth: 1.2, widthUnits: 'pixels', pickable: false, updateTriggers: { getColor: colorVersion }
+    }, common)));
+    if (mode === 'circ' && G.arcPts.length) {
+      out.push(new deck.PathLayer(Object.assign({
+        id: 'arcs', data: { length: G.arcNode.length, startIndices: G.arcStarts, attributes: { getPath: { value: G.arcPts, size: 2 }, getColor: { value: arcColors, size: 4, normalized: true } } },
+        _pathType: 'open', getWidth: 1.2, widthUnits: 'pixels', pickable: false, updateTriggers: { getColor: colorVersion }
+      }, common)));
+    }
+    var rowPx = viewState ? Math.pow(2, Array.isArray(viewState.zoom) ? viewState.zoom[1] : viewState.zoom) : 1;
+    if (mode === 'rect' && tracks) {
+      var bar = function (id, t, thick) {
+        return new deck.LineLayer(Object.assign({ id: id, data: { length: t.count, attributes: { getSourcePosition: { value: t.src, size: 2 }, getTargetPosition: { value: t.dst, size: 2 }, getColor: { value: t.col, size: 4, normalized: true } } },
+          getWidth: Math.max(1, rowPx * thick), widthUnits: 'pixels', updateTriggers: { getWidth: Math.round(rowPx * 10) } }, common));
+      };
+      out.push(bar('genes', tracks.genes, 0.6), bar('heat', tracks.heat, 0.9));
+    }
+    if (labelLayerData.length) {
+      out.push(new deck.TextLayer(Object.assign({ id: 'labels', data: labelLayerData.items, getPosition: function (d) { return d.p; }, getText: function (d) { return d.t; },
+        getSize: labelLayerData.size, sizeUnits: 'pixels', getColor: function (d) { return d.c; }, getTextAnchor: mode === 'circ' ? 'start' : 'start', getAlignmentBaseline: 'center',
+        getAngle: function (d) { return d.a || 0; }, fontFamily: 'system-ui, -apple-system, sans-serif', characterSet: 'auto' }, common)));
+    }
+    return out;
+  }
+
+  // labels only for rows that are tall enough on screen to be read (level of detail)
+  function updateLabels() {
+    if (!T || !viewState) return;
+    var zy = Array.isArray(viewState.zoom) ? viewState.zoom[1] : viewState.zoom;
+    var rowPx = Math.pow(2, zy);   // rows are 1 world unit apart
+    var nLeaves = T.leaves.length, items = [];
+    if (mode === 'rect' && rowPx >= 7) {
+      var h = stage.clientHeight / rowPx, y0 = Math.max(0, Math.floor(viewState.target[1] - h / 2) - 2), y1 = Math.min(nLeaves - 1, Math.ceil(viewState.target[1] + h / 2) + 2);
+      var inSel = function (leafNode) { return selected >= 0 && leafNode >= selected && leafNode < selected + T.size[selected]; };
+      for (var r = y0; r <= y1 && items.length < 4000; r++) { var nd = T.leaves[r]; items.push({ p: [L.x[nd] + LABEL_GAP, r], t: T.name[nd], c: inSel(nd) ? HI : [87, 96, 108, 255] }); }
+    } else if (mode === 'circ' && nLeaves <= 4000) {
+      for (var k = 0; k < nLeaves; k++) { var n2 = T.leaves[k], th = G.ang(L.y[n2]), q = polar(th, G.R0 + L.x[n2] + 6); var deg = th * 180 / Math.PI; items.push({ p: q, t: T.name[n2], a: deg > 90 && deg < 270 ? deg + 180 : deg, c: [87, 96, 108, 255] }); }
+    }
+    labelLayerData = { length: items.length, items: items, size: Math.max(7, Math.min(13, rowPx * 0.75)) };
+  }
+
+  var rafPending = false;
+  function render() {
+    if (rafPending) return; rafPending = true;
+    requestAnimationFrame(function () { rafPending = false; updateLabels(); deckgl.setProps({ layers: layers() }); });
+  }
+
+  function fitView() {
+    var h = stage.clientHeight, w = stage.clientWidth, n = T.leaves.length;
+    if (mode === 'rect') {
+      var worldW = tracks ? TREE_W + 180 + 260 + 80 : TREE_W + 180;
+      viewState = { target: [worldW / 2, n / 2, 0], zoom: [Math.log2((w - 40) / worldW), Math.log2((h - 40) / Math.max(1, n))] };
+    } else {
+      var maxR = 0; for (var i = 0; i < T.N; i++) if (L.x[i] > maxR) maxR = L.x[i];
+      var z = Math.log2(Math.min(w, h) / (2 * (G.R0 + maxR + 120)));
+      viewState = { target: [0, 0, 0], zoom: [z, z] };
+    }
+    deckgl.setProps({ viewState: viewState }); render();
+  }
+
+  // ------------------------------------------------------------ build everything
+  var timings = {};
+  function setTree(tree, label) {
+    var t0 = performance.now();
+    T = tree; selected = -1;
+    var t1 = performance.now(); L = layout(T, mode);
+    var t2 = performance.now(); G = mode === 'rect' ? buildRect(T, L) : buildCirc(T, L); buildPickIndex();
+    tracks = document.getElementById('tracks').checked && mode === 'rect' ? makeTracks(T) : null;
+    colorAll(); colorVersion++;
+    var t3 = performance.now();
+    timings = { label: label, parse: Math.round(timings.parseMs || 0), layout: Math.round(t2 - t1), buffers: Math.round(t3 - t2) };
+    if (!deckgl) init();
+    fitView();
+    var tr0 = performance.now();
+    requestAnimationFrame(function () { requestAnimationFrame(function () { timings.firstFrame = Math.round(performance.now() - tr0); showStats(); }); });
+  }
+
+  function showStats(extra) {
+    if (!T) return;
+    statsEl.textContent = timings.label + ' · ' + T.leaves.length.toLocaleString() + ' tips, ' + T.N.toLocaleString() + ' nodes' +
+      (tracks ? ', ' + tracks.shapes.toLocaleString() + ' data shapes' : '') +
+      ' · parse ' + timings.parse + ' ms · layout ' + timings.layout + ' ms · buffers ' + timings.buffers + ' ms · first frame ' + (timings.firstFrame || '…') + ' ms' +
+      (timings.select != null ? ' · last selection ' + timings.select + ' ms' : '') + (extra || '');
+  }
+
+  function init() {
+    deckgl = new deck.Deck({
+      parent: stage,
+      views: new deck.OrthographicView({ id: 'v', flipY: true }),
+      viewState: viewState,
+      controller: { zoomAxis: 'Y', doubleClickZoom: false },
+      onViewStateChange: function (e) {
+        var vs = e.viewState;
+        if (mode === 'circ') { var z = Array.isArray(vs.zoom) ? vs.zoom[1] : vs.zoom; vs = Object.assign({}, vs, { zoom: [z, z] }); }
+        viewState = vs; deckgl.setProps({ viewState: viewState }); render();
+      },
+      onHover: function (info) {
+        var node = pickAt(info.coordinate);
+        if (node < 0) { tipEl.style.display = 'none'; return; }
+        tipEl.textContent = T.firstChild[node] >= 0 ? 'Clade · ' + countTips(node).toLocaleString() + ' tips' : (T.name[node] || 'tip');
+        tipEl.style.left = (info.x + 12) + 'px'; tipEl.style.top = (info.y + 12) + 'px'; tipEl.style.display = 'block';
+      },
+      onClick: function (info) {
+        if (!T) return;
+        var node = pickAt(info.coordinate);
+        var t0 = performance.now();
+        selected = node; colorAll(); colorVersion++;
+        render();
+        requestAnimationFrame(function () { timings.select = Math.round(performance.now() - t0); showStats(); });
+      },
+      getCursor: function (s) { return s.isDragging ? 'grabbing' : 'crosshair'; }
+    });
+  }
+  function countTips(node) { var n = 0, end = node + T.size[node]; for (var i = node; i < end; i++) if (T.firstChild[i] < 0) n++; return n; }
+
+  // ------------------------------------------------------------ UI
+  document.getElementById('file').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    f.text().then(function (txt) { var t0 = performance.now(); var tr = parseNewick(txt); timings.parseMs = performance.now() - t0; setTree(tr, f.name); });
+  });
+  function gen(n) { var t0 = performance.now(); var tr = generateTree(n); timings.parseMs = performance.now() - t0; setTree(tr, 'generated'); }
+  document.getElementById('gen3k').addEventListener('click', function () { gen(3000); });
+  document.getElementById('gen150k').addEventListener('click', function () { gen(150000); });
+  document.getElementById('layout').addEventListener('change', function (e) { mode = e.target.value; if (T) { timings.parseMs = 0; var s = selected; setTree(T, timings.label); selected = s; colorAll(); colorVersion++; render(); } });
+  document.getElementById('tracks').addEventListener('change', function () { if (T) { var s = selected; setTree(T, timings.label); selected = s; colorAll(); colorVersion++; render(); } });
+  document.getElementById('fit').addEventListener('click', function () { if (T) fitView(); });
+  document.getElementById('clear').addEventListener('click', function () { if (T) { selected = -1; colorAll(); colorVersion++; render(); } });
+  window.addEventListener('resize', function () { if (T) fitView(); });
+
+  // for automated tests
+  window.__proto = { gen: gen, getState: function () { return { tips: T && T.leaves.length, selected: selected, labels: labelLayerData.length, timings: timings, viewState: viewState }; },
+    selectNode: function (n) { var t0 = performance.now(); selected = n; colorAll(); colorVersion++; render(); return new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(function () { r(performance.now() - t0); }); }); }); },
+    tree: function () { return T; }, pickAt: function (c) { return pickAt(c); } };
+})();
+</script>
+</body>
+</html>
