@@ -1031,8 +1031,10 @@
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {
-    if (!/[?&]debug\b/.test(location.search)) return;
-    var el = document.createElement('script'); el.src = 'js/debug-monitor.js'; document.body.appendChild(el);
+    function load(src) { var el = document.createElement('script'); el.src = src + '?v=' + Date.now(); document.body.appendChild(el); }
+    if (/[?&]debug\b/.test(location.search)) load('js/debug-monitor.js');
+    // Opt-in speed test: open the page with ?bench
+    if (/[?&]bench\b/.test(location.search)) load('js/bench.js');
   })();
 </script>
 </body>
