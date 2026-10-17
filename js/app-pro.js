@@ -25235,11 +25235,16 @@ function updateResetCartoonsButtonVisibility() {
 }
 
 if(clearAllColorsBtn){
+  // "Clear all colours and highlights": branch colours from every source
+  // (search paths, selected clades, clade layers) plus clade backgrounds.
+  // The classic page only cleared selection colours here, which left the
+  // selected node's own branch coloured and the reset buttons stale.
   clearAllColorsBtn.addEventListener('click', () => {
-    cladeColors.clear();
     cladeBackgroundColors.clear();
-    drawTree();
-    console.log('drawTree in clearAllColorsBtn click');
+    resetAllPathColors();
+    if (typeof cladeColorTs !== 'undefined') cladeColorTs.clear();
+    updateResetHighlightsButtonVisibility();
+    setStatus('All branch colours and highlights cleared');
   });
 }
 
