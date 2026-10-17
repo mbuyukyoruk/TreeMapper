@@ -1,4 +1,4 @@
-/* Tailwind subset for index-pro.html: same as tailwind-subset.css minus the rules that put
+/* Tailwind subset for index.html: the classic version's subset minus the rules that put
    Tailwind's --tw-* custom properties on every element (unused here; they made style
    recalculation of tens of thousands of tree SVG elements slower). */
 /* Subset of tailwindcss v2.2.19 (MIT License, https://tailwindcss.com) containing only the rules this app uses.

@@ -1,7 +1,7 @@
-// UI glue for index-pro.html (the application-shell layout).
+// UI glue for index.html (the application-shell layout).
 // Loaded after app.js. It only wires the new layout to the app's existing
 // controls (by id) and replaces two layout helpers that assumed the classic
-// page; app.js itself is unchanged and the classic index.html never loads this.
+// page (the classic version now lives outside this repository).
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };

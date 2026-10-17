@@ -16040,107 +16040,63 @@ function createNewDataframeCard(metadata) {
   
   newCard.innerHTML = `
     <summary id="dataframeSummary${dataframeId}" class="df-summary">
-      <span id="dataframeTitle${dataframeId}">Dataframe ${dataframeId}</span>
+      <span class="pro-card-badge pro-badge-dataframe" aria-hidden="true">DF</span>
+      <span id="dataframeTitle${dataframeId}" class="pro-card-title">Dataframe ${dataframeId}</span>
       <span class="df-spacer"></span>
-      <button id="deleteDataframe${dataframeId}" class="df-delete" title="Remove dataframe">🗑️</button>
-      <span class="drag-handle" title="Drag to reorder dataframes">⋮⋮</span>
+      <button id="deleteDataframe${dataframeId}" class="df-delete" title="Remove dataframe" aria-label="Remove dataframe"></button>
+      <span class="drag-handle" title="Drag to reorder dataframes" aria-hidden="true"></span>
     </summary>
-    <div class="section row2">
-      <div style="display: flex; align-items: center; margin-bottom: 4px;">
-        <label style="margin: 0; margin-right: 8px;">Order/Gene/Orientation/Color</label>
-        <input type="checkbox" id="orientationMasterToggle${dataframeId}" class="orientation-master-toggle" style="margin: 0;" title="Toggle all orientation switches">
-      </div>
-      <div id="geneSearchRow${dataframeId}" style="display:flex; align-items:center; gap:6px; margin: 0 0 6px 0; width: 100%; max-width: 100%; box-sizing: border-box;">
-        <input type="text" id="geneSearch${dataframeId}" placeholder="Search gene..."
-               style="flex:1 1 auto; width:0; min-width: 0; max-width: 100%; box-sizing: border-box; padding:6px 8px; border: var(--chip-border); border-radius:8px; font-size:11px; background: var(--chip); color: var(--text);" />
-        <button type="button" id="geneSearchClear${dataframeId}" title="Clear search"
-                style="width:28px !important; min-width:28px !important; max-width:28px !important; height:28px; padding:0; border: var(--chip-border); border-radius:8px; background: var(--chip); color: var(--muted); cursor:pointer; box-sizing:border-box;">✕</button>
-      </div>
-      <div id="geneList${dataframeId}" style="max-height:220px; overflow:auto; padding:6px; border: var(--chip-border); border-radius:8px; font-size:11px; line-height:1.35; color: var(--muted); min-width: 180px;">
-        <i>(none)</i>
-      </div>
-       <div style="display: flex; align-items: center; margin-bottom: 4px;">
-         <label style="margin: 0; margin-right: 8px;">Operon</label>
-         <input type="checkbox" id="operonMasterToggle${dataframeId}" class="operon-toggle" style="margin: 0;">
-       </div>
-        <div id="operonSearchRow${dataframeId}" style="display:flex; align-items:center; gap:6px; margin: 0 0 6px 0; width: 100%; max-width: 100%; box-sizing: border-box;">
-          <input type="text" id="operonSearch${dataframeId}" placeholder="Search operon gene..."
-                 style="flex:1 1 auto; width:0; min-width: 0; max-width: 100%; box-sizing: border-box; padding:6px 8px; border: var(--chip-border); border-radius:8px; font-size:11px; background: var(--chip); color: var(--text);" />
-          <button type="button" id="operonSearchClear${dataframeId}" title="Clear search"
-                  style="width:28px !important; min-width:28px !important; max-width:28px !important; height:28px; padding:0; border: var(--chip-border); border-radius:8px; background: var(--chip); color: var(--muted); cursor:pointer; box-sizing:border-box;">✕</button>
+    <div class="section row2 pro-card-body">
+      <div class="pro-card-section">
+        <div class="pro-card-head">
+          <span class="pro-section-title">Genes</span>
+          <label class="pro-mini" title="Toggle all orientation switches"><span>Orientation</span><input type="checkbox" id="orientationMasterToggle${dataframeId}" class="orientation-master-toggle pro-switch pro-switch-sm"></label>
         </div>
-        <div id="operonList${dataframeId}" style="max-height:220px; overflow:auto; padding:6px; border: var(--chip-border); border-radius:8px; font-size:11px; line-height:1.35; color: var(--muted); min-width: 180px;">
-          <i>(none)</i>
+        <div id="geneSearchRow${dataframeId}" class="pro-search-row">
+          <input type="text" id="geneSearch${dataframeId}" class="pro-search" placeholder="Filter genes">
+          <button type="button" id="geneSearchClear${dataframeId}" class="pro-search-clear" title="Clear search" aria-label="Clear search"></button>
         </div>
-      <div>
-        <label style="margin-bottom: 4px;">Alignment</label>
-        <div id="alignCard${dataframeId}" style="margin-top:6px; padding:8px; border: var(--chip-border); border-radius:8px; background: var(--chip);">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-            <input type="checkbox" id="metaAlignEnable${dataframeId}">
-            <span class="checkbox-label">Align bars by gene</span>
-          </div>
-          <div class="subrow" style="margin:4px 0;">
-            <label>Gene:</label>
-            <select id="metaAlignGene${dataframeId}" disabled>
+        <div id="geneList${dataframeId}" class="pro-list"><i>(none)</i></div>
+      </div>
+      <div class="pro-card-section">
+        <div class="pro-card-head">
+          <span class="pro-section-title">Operons</span>
+          <label class="pro-mini" title="Show operons"><span>Show</span><input type="checkbox" id="operonMasterToggle${dataframeId}" class="operon-toggle pro-switch pro-switch-sm"></label>
+        </div>
+        <div id="operonSearchRow${dataframeId}" class="pro-search-row">
+          <input type="text" id="operonSearch${dataframeId}" class="pro-search" placeholder="Filter operon genes">
+          <button type="button" id="operonSearchClear${dataframeId}" class="pro-search-clear" title="Clear search" aria-label="Clear search"></button>
+        </div>
+        <div id="operonList${dataframeId}" class="pro-list"><i>(none)</i></div>
+      </div>
+      <div class="pro-card-section">
+        <div class="pro-card-head"><span class="pro-section-title">Alignment</span></div>
+        <div id="alignCard${dataframeId}" class="pro-flat">
+          <label class="pro-row"><span>Align bars by gene</span><input type="checkbox" id="metaAlignEnable${dataframeId}" class="pro-switch"></label>
+          <div class="pro-row pro-sub">
+            <label for="metaAlignGene${dataframeId}">Gene</label>
+            <select id="metaAlignGene${dataframeId}" class="pro-select" disabled>
               <option value="">(choose)</option>
             </select>
           </div>
-          <div class="subrow" style="margin:4px 0;">
-            <label>Type:</label>
-            <div style="display:flex; gap:10px;">
-              <div style="display:inline-flex; align-items:center; gap:4px;"><input type="radio" name="metaAlignType${dataframeId}" value="left" checked disabled> <span class="checkbox-label">left</span></div>
-              <div style="display:inline-flex; align-items:center; gap:4px;"><input type="radio" name="metaAlignType${dataframeId}" value="center" disabled> <span class="checkbox-label">center</span></div>
-              <div style="display:inline-flex; align-items:center; gap:4px;"><input type="radio" name="metaAlignType${dataframeId}" value="right" disabled> <span class="checkbox-label">right</span></div>
-            </div>
+          <div class="pro-row pro-sub">
+            <span>Anchor</span>
+            <span class="pro-radio-seg" role="radiogroup" aria-label="Alignment anchor">
+              <label><input type="radio" name="metaAlignType${dataframeId}" value="left" checked disabled><span>Left</span></label>
+              <label><input type="radio" name="metaAlignType${dataframeId}" value="center" disabled><span>Centre</span></label>
+              <label><input type="radio" name="metaAlignType${dataframeId}" value="right" disabled><span>Right</span></label>
+            </span>
           </div>
         </div>
       </div>
-      
-      <!-- Grid Controls -->
-      <div style="margin-top: 8px;">
-        <div style="margin-bottom: 8px;">
-          <label style="font-size: 11px; color: var(--muted); font-weight: bold;">Major Grid</label>
-          <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-            <div style="margin-bottom: 0px;">
-              <label style="display: flex; align-items: center; font-size: 11px;">
-                <input type="checkbox" id="showMajorGrid${dataframeId}" class="major-grid-checkbox" style="margin-right: 6px;">
-                Show grid lines
-              </label>
-            </div>
-            <div style="margin-bottom: 0px;">
-              <label style="display: flex; align-items: center; font-size: 11px;">
-                <input type="checkbox" id="dashedMajorGrid${dataframeId}" class="major-grid-dashed-checkbox" style="margin-right: 6px;">
-                Dashed line
-              </label>
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-              <label style="font-size: 11px; color: var(--muted);">Grid line width (px):</label>
-              <input type="number" id="majorGridWidth${dataframeId}" min="0.5" step="0.5" value="2" class="value-box" style="width: 60px;">
-            </div>
-          </div>
-        </div>
-        
-        <div>
-          <label style="font-size: 11px; color: var(--muted); font-weight: bold;">Minor Grid</label>
-          <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-            <div style="margin-bottom: 0px;">
-              <label style="display: flex; align-items: center; font-size: 11px;">
-                <input type="checkbox" id="showMinorGrid${dataframeId}" class="minor-grid-checkbox" style="margin-right: 6px;">
-                Show grid lines
-              </label>
-            </div>
-            <div style="margin-bottom: 0px;">
-              <label style="display: flex; align-items: center; font-size: 11px;">
-                <input type="checkbox" id="dashedMinorGrid${dataframeId}" class="minor-grid-dashed-checkbox" style="margin-right: 6px;">
-                Dashed line
-              </label>
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-              <label style="font-size: 11px; color: var(--muted);">Grid line width (px):</label>
-              <input type="number" id="minorGridWidth${dataframeId}" min="0.5" step="0.5" value="1" class="value-box" style="width: 60px;">
-            </div>
-          </div>
-        </div>
+      <div class="pro-card-section">
+        <div class="pro-card-head"><span class="pro-section-title">Grid lines</span></div>
+        <label class="pro-row"><span>Major grid lines</span><input type="checkbox" id="showMajorGrid${dataframeId}" class="major-grid-checkbox pro-switch"></label>
+        <label class="pro-row pro-sub"><span>Dashed</span><input type="checkbox" id="dashedMajorGrid${dataframeId}" class="major-grid-dashed-checkbox pro-switch"></label>
+        <div class="pro-row pro-sub"><span>Width</span><span class="pro-num-wrap"><input type="number" id="majorGridWidth${dataframeId}" min="0.5" step="0.5" value="2" class="pro-num"><span class="pro-unit">px</span></span></div>
+        <label class="pro-row"><span>Minor grid lines</span><input type="checkbox" id="showMinorGrid${dataframeId}" class="minor-grid-checkbox pro-switch"></label>
+        <label class="pro-row pro-sub"><span>Dashed</span><input type="checkbox" id="dashedMinorGrid${dataframeId}" class="minor-grid-dashed-checkbox pro-switch"></label>
+        <div class="pro-row pro-sub"><span>Width</span><span class="pro-num-wrap"><input type="number" id="minorGridWidth${dataframeId}" min="0.5" step="0.5" value="1" class="pro-num"><span class="pro-unit">px</span></span></div>
       </div>
     </div>
   `;
@@ -16341,26 +16297,24 @@ function renderGeneGradientControls(dataframeId, df) {
   }
   if (!row) {
     row = document.createElement('div');
-    row.className = 'gene-gradient-row';
-    row.style.cssText = 'display:flex; flex-direction:column; gap:6px; margin:0 0 6px 0; padding:6px 8px; border: var(--chip-border); border-radius:8px; background: var(--chip); font-size:11px; color: var(--text);';
+    row.className = 'gene-gradient-row pro-flat';
     row.innerHTML = `
-      <div style="display:flex; align-items:center; gap:8px;">
-        <input type="checkbox" class="gg-enable" style="margin:0;">
-        <span class="checkbox-label">Continuous color gradient (0–100%)</span>
+      <label class="pro-row"><span>Continuous colour gradient (0–100%)</span><input type="checkbox" class="gg-enable pro-switch"></label>
+      <div class="gg-controls pro-row pro-sub">
+        <span class="pro-unit">0%</span>
+        <span class="pro-inline">
+          <input type="color" class="gg-min pro-color" title="Colour at 0%">
+          <input type="checkbox" class="gg-mid-enable pro-check" title="Use a midpoint colour at 50%">
+          <input type="color" class="gg-mid pro-color" title="Colour at 50%">
+          <input type="color" class="gg-max pro-color" title="Colour at 100%">
+        </span>
+        <span class="pro-unit">100%</span>
       </div>
-      <div class="gg-controls" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-        <span>0%</span>
-        <input type="color" class="gg-min" title="Color at 0%">
-        <input type="checkbox" class="gg-mid-enable" title="Use a midpoint color at 50%" style="margin:0;">
-        <input type="color" class="gg-mid" title="Color at 50%">
-        <input type="color" class="gg-max" title="Color at 100%">
-        <span>100%</span>
-      </div>
-      <div class="gg-preview" style="height:10px; border-radius:3px; border:1px solid var(--ring);"></div>
+      <div class="gg-preview"></div>
     `;
     geneDiv.parentNode.insertBefore(row, geneDiv);
   }
-  row.style.display = 'flex';
+  row.style.display = 'block';
   
   const enableEl = row.querySelector('.gg-enable');
   const minEl = row.querySelector('.gg-min');
@@ -16566,18 +16520,12 @@ function populateDataframeCard(dataframeId, metadata) {
       ? genes.map(g => {
           const checked = (dataframeId === 1 ? geneVisibility.get(g) : df.geneVisibility.get(g)) ? 'checked' : '';
           const color = (dataframeId === 1 ? geneColors.get(g) : df.geneColors.get(g)) || '#ccc';
-          return `<div class="gene-card" draggable="true" data-gene="${g}" style="display:grid;grid-template-columns:auto 1fr auto auto;align-items:left;gap:8px;margin:4px 0;padding:6px 8px;border:var(--chip-border);border-radius:8px;background:var(--chip);">
-                    <span class="drag-handle" title="Drag to reorder" style="cursor:grab;">⋮⋮</span>
-                        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-                      <input type="checkbox" class="gene-toggle" data-gene="${g}" ${checked}>
-                      <span class="gene-name" title="${g}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g}</span>
-                    </div>
-                     <div style="position:relative;display:flex;align-items:center;">
-                    <input type="checkbox" class="gene-orient mini-toggle" data-gene="${g}" title="Show orientation">
-                       <span class="mini-toggle-label" style="position:absolute;top:50%;right:4px;transform:translateY(-50%);font-size:7px;font-weight:bold;pointer-events:none;color:var(--text));">OFF</span>
-                       <span class="mini-toggle-label-off" style="position:absolute;top:50%;left:6px;transform:translateY(-50%);font-size:7px;font-weight:bold;pointer-events:none;color:var(--ring);">ON</span>
-                     </div>
-                    <input type="color" class="gene-color" data-gene="${g}" value="${color}" title="Pick a color">
+          return `<div class="gene-card pro-list-row" draggable="true" data-gene="${g}">
+                    <span class="drag-handle" title="Drag to reorder" aria-hidden="true"></span>
+                    <input type="checkbox" class="gene-toggle pro-check" data-gene="${g}" ${checked} aria-label="Show ${g}">
+                    <span class="gene-name pro-list-name" title="${g}">${g}</span>
+                    <input type="checkbox" class="gene-orient pro-switch pro-switch-xs" data-gene="${g}" title="Show orientation" aria-label="Show orientation of ${g}">
+                    <input type="color" class="gene-color pro-swatch" data-gene="${g}" value="${color}" title="Colour" aria-label="Colour of ${g}">
                   </div>`;
         }).join('')
       : '<i>(none)</i>';
@@ -16589,19 +16537,13 @@ function populateDataframeCard(dataframeId, metadata) {
       const genesAlpha = genes.slice().sort((a,b)=> String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
       operonDiv.innerHTML = genesAlpha.length
         ? genesAlpha.map(g => {
-            return `<div class="operon-card" data-gene="${g}" style="display:grid;grid-template-columns:auto 1fr auto;align-items:left;gap:8px;margin:4px 0;padding:4.5px 8px;border:var(--chip-border);border-radius:8px;background:var(--chip);">
-                        <div style="position:relative;display:flex;align-items:center;">
-                          <input type="checkbox" class="operon-toggle" data-gene="${g}" title="Toggle operon" style="margin:0;vertical-align:middle;">
-                          <span class="operon-toggle-label" style="position:absolute;top:50%;right:6px;transform:translateY(-50%);font-size:7px;font-weight:bold;pointer-events:none;color:var(--accent);">ORF</span>
-                          <span class="operon-toggle-label-dna" style="position:absolute;top:50%;left:6px;transform:translateY(-50%);font-size:7px;font-weight:bold;pointer-events:none;color:var(--ring);">DNA</span>
-                        </div>
-                        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-                          <input type="checkbox" class="operon-checkbox" data-gene="${g}" title="Operon checkbox">
-                          <span class="operon-gene-name" title="${g}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${g}</span>
-                        </div>
-                        <select class="operon-dropdown" data-gene="${g}" title="Operon dropdown" disabled style="width:40px;height:10px;font-size:8px;border:1px solid var(--ring);border-radius:4px;background:var(--chip);">
-                          <option value="F">F  (Forward)</option>
-                          <option value="R">R  (Reverse)</option>
+            return `<div class="operon-card pro-list-row" data-gene="${g}">
+                        <input type="checkbox" class="operon-toggle pro-switch pro-switch-xs" data-gene="${g}" title="ORF / DNA" aria-label="Operon mode for ${g} (off: DNA, on: ORF)">
+                        <input type="checkbox" class="operon-checkbox pro-check" data-gene="${g}" title="Include in operon" aria-label="Include ${g} in operon">
+                        <span class="operon-gene-name pro-list-name" title="${g}">${g}</span>
+                        <select class="operon-dropdown pro-select pro-select-xs" data-gene="${g}" title="Strand: F = forward, R = reverse" aria-label="Strand of ${g}" disabled>
+                          <option value="F" title="Forward">F</option>
+                          <option value="R" title="Reverse">R</option>
                         </select>
                       </div>`;
           }).join('')
@@ -17540,18 +17482,17 @@ function createNewHeatmapCard(heatmapData) {
   
   newCard.innerHTML = `
     <summary id="heatmapSummary${heatmapId}" class="df-summary">
-      <span id="heatmapTitle${heatmapId}">Heatmap ${heatmapId}</span>
+      <span class="pro-card-badge pro-badge-heatmap" aria-hidden="true">HM</span>
+      <span id="heatmapTitle${heatmapId}" class="pro-card-title">Heatmap ${heatmapId}</span>
       <span class="df-spacer"></span>
-      <button id="deleteHeatmap${heatmapId}" class="df-delete" title="Remove heatmap">🗑️</button>
-      <span class="drag-handle" title="Drag to reorder heatmaps">⋮⋮</span>
+      <button id="deleteHeatmap${heatmapId}" class="df-delete" title="Remove heatmap" aria-label="Remove heatmap"></button>
+      <span class="drag-handle" title="Drag to reorder heatmaps" aria-hidden="true"></span>
     </summary>
-    <div class="section row2">
-      <div style="display: flex; align-items: center;">
-        <label style="margin: 0; margin-right: 8px;">Show Heatmap</label>
-        <input type="checkbox" id="heatmapToggle${heatmapId}" class="heatmap-toggle" style="margin: 0;" checked>
-      </div>
-      <div id="heatmapData${heatmapId}" style="max-height:220px; overflow:auto; padding:6px; border: var(--chip-border); border-radius:8px; font-size:11px; line-height:1.35; color: var(--muted); min-width: 180px;">
-        <i>Heatmap data loaded</i>
+    <div class="section row2 pro-card-body">
+      <div class="pro-card-section">
+        <label class="pro-row"><span>Show heatmap</span><input type="checkbox" id="heatmapToggle${heatmapId}" class="heatmap-toggle pro-switch" checked></label>
+        <div class="pro-card-head"><span class="pro-section-title">Values</span></div>
+        <div id="heatmapData${heatmapId}" class="pro-list"><i>Heatmap data loaded</i></div>
       </div>
     </div>
   `;
@@ -17737,10 +17678,10 @@ function populateHeatmapCard(heatmapId, metadata) {
         ${sortedValues.map(value => {
           const checked = hm.valueVisibility.get(value) ? 'checked' : '';
           const color = hm.valueColors.get(value) || '#ccc';
-          return `<div class="heatmap-value-card" data-value="${value}" style="display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 8px;border:var(--chip-border);border-radius:8px;background:var(--chip);">
-                    <input type="checkbox" class="heatmap-value-toggle" data-value="${value}" ${checked}>
-                    <span class="heatmap-value-name" title="${value}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${value}</span>
-                    <input type="color" class="heatmap-value-color" data-value="${value}" value="${color}" title="Pick a color">
+          return `<div class="heatmap-value-card pro-list-row" data-value="${value}">
+                    <input type="checkbox" class="heatmap-value-toggle pro-check" data-value="${value}" ${checked} aria-label="Show ${value}">
+                    <span class="heatmap-value-name pro-list-name" title="${value}">${value}</span>
+                    <input type="color" class="heatmap-value-color pro-swatch" data-value="${value}" value="${color}" title="Colour" aria-label="Colour of ${value}">
                   </div>`;
         }).join('')}
       `;
@@ -18169,27 +18110,22 @@ function createNewHighlightCard(highlightData) {
   
   newCard.innerHTML = `
     <summary id="highlightSummary${highlightId}" class="df-summary">
-      <span id="highlightTitle${highlightId}">Highlight</span>
+      <span class="pro-card-badge pro-badge-highlight" aria-hidden="true">HL</span>
+      <span id="highlightTitle${highlightId}" class="pro-card-title">Highlight</span>
       <span class="df-spacer"></span>
-      <button id="deleteHighlight${highlightId}" class="df-delete" title="Remove highlight">🗑️</button>
-      <span class="drag-handle disabled" title="Drag disabled for highlights">⋮⋮</span>
+      <button id="deleteHighlight${highlightId}" class="df-delete" title="Remove highlight" aria-label="Remove highlight"></button>
+      <span class="drag-handle disabled" title="Drag disabled for highlights" aria-hidden="true"></span>
     </summary>
-    <div class="section row2">
-      <div style="margin-top: 8px;">
-        <label style="font-size: 11px; color: var(--muted);">Transparency:</label>
-        <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-          <input type="range" id="highlightTransparency${highlightId}" class="highlight-transparency" 
-                 min="10" max="100" value="25" step="5" style="flex:1 1 auto">
-          <input type="number" id="highlightTransparencyValue${highlightId}" class="value-box" 
-                 min="10" max="100" value="25" step="5">
+    <div class="section row2 pro-card-body">
+      <div class="pro-card-section">
+        <label class="pro-row"><span>Show highlight</span><input type="checkbox" id="highlightToggle${highlightId}" class="highlight-toggle pro-switch" checked></label>
+        <div class="pro-range-row">
+          <label for="highlightTransparency${highlightId}">Opacity</label>
+          <input type="range" id="highlightTransparency${highlightId}" class="highlight-transparency" min="10" max="100" value="25" step="5">
+          <span class="pro-num-wrap"><input type="number" id="highlightTransparencyValue${highlightId}" class="pro-num pro-num-sm" min="10" max="100" value="25" step="5" aria-label="Opacity (%)"><span class="pro-unit">%</span></span>
         </div>
-      </div>
-      <div style="display: flex; align-items: center; margin-top: 8px;">
-        <label style="margin: 0; margin-right: 8px;">Show Highlight</label>
-        <input type="checkbox" id="highlightToggle${highlightId}" class="highlight-toggle" style="margin: 0;" checked>
-      </div>
-      <div id="highlightData${highlightId}" style="max-height:220px; overflow:auto; padding:6px; border: var(--chip-border); border-radius:8px; font-size:11px; line-height:1.35; color: var(--muted); min-width: 180px; margin-top: 8px;">
-        <i>Highlight data loaded</i>
+        <div class="pro-card-head"><span class="pro-section-title">Categories</span></div>
+        <div id="highlightData${highlightId}" class="pro-list"><i>Highlight data loaded</i></div>
       </div>
     </div>
   `;
@@ -18435,10 +18371,10 @@ function populateHighlightCard(highlightId, metadata) {
         ${sortedValues.map(value => {
           const checked = hl.valueVisibility.get(value) ? 'checked' : '';
           const color = hl.valueColors.get(value) || '#ccc';
-          return `<div class="highlight-value-card" data-value="${value}" style="display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 8px;border:var(--chip-border);border-radius:8px;background:var(--chip);">
-                    <input type="checkbox" class="highlight-value-toggle" data-value="${value}" ${checked}>
-                    <span class="highlight-value-name" title="${value}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${value}</span>
-                    <input type="color" class="highlight-value-color" data-value="${value}" value="${color}" title="Pick a color">
+          return `<div class="highlight-value-card pro-list-row" data-value="${value}">
+                    <input type="checkbox" class="highlight-value-toggle pro-check" data-value="${value}" ${checked} aria-label="Show ${value}">
+                    <span class="highlight-value-name pro-list-name" title="${value}">${value}</span>
+                    <input type="color" class="highlight-value-color pro-swatch" data-value="${value}" value="${color}" title="Colour" aria-label="Colour of ${value}">
                   </div>`;
         }).join('')}
       `;
@@ -18667,18 +18603,17 @@ function createNewCladeCard(cladeData) {
   
   newCard.innerHTML = `
     <summary id="cladeSummary${cladeId}" class="df-summary">
-      <span id="cladeTitle${cladeId}">Clade</span>
+      <span class="pro-card-badge pro-badge-clade" aria-hidden="true">CL</span>
+      <span id="cladeTitle${cladeId}" class="pro-card-title">Clade</span>
       <span class="df-spacer"></span>
-      <button id="deleteClade${cladeId}" class="df-delete" title="Remove clade">🗑️</button>
-      <span class="drag-handle disabled" title="Drag disabled for clades">⋮⋮</span>
+      <button id="deleteClade${cladeId}" class="df-delete" title="Remove clade" aria-label="Remove clade"></button>
+      <span class="drag-handle disabled" title="Drag disabled for clades" aria-hidden="true"></span>
     </summary>
-    <div class="section row2">
-      <div style="display: flex; align-items: center; margin-top: 8px;">
-        <label style="margin: 0; margin-right: 8px;">Show Clade</label>
-        <input type="checkbox" id="cladeToggle${cladeId}" class="clade-toggle" style="margin: 0;" checked>
-      </div>
-      <div id="cladeData${cladeId}" style="max-height:220px; overflow:auto; padding:6px; border: var(--chip-border); border-radius:8px; font-size:11px; line-height:1.35; color: var(--muted); min-width: 180px; margin-top: 8px;">
-        <i>Clade data loaded</i>
+    <div class="section row2 pro-card-body">
+      <div class="pro-card-section">
+        <label class="pro-row"><span>Show clade colours</span><input type="checkbox" id="cladeToggle${cladeId}" class="clade-toggle pro-switch" checked></label>
+        <div class="pro-card-head"><span class="pro-section-title">Groups</span></div>
+        <div id="cladeData${cladeId}" class="pro-list"><i>Clade data loaded</i></div>
       </div>
     </div>
   `;
@@ -18954,10 +18889,10 @@ function populateCladeCard(cladeId, metadata) {
         ${sortedValues.map(value => {
           const checked = cl.valueVisibility.get(value) ? 'checked' : '';
           const color = cl.valueColors.get(value) || '#ccc';
-          return `<div class="clade-value-card" data-value="${value}" style="display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 8px;border:var(--chip-border);border-radius:8px;background:var(--chip);">
-                    <input type="checkbox" class="clade-value-toggle" data-value="${value}" ${checked}>
-                    <span class="clade-value-name" title="${value}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${value}</span>
-                    <input type="color" class="clade-value-color" data-value="${value}" value="${color}" title="Pick a color">
+          return `<div class="clade-value-card pro-list-row" data-value="${value}">
+                    <input type="checkbox" class="clade-value-toggle pro-check" data-value="${value}" ${checked} aria-label="Show ${value}">
+                    <span class="clade-value-name pro-list-name" title="${value}">${value}</span>
+                    <input type="color" class="clade-value-color pro-swatch" data-value="${value}" value="${color}" title="Colour" aria-label="Colour of ${value}">
                   </div>`;
         }).join('')}
       `;
@@ -19248,208 +19183,69 @@ function createNewChartCard(chartData) {
   
   newCard.innerHTML = `
     <summary id="chartSummary${chartId}" class="df-summary">
-      <span id="chartTitle${chartId}">Chart ${chartId}</span>
+      <span class="pro-card-badge pro-badge-chart" aria-hidden="true">CH</span>
+      <span id="chartTitle${chartId}" class="pro-card-title">Chart ${chartId}</span>
       <span class="df-spacer"></span>
-      <button id="deleteChart${chartId}" class="df-delete" title="Remove chart">🗑️</button>
-      <span class="drag-handle" title="Drag to reorder charts">⋮⋮</span>
+      <button id="deleteChart${chartId}" class="df-delete" title="Remove chart" aria-label="Remove chart"></button>
+      <span class="drag-handle" title="Drag to reorder charts" aria-hidden="true"></span>
     </summary>
-     <div class="section row2">
-       <div style="display: flex; align-items: center; margin-bottom: 8px;">
-         <label style="margin: 0; margin-right: 8px;">Type:</label>
-         <select id="chartType${chartId}" class="chart-type-select" style="margin: 0; padding: 4px; border: 1px solid var(--chip-border); border-radius: 4px; background: var(--bg); color: var(--text);">
-           <option value="bar">Bar Plot</option>
-           <option value="line">Line Plot</option>
-           <option value="dot">Dot Plot</option>
-           <option value="box">Box Plot</option>
-         </select>
-       </div>
-       
-       <!-- Chart Type Specific Controls -->
-       <div id="chartControls${chartId}" class="chart-type-controls">
-         <!-- Bar Plot Controls -->
-         <div id="barControls${chartId}" class="chart-control-group" style="display: block;">
-            <div style="margin-bottom: 0px;">
-              <label style="font-size: 11px; font-weight: bold; margin-bottom: 4px; display: block;">Bar Layout:</label>
-              <div style="display: flex; flex-direction: row; gap: 12px;">
-                <label style="display: flex; align-items: center; font-size: 11px;">
-                  <input type="checkbox" id="dodgeBars${chartId}" class="bar-layout-checkbox" style="margin-right: 6px;">
-                  Dodge bars
-                </label>
-                <label style="display: flex; align-items: center; font-size: 11px;">
-                  <input type="checkbox" id="stackBars${chartId}" class="bar-layout-checkbox" style="margin-right: 6px;">
-                  Stack bars
-                </label>
-              </div>
+    <div class="section row2 pro-card-body">
+      <div class="pro-card-section">
+        <div class="pro-row">
+          <label for="chartType${chartId}">Chart type</label>
+          <select id="chartType${chartId}" class="chart-type-select pro-select">
+            <option value="bar">Bar plot</option>
+            <option value="line">Line plot</option>
+            <option value="dot">Dot plot</option>
+            <option value="box">Box plot</option>
+          </select>
+        </div>
+        <div id="chartControls${chartId}" class="chart-type-controls">
+          <div id="barControls${chartId}" class="chart-control-group" style="display: block;">
+            <label class="pro-row"><span>Dodge bars</span><input type="checkbox" id="dodgeBars${chartId}" class="bar-layout-checkbox pro-switch"></label>
+            <label class="pro-row"><span>Stack bars</span><input type="checkbox" id="stackBars${chartId}" class="bar-layout-checkbox pro-switch"></label>
+          </div>
+          <div id="lineControls${chartId}" class="chart-control-group" style="display: none;">
+            <label class="pro-row"><span>Treat missing values as 0</span><input type="checkbox" id="assignNaToZero${chartId}" class="line-na-checkbox pro-switch"></label>
+            <label class="pro-row"><span>Show dots</span><input type="checkbox" id="showDots${chartId}" class="line-dots-checkbox pro-switch"></label>
+            <label class="pro-row"><span>Fill to zero</span><input type="checkbox" id="showFill${chartId}" class="line-fill-checkbox pro-switch"></label>
+            <div class="pro-row"><span>Line width</span><span class="pro-num-wrap"><input type="number" id="lineWidth${chartId}" min="0.5" step="0.5" value="2" class="pro-num"><span class="pro-unit">px</span></span></div>
+            <div class="pro-row"><span>Dot size</span><span class="pro-num-wrap"><input type="number" id="dotSize${chartId}" min="1" max="8" step="1" value="3" class="pro-num"><span class="pro-unit">px</span></span></div>
+          </div>
+          <div id="dotControls${chartId}" class="chart-control-group" style="display: none;">
+            <label class="pro-row"><span>Treat missing values as 0</span><input type="checkbox" id="assignNaToZeroDot${chartId}" class="dot-na-checkbox pro-switch"></label>
+            <div class="pro-row"><span>Dot size</span><span class="pro-num-wrap"><input type="number" id="dotSizeDot${chartId}" min="1" max="8" step="1" value="3" class="pro-num"><span class="pro-unit">px</span></span></div>
+          </div>
+          <div id="boxControls${chartId}" class="chart-control-group" style="display: none;">
+            <label class="pro-row"><span>Show dots</span><input type="checkbox" id="showDotsBox${chartId}" class="box-dots-checkbox pro-switch"></label>
+            <label class="pro-row"><span>Only outlier dots</span><input type="checkbox" id="showOutlierDotsBox${chartId}" class="box-outlier-dots-checkbox pro-switch"></label>
+            <label class="pro-row"><span>Show mean point</span><input type="checkbox" id="showMeanBox${chartId}" class="box-mean-checkbox pro-switch"></label>
+            <label class="pro-row"><span>Show median line</span><input type="checkbox" id="showMedianBox${chartId}" class="box-median-checkbox pro-switch" checked></label>
+            <label class="pro-row"><span>Show min/max whiskers</span><input type="checkbox" id="showWhiskersBox${chartId}" class="box-whiskers-checkbox pro-switch" checked></label>
+            <label class="pro-row"><span>Dodge box plots</span><input type="checkbox" id="dodgeBoxes${chartId}" class="box-dodge-checkbox pro-switch"></label>
+            <div class="pro-row"><span>Median line width</span><span class="pro-num-wrap"><input type="number" id="medianLineWidthBox${chartId}" min="0.5" step="0.5" value="2" class="pro-num"><span class="pro-unit">px</span></span></div>
+            <div class="pro-row"><span>Whisker line width</span><span class="pro-num-wrap"><input type="number" id="whiskerLineWidthBox${chartId}" min="0.5" step="0.5" value="1" class="pro-num"><span class="pro-unit">px</span></span></div>
+            <div class="pro-row"><span>Dot size</span><span class="pro-num-wrap"><input type="number" id="dotSizeBox${chartId}" min="1" max="8" step="1" value="3" class="pro-num"><span class="pro-unit">px</span></span></div>
+            <div class="pro-range-row">
+              <label for="boxTransparencySlider${chartId}">Box opacity</label>
+              <input type="range" id="boxTransparencySlider${chartId}" class="transparency-slider" min="0" max="100" value="50" step="1">
+              <span class="pro-num-wrap"><input type="number" id="boxTransparencyValue${chartId}" class="pro-num pro-num-sm" min="0" max="100" value="50" step="1" aria-label="Box opacity (%)"><span class="pro-unit">%</span></span>
             </div>
-         </div>
-         
-         <!-- Line Plot Controls -->
-         <div id="lineControls${chartId}" class="chart-control-group" style="display: none;">
-           <div style="display: flex; flex-direction: column; gap: 6px;">
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="assignNaToZero${chartId}" class="line-na-checkbox" style="margin-right: 6px;">
-                 Assign NA → 0
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showDots${chartId}" class="line-dots-checkbox" style="margin-right: 6px;">
-                 Show dots
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showFill${chartId}" class="line-fill-checkbox" style="margin-right: 6px;">
-                 Fill to zero
-               </label>
-             </div>
-           </div>
-           <div style="display: flex; flex-direction: column; gap: 6px;">
-             <div style="display: flex; align-items: center; justify-content: space-between;">
-               <label style="font-size: 11px; color: var(--muted);">Line width (px):</label>
-               <input type="number" id="lineWidth${chartId}" min="0.5" step="0.5" value="2" class="value-box" style="width: 60px;">
-             </div>
-             <div style="display: flex; align-items: center; justify-content: space-between;">
-               <label style="font-size: 11px; color: var(--muted);">Dot size (px):</label>
-               <input type="number" id="dotSize${chartId}" min="1" max="8" step="1" value="3" class="value-box" style="width: 60px;">
-             </div>
-           </div>
-         </div>
-         
-         <!-- Dot Plot Controls -->
-         <div id="dotControls${chartId}" class="chart-control-group" style="display: none;">
-           <div style="display: flex; flex-direction: column; gap: 6px;">
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="assignNaToZeroDot${chartId}" class="dot-na-checkbox" style="margin-right: 6px;">
-                 Assign NA → 0
-               </label>
-             </div>
-           </div>
-           <div style="display: flex; flex-direction: column; gap: 6px;">
-             <div style="display: flex; align-items: center; justify-content: space-between;">
-               <label style="font-size: 11px; color: var(--muted);">Dot size (px):</label>
-               <input type="number" id="dotSizeDot${chartId}" min="1" max="8" step="1" value="3" class="value-box" style="width: 60px;">
-             </div>
-           </div>
-         </div>
-         
-         <!-- Box Plot Controls -->
-         <div id="boxControls${chartId}" class="chart-control-group" style="display: none;">
-           <div style="display: flex; flex-direction: column; gap: 6px;">
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showDotsBox${chartId}" class="box-dots-checkbox" style="margin-right: 6px;">
-                 Show dots
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showOutlierDotsBox${chartId}" class="box-outlier-dots-checkbox" style="margin-right: 6px;">
-                 Show only outlier dots
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showMeanBox${chartId}" class="box-mean-checkbox" style="margin-right: 6px;">
-                 Show box mean point
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showMedianBox${chartId}" class="box-median-checkbox" checked style="margin-right: 6px;">
-                 Show median line
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showWhiskersBox${chartId}" class="box-whiskers-checkbox" checked style="margin-right: 6px;">
-                 Show min/max whisker lines
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="dodgeBoxes${chartId}" class="box-dodge-checkbox" style="margin-right: 6px;">
-                 Dodge box plots
-               </label>
-             </div>
-           </div>
-           <div style="display: flex; flex-direction: column; gap: 6px;">
-             <div style="display: flex; align-items: center; justify-content: space-between;">
-               <label style="font-size: 11px; color: var(--muted);">Median line width (px):</label>
-               <input type="number" id="medianLineWidthBox${chartId}" min="0.5" step="0.5" value="2" class="value-box" style="width: 60px;">
-             </div>
-             <div style="display: flex; align-items: center; justify-content: space-between;">
-               <label style="font-size: 11px; color: var(--muted);">Whisker line width (px):</label>
-               <input type="number" id="whiskerLineWidthBox${chartId}" min="0.5" step="0.5" value="1" class="value-box" style="width: 60px;">
-             </div>
-             <div style="display: flex; align-items: center; justify-content: space-between;">
-               <label style="font-size: 11px; color: var(--muted);">Dot size (px):</label>
-               <input type="number" id="dotSizeBox${chartId}" min="1" max="8" step="1" value="3" class="value-box" style="width: 60px;">
-             </div>
-             <div style="margin-top: 8px;">
-               <label style="font-size: 11px; color: var(--muted);">Box transparency:</label>
-               <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-                 <input type="range" id="boxTransparencySlider${chartId}" class="transparency-slider" 
-                        min="0" max="100" value="50" step="1" style="flex:1 1 auto">
-                 <input type="number" id="boxTransparencyValue${chartId}" class="value-box" 
-                        min="0" max="100" value="50" step="1">
-               </div>
-             </div>
-           </div>
-         </div>
-       </div>
-       
-       <!-- Grid Controls -->
-       <div style="margin-top: 8px;">
-         <div style="margin-bottom: 8px;">
-           <label style="font-size: 11px; color: var(--muted); font-weight: bold;">Major Grid</label>
-           <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showMajorGrid${chartId}" class="major-grid-checkbox" style="margin-right: 6px;" checked>
-                 Show grid lines
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="dashedMajorGrid${chartId}" class="major-grid-dashed-checkbox" style="margin-right: 6px;">
-                 Dashed line
-               </label>
-             </div>
-             <div style="display: flex; align-items: center; justify-content: space-between;">
-               <label style="font-size: 11px; color: var(--muted);">Grid line width (px):</label>
-               <input type="number" id="majorGridWidth${chartId}" min="0.5" step="0.5" value="2" class="value-box" style="width: 60px;">
-             </div>
-           </div>
-         </div>
-         
-         <div>
-           <label style="font-size: 11px; color: var(--muted); font-weight: bold;">Minor Grid</label>
-           <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="showMinorGrid${chartId}" class="minor-grid-checkbox" style="margin-right: 6px;" checked>
-                 Show grid lines
-               </label>
-             </div>
-             <div style="margin-bottom: 0px;">
-               <label style="display: flex; align-items: center; font-size: 11px;">
-                 <input type="checkbox" id="dashedMinorGrid${chartId}" class="minor-grid-dashed-checkbox" style="margin-right: 6px;" checked>
-                 Dashed line
-               </label>
-             </div>
-             <div style="display: flex; align-items: center; justify-content: space-between;">
-               <label style="font-size: 11px; color: var(--muted);">Grid line width (px):</label>
-               <input type="number" id="minorGridWidth${chartId}" min="0.5" step="0.5" value="1" class="value-box" style="width: 60px;">
-             </div>
-           </div>
-         </div>
-       </div>
-       
-      <div id="chartData${chartId}" style="max-height:220px; overflow:auto; padding:6px; border: var(--chip-border); border-radius:8px; font-size:11px; line-height:1.35; color: var(--muted); min-width: 180px;">
-        <i>Chart data loaded</i>
+          </div>
+        </div>
+      </div>
+      <div class="pro-card-section">
+        <div class="pro-card-head"><span class="pro-section-title">Grid lines</span></div>
+        <label class="pro-row"><span>Major grid lines</span><input type="checkbox" id="showMajorGrid${chartId}" class="major-grid-checkbox pro-switch" checked></label>
+        <label class="pro-row pro-sub"><span>Dashed</span><input type="checkbox" id="dashedMajorGrid${chartId}" class="major-grid-dashed-checkbox pro-switch"></label>
+        <div class="pro-row pro-sub"><span>Width</span><span class="pro-num-wrap"><input type="number" id="majorGridWidth${chartId}" min="0.5" step="0.5" value="2" class="pro-num"><span class="pro-unit">px</span></span></div>
+        <label class="pro-row"><span>Minor grid lines</span><input type="checkbox" id="showMinorGrid${chartId}" class="minor-grid-checkbox pro-switch" checked></label>
+        <label class="pro-row pro-sub"><span>Dashed</span><input type="checkbox" id="dashedMinorGrid${chartId}" class="minor-grid-dashed-checkbox pro-switch" checked></label>
+        <div class="pro-row pro-sub"><span>Width</span><span class="pro-num-wrap"><input type="number" id="minorGridWidth${chartId}" min="0.5" step="0.5" value="1" class="pro-num"><span class="pro-unit">px</span></span></div>
+      </div>
+      <div class="pro-card-section">
+        <div class="pro-card-head"><span class="pro-section-title">Series</span></div>
+        <div id="chartData${chartId}" class="pro-list"><i>Chart data loaded</i></div>
       </div>
     </div>
   `;
@@ -20228,10 +20024,10 @@ function populateChartCard(chartId, metadata) {
           const checked = ch.valueVisibility.get(column) ? 'checked' : '';
           const color = ch.valueColors.get(column) || '#ccc';
           const dataCount = ch.columnData.get(column)?.size || 0;
-          return `<div class="chart-value-card" data-column="${column}" style="display:flex;align-items:center;gap:8px;margin:4px 0;padding:6px 8px;border:var(--chip-border);border-radius:8px;background:var(--chip);">
-                    <input type="checkbox" class="chart-value-toggle" data-column="${column}" ${checked}>
-                    <span class="chart-value-name" title="${column}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${column}</span>
-                    <input type="color" class="chart-value-color" data-column="${column}" value="${color}" title="Pick a color">
+          return `<div class="chart-value-card pro-list-row" data-column="${column}">
+                    <input type="checkbox" class="chart-value-toggle pro-check" data-column="${column}" ${checked} aria-label="Show ${column}">
+                    <span class="chart-value-name pro-list-name" title="${column}">${column}</span>
+                    <input type="color" class="chart-value-color pro-swatch" data-column="${column}" value="${color}" title="Colour" aria-label="Colour of ${column}">
                   </div>`;
         }).join('')}
       `;
@@ -23236,9 +23032,8 @@ if(bootstrapFontColorEl){
 
 if(bootstrapBoldEl){
   bootstrapBoldEl.addEventListener('click', ()=>{
-    const isActive = bootstrapBoldEl.style.backgroundColor === 'var(--accent)';
-    bootstrapBoldEl.style.backgroundColor = isActive ? 'var(--chip)' : 'var(--accent)';
-    bootstrapBoldEl.style.color = isActive ? 'var(--text)' : 'white';
+    // pro UI: state lives in aria-pressed (styled by CSS)
+    bootstrapBoldEl.setAttribute('aria-pressed', String(bootstrapBoldEl.getAttribute('aria-pressed') !== 'true'));
     drawTree();
     console.log('drawTree in bootstrapBoldEl');
   });
@@ -23246,9 +23041,7 @@ if(bootstrapBoldEl){
 
 if(bootstrapItalicEl){
   bootstrapItalicEl.addEventListener('click', ()=>{
-    const isActive = bootstrapItalicEl.style.backgroundColor === 'var(--accent)';
-    bootstrapItalicEl.style.backgroundColor = isActive ? 'var(--chip)' : 'var(--accent)';
-    bootstrapItalicEl.style.color = isActive ? 'var(--text)' : 'white';
+    bootstrapItalicEl.setAttribute('aria-pressed', String(bootstrapItalicEl.getAttribute('aria-pressed') !== 'true'));
     drawTree();
     console.log('drawTree in bootstrapItalicEl');
   });
@@ -23322,11 +23115,8 @@ if(bootstrapColorMidEl){
 }
 
 if(bootstrapColorMidToggleEl){
-  bootstrapColorMidToggleEl.addEventListener('click', ()=>{
-    const isOff = bootstrapColorMidToggleEl.textContent === 'Off';
-    bootstrapColorMidToggleEl.textContent = isOff ? 'On' : 'Off';
-    bootstrapColorMidToggleEl.style.backgroundColor = isOff ? 'var(--accent)' : 'var(--chip)';
-    bootstrapColorMidToggleEl.style.color = isOff ? 'white' : 'var(--text)';
+  // pro UI: the midpoint toggle is a switch (checkbox)
+  bootstrapColorMidToggleEl.addEventListener('change', ()=>{
     drawTree();
     console.log('drawTree in bootstrapColorMidToggleEl');
     updateMetadataLegend();
@@ -23356,14 +23146,12 @@ document.addEventListener('DOMContentLoaded', function() {
       // Remove active class from all tabs
       bootstrapTabs.forEach(t => {
         t.classList.remove('active');
-        t.style.borderBottom = 'none';
-        t.style.opacity = '0.7';
+        t.setAttribute('aria-selected', 'false');
       });
       
-      // Add active class to clicked tab
+      // Add active class to clicked tab (pro UI: styled by CSS)
       this.classList.add('active');
-      this.style.borderBottom = '2px solid var(--accent)';
-      this.style.opacity = '1';
+      this.setAttribute('aria-selected', 'true');
       
       // Hide all tab contents
       bootstrapTabContents.forEach(content => {
@@ -23431,8 +23219,8 @@ function getBootstrapSettings() {
     // Text tab settings
     fontSize: bootstrapFontSizeEl ? +bootstrapFontSizeEl.value || 8 : 8,
     fontColor: bootstrapFontColorEl ? bootstrapFontColorEl.value || '#374151' : '#374151',
-    bold: bootstrapBoldEl ? bootstrapBoldEl.style.backgroundColor === 'var(--accent)' : false,
-    italic: bootstrapItalicEl ? bootstrapItalicEl.style.backgroundColor === 'var(--accent)' : false,
+    bold: bootstrapBoldEl ? bootstrapBoldEl.getAttribute('aria-pressed') === 'true' : false,
+    italic: bootstrapItalicEl ? bootstrapItalicEl.getAttribute('aria-pressed') === 'true' : false,
     textPosition: bootstrapTextPositionEl ? (isNaN(+bootstrapTextPositionEl.value) ? 50 : +bootstrapTextPositionEl.value) : 50,
     verticalShift: bootstrapVerticalShiftEl ? +bootstrapVerticalShiftEl.value || 0 : 0,
     scaleFactor: bootstrapScaleFactorEl ? +bootstrapScaleFactorEl.value || 1 : 1,
@@ -23444,7 +23232,7 @@ function getBootstrapSettings() {
     // Color tab settings
     colorMin: bootstrapColorMinEl ? bootstrapColorMinEl.value || '#0000ff' : '#0000ff',
     colorMid: bootstrapColorMidEl ? bootstrapColorMidEl.value || '#ffffff' : '#ffffff',
-    colorMidEnabled: bootstrapColorMidToggleEl ? bootstrapColorMidToggleEl.textContent === 'On' : false,
+    colorMidEnabled: bootstrapColorMidToggleEl ? !!bootstrapColorMidToggleEl.checked : false,
     colorMax: bootstrapColorMaxEl ? bootstrapColorMaxEl.value || '#8b0000' : '#8b0000'
   };
 }
@@ -25447,11 +25235,16 @@ function updateResetCartoonsButtonVisibility() {
 }
 
 if(clearAllColorsBtn){
+  // "Clear all colours and highlights": branch colours from every source
+  // (search paths, selected clades, clade layers) plus clade backgrounds.
+  // The classic page only cleared selection colours here, which left the
+  // selected node's own branch coloured and the reset buttons stale.
   clearAllColorsBtn.addEventListener('click', () => {
-    cladeColors.clear();
     cladeBackgroundColors.clear();
-    drawTree();
-    console.log('drawTree in clearAllColorsBtn click');
+    resetAllPathColors();
+    if (typeof cladeColorTs !== 'undefined') cladeColorTs.clear();
+    updateResetHighlightsButtonVisibility();
+    setStatus('All branch colours and highlights cleared');
   });
 }
 
