@@ -6,8 +6,10 @@
 // tree in place, so a snapshot of every node's child lists plus the app's
 // edit/colour records restores the exact earlier state.
 //
-// Re-rooting, re-applying the original root and loading a new tree build a
-// new tree; the history stops there (undo past that point is not offered).
+// Re-rooting (button, Reset root, midpoint rooting) builds a new tree object;
+// the earlier tree's nodes are kept in the snapshot, so undo switches back to
+// them together with the rooting settings. Loading or generating a new tree
+// clears the history.
 (function () {
   'use strict';
   var LIMIT = 40;
@@ -23,10 +25,13 @@
     resetRotations: 'undo rotations', resetCollapses: 'expand all', resetCartoons: 'undo cartoons',
     restoreDroppedNodes: 'restore dropped'
   };
+  // actions that replace the tree object (finished asynchronously)
+  var REROOTS = { rerootTree: 're-root', resetRoot: 'reset root' };
   // actions that also untick Clade layer cards (their card state is restored too)
   var TOUCHES_CARDS = { resetPathColors: 1, clearAllColors: 1 };
 
   function call(fn) { try { return fn(); } catch (e) { return undefined; } }
+  function $(id) { return document.getElementById(id); }
   function isLayerKey(k) { return typeof k === 'string' && k.indexOf('clade_path_') === 0; }
 
   function collectNodes() {
@@ -66,7 +71,8 @@
         c: n.children ? n.children.slice() : n.children,
         cc: n._children ? n._children.slice() : n._children,
         oc: Object.prototype.hasOwnProperty.call(n, '_originalChildren') && n._originalChildren ? n._originalChildren.slice() : undefined,
-        pc: n.permanentColors && n.permanentColors.size ? new Map(n.permanentColors) : null
+        pc: n.permanentColors && n.permanentColors.size ? new Map(n.permanentColors) : null,
+        dup: n._removedAsDuplicate
       };
     });
     return {
@@ -76,7 +82,15 @@
       cladeColors: new Map(cladeColors), cladeColorTs: new Map(cladeColorTs), bg: new Map(cladeBackgroundColors),
       pathLeafNames: window.pathLeafNames ? new Map(window.pathLeafNames) : null,
       pathCounter: pathCounter, colorActionCounter: colorActionCounter,
-      cards: TOUCHES_CARDS[id] ? cardState() : null
+      cards: TOUCHES_CARDS[id] ? cardState() : null,
+      rooting: call(function () {
+        return {
+          newick: originalRootNewick, lastUser: lastKnownUserRoot, midpoint: wasMidpointActive,
+          unique: uniqueBranchTips, uniqueChecked: ($('uniqueBranchTips') || {}).checked,
+          enable: rootEnableEl ? rootEnableEl.checked : null, mode: rootModeEl ? rootModeEl.value : null,
+          resetShown: resetRootBtn ? resetRootBtn.style.display : null
+        };
+      })
     };
   }
 
@@ -111,7 +125,7 @@
     var byNode = new Map(); b.nodes.forEach(function (r) { byNode.set(r.n, r); });
     for (var i = 0; i < a.nodes.length; i++) {
       var x = a.nodes[i], y = byNode.get(x.n);
-      if (!y || !sameArr(x.c, y.c) || !sameArr(x.cc, y.cc) || !sameArr(x.oc, y.oc) || !sameMap(x.pc, y.pc)) return false;
+      if (!y || !sameArr(x.c, y.c) || !sameArr(x.cc, y.cc) || !sameArr(x.oc, y.oc) || !sameMap(x.pc, y.pc) || x.dup !== y.dup) return false;
     }
     return sameSet(a.dropped, b.dropped) && sameSet(a.collapsed, b.collapsed) && sameSet(a.cartooned, b.cartooned) &&
       sameMap(a.rotations, b.rotations) && sameMap(a.cladeColors, b.cladeColors) && sameMap(a.bg, b.bg);
@@ -124,12 +138,26 @@
   }
 
   function restore(s) {
-    var keepLayer = !s.cards;   // keep the Clade layer colours as they are now unless the action changed the cards
+    var keepLayer = !s.cards;
+    if (s.root !== root) {
+      // switch back to the other tree object (before/after a re-root)
+      root = s.root;
+      var r = s.rooting;
+      if (r) call(function () {
+        originalRootNewick = r.newick; lastKnownUserRoot = r.lastUser; wasMidpointActive = r.midpoint;
+        uniqueBranchTips = r.unique;
+        if ($('uniqueBranchTips')) $('uniqueBranchTips').checked = !!r.uniqueChecked;
+        if (rootEnableEl && r.enable !== null) rootEnableEl.checked = r.enable;
+        if (rootModeEl && r.mode !== null) { rootModeEl.value = r.mode; rootModeEl.disabled = rootEnableEl ? !rootEnableEl.checked : rootModeEl.disabled; }
+        if (resetRootBtn && r.resetShown !== null) resetRootBtn.style.display = r.resetShown;
+      });
+    }   // keep the Clade layer colours as they are now unless the action changed the cards
     s.nodes.forEach(function (r) {
       var n = r.n;
       n.children = r.c ? r.c.slice() : r.c;
       n._children = r.cc ? r.cc.slice() : r.cc;
       if (r.oc !== undefined) n._originalChildren = r.oc.slice(); else delete n._originalChildren;
+      if (r.dup === undefined) delete n._removedAsDuplicate; else n._removedAsDuplicate = r.dup;
       var next = r.pc ? new Map(r.pc) : new Map();
       if (keepLayer) {
         next.forEach(function (v, k) { if (isLayerKey(k)) next.delete(k); });
@@ -171,14 +199,17 @@
      updateResetCartoonsButtonVisibility, updateResetHighlightsButtonVisibility, updateColorPathCardVisibility,
      updateMetadataLegend].forEach(call);
     drawTree();
+    readRootUi();
   }
 
-  function valid(s) { return s && s.root === root && !!root; }
-  function prune() {
-    // a re-root or a new tree makes earlier snapshots unusable
-    if (undoStack.length && !valid(undoStack[undoStack.length - 1])) undoStack.length = 0;
-    if (redoStack.length && !valid(redoStack[redoStack.length - 1])) redoStack.length = 0;
-  }
+  function clearHistory() { undoStack.length = 0; redoStack.length = 0; }
+  function prune() { if (!root) clearHistory(); }
+  // a new tree (opened or generated) starts a fresh history
+  ['resetAllFeaturesForNewTree', 'generateTreeFromGeneContent'].forEach(function (name) {
+    var orig = window[name];
+    if (typeof orig !== 'function') return;
+    window[name] = function () { clearHistory(); var out = orig.apply(this, arguments); setTimeout(notify, 0); return out; };
+  });
   function notify() { prune(); listeners.forEach(function (f) { call(f); }); }
 
   function push(before) {
@@ -220,14 +251,47 @@
     return true;
   }
 
+  // re-rooting runs asynchronously: record it once the tree object has changed.
+  // Only one is tracked at a time, so "enable rooting" + "midpoint" is one step.
+  var pendingReroot = null;
+  // rooting controls already show their new value when their change event
+  // fires, so their previous values are tracked here
+  var rootUi = { enable: null, mode: null };
+  function readRootUi() { call(function () { rootUi = { enable: rootEnableEl ? rootEnableEl.checked : null, mode: rootModeEl ? rootModeEl.value : null }; }); }
+  readRootUi();
+  function beginReroot(label, id, fromControl) {
+    if (pendingReroot) return;
+    var before = snapshot(label, id);
+    if (!before) return;
+    if (fromControl && before.rooting) { before.rooting.enable = rootUi.enable; before.rooting.mode = rootUi.mode; }
+    pendingReroot = before;
+    var tries = 0;
+    (function wait() {
+      if (root && root !== before.root) { pendingReroot = null; push(before); return; }
+      if (++tries < 150) setTimeout(wait, 100);   // up to 15 s for very large trees
+      else pendingReroot = null;
+    })();
+  }
+
   // record clicks on the app's edit buttons (capture phase: runs before the app's own handler)
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('button') : null;
-    if (!btn || !ACTIONS[btn.id] || btn.disabled || !root) return;
+    if (!btn || btn.disabled || !root) return;
+    if (REROOTS[btn.id]) { beginReroot(REROOTS[btn.id], btn.id); return; }
+    if (!ACTIONS[btn.id]) return;
     var done = begin(ACTIONS[btn.id], btn.id);
     // some actions redraw on a timer; check once they have finished
     setTimeout(done, 60);
   }, true);
+  // midpoint rooting on/off re-roots the tree too
+  document.addEventListener('change', function (e) {
+    var id = e.target && e.target.id;
+    if ((id === 'rootEnable' || id === 'rootMode') && root) beginReroot('rooting', id, true);
+  }, true);
+  document.addEventListener('change', function (e) {
+    var id = e.target && e.target.id;
+    if (id === 'rootEnable' || id === 'rootMode') setTimeout(readRootUi, 0);
+  });
 
   window.tmUndo = {
     undo: undo, redo: redo, begin: begin,

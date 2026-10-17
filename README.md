@@ -31,8 +31,9 @@ The earlier classic-layout interface is kept in git history under the tag
 - **Legend panel** on the right (can be hidden), **status bar** at the bottom.
 - You can drop a Newick file onto the canvas to open it.
 - **Undo / redo** (toolbar arrows, ⌘Z / ⇧⌘Z) for rotate, collapse, cartoon,
-  drop, isolate, colours, highlights and the Reset-menu actions. Re-rooting
-  or loading a new tree starts a fresh history.
+  drop, isolate, colours, highlights, the Reset-menu actions and re-rooting
+  (Re-root, Reset root, midpoint rooting). Opening or generating a new tree
+  starts a fresh history.
 - **Export** menu: SVG, PNG (2× or 4×, about 300 dpi) and PDF (vector, via
   the print dialog's "Save as PDF").
 - **Tree files:** Newick and NEXUS (TRANSLATE tables are applied).
