@@ -1,5 +1,5 @@
 // Built-in speed test. Loaded only when the page URL contains ?bench
-// (e.g. index.html?bench or index-pro.html?bench). Runs the same scripted
+// (e.g. index.html?bench). Runs the same scripted
 // actions on generated 3,000-tip test data and reports how long each takes
 // until the screen has updated, so different pages/browsers can be compared.
 (function () {
@@ -80,7 +80,7 @@
 
   runBtn.addEventListener('click', function () {
     runBtn.disabled = true; out.textContent = '';
-    var page = /index-pro/.test(location.pathname) ? 'new version (index-pro.html)' : 'classic (index.html)';
+    var page = document.documentElement.classList.contains('pro') ? 'TreeMapper (current version)' : 'TreeMapper classic';
     line(page);
     line(navigator.userAgent.replace(/^Mozilla\/5\.0 /, ''));
     line('window ' + innerWidth + '×' + innerHeight + ' @' + devicePixelRatio + 'x');

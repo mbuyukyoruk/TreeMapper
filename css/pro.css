@@ -1,7 +1,7 @@
 /* =====================================================================
    TreeMapper "pro" UI — application-shell layout and styling.
-   Loaded only by index-pro.html (after styles.css). Every rule is scoped
-   to html.pro so the classic index.html is never affected.
+   Loaded by index.html after styles.css (the stylesheet shared with the
+   classic version). Every rule is scoped to html.pro.
 
    Look: a softly tinted workspace with floating, rounded panels ("islands"),
    a teal brand gradient, colour-coded data layers and dark floating HUDs
@@ -928,4 +928,4 @@ html.pro:not(.pro-no-contain) .canvas { contain: strict; }
 html.pro:not(.pro-no-contain) .sidepanel { contain: strict; }
 html.pro:not(.pro-no-contain) .pro-legend-panel { contain: strict; }
 html.pro:not(.pro-no-contain) .pro-center { contain: layout style; }
-/* diagnostic: open index-pro.html?nocontain to turn containment off (class set by pro-ui.js) */
+/* diagnostic: open index.html?nocontain to turn containment off (class set by pro-ui.js) */

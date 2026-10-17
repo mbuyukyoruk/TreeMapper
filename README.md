@@ -6,30 +6,26 @@ display and SVG export. Everything runs in the browser; no data is uploaded.
 
 ## How to run
 
-There are two versions of the interface with the same features. The classic
-page uses `js/app.js`; the new page uses its own copy, `js/app-pro.js`, so its
-interface can be redesigned without affecting the classic version:
+Open `index.html` in a browser (double-click it), or use the hosted copy at
+https://mbuyukyoruk.github.io/TreeMapper/. No server or install is needed and
+it works offline (only the web fonts come from the internet; without it the
+browser uses a system font). Keep the folder structure intact: the page loads
+the files in `css/` and `js/`.
 
-- **`index-pro.html`**: the new application-style interface (full-window
-  workspace, top bar, Layers/Style side panel, legend panel, status bar).
-- **`index.html`**: the classic interface, unchanged.
+The earlier classic-layout interface is kept in git history under the tag
+`v1-classic-ui`.
 
-Open either file in a browser (double-click it). No server or install is
-needed, and both work offline (only the web fonts come from the internet;
-without it the browser uses a system font).
-
-Keep the folder structure intact: the pages load the files in `css/` and `js/`.
-
-The classic version as it was before the new interface was added is also
-saved in git as the tag `v1-classic-ui`.
-
-## New interface (index-pro.html) at a glance
+## At a glance
 
 - **Top bar:** Open tree (loads as soon as you pick a file), Generate tree,
   Add data, Export SVG, light/dark theme.
-- **Left panel:** *Layers* (your data cards) and *Style* (all display settings).
+- **Left panel:** *Layers* (your data cards, plus a *Colours & highlights* list
+  of every colour you applied, each recolourable and removable) and *Style*
+  (all display settings).
 - **Canvas toolbar:** Rectangular/Circular, Fit, zoom, **Nodes** (shows the
-  internal nodes so you can click a clade), search, legend panel toggle.
+  internal nodes so you can click a clade), **Reset** menu (restore dropped
+  tips, undo rotations/collapses/cartoons, original root, colours,
+  highlights), search (press `/`), legend panel toggle.
 - **Selecting a clade** shows a floating toolbar at the bottom of the canvas
   with Rotate, Collapse, Cartoon, Colour, Highlight, Re-root and more.
 - **Legend panel** on the right (can be hidden), **status bar** at the bottom.
@@ -38,27 +34,25 @@ saved in git as the tag `v1-classic-ui`.
 ## Folder layout
 
 ```
-index.html                 classic interface
-index-pro.html             new application-style interface
+index.html                 the application page
+index-pro.html             redirect for old links to index.html
 css/
-  tailwind-subset.css      the few Tailwind CSS rules the app uses (5 KB)
-  styles.css               app styles (both versions)
-  pro.css                  styles for the new interface (index-pro.html only)
+  tailwind.css             the few Tailwind CSS rules the app uses
+  styles.css               base app styles
+  pro.css                  layout and visual design
 js/
   vendor/d3.v7.9.0.min.js  D3 library, bundled locally (pinned version)
-  app.js                   the application (classic version)
-  app-pro.js               the application, new-version copy (redesigned UI)
+  app.js                   the application
+  pro-ui.js                layout logic (panels, Reset menu, colour pop-up, ...)
   drag-fastpath.js         splitter-drag flag helper (runs before app.js)
-  pro-ui.js                layout logic for the new interface (index-pro.html only)
-  shimmer.js               Clade Tools accent bar animation (classic version)
-  debug-monitor.js         optional performance/click debugger (see below)
+  bench.js                 built-in speed test (index.html?bench)
+  debug-monitor.js         optional performance/click debugger (index.html?debug)
 ```
 
-## Debug monitor
+## Diagnostics
 
-The green "CLICK DEBUG" panel is now off by default. To turn it on, open the
-page with `?debug` at the end of the address, e.g. `.../index.html?debug`
-(or `.../index-pro.html?debug`).
+- `index.html?bench`: runs a built-in speed test on generated 3,000-tip data.
+- `index.html?debug`: shows the green "CLICK DEBUG" performance monitor.
 
 ## Performance changes (behaviour unchanged)
 
@@ -77,10 +71,9 @@ on a 120-tip and a 1500-tip tree.
    during every redraw. Values are re-read when the theme changes.
 5. **Faster search matching** (also used when loading clade data): text is
    lower-cased once per value instead of once per search term.
-6. **Clade Tools accent bar no longer repaints the page every frame.** It moves
-   the same way as before and, as before, pauses while the app is busy, but it
-   now slides a GPU layer (`js/shimmer.js`) instead of animating
-   `background-position`. Idle CPU use on a large tree is about 5× lower.
+6. **Clade Tools accent bar no longer repaints the page every frame** (classic
+   layout): it slides a GPU layer instead of animating `background-position`.
+   Idle CPU use on a large tree is about 5× lower.
 7. **The tree SVG gets its own compositing layer** (`will-change: transform`).
    This removed ~1.2 s per repaint on large trees.
 8. **Theme preference storage can't crash the app.** If the browser blocks
