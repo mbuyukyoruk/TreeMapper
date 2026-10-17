@@ -378,6 +378,9 @@ html.pro .pro-list .gene-card, html.pro .pro-list .operon-card {
   border: 0 !important; border-radius: 7px !important; background: transparent !important; box-shadow: none !important;
 }
 html.pro .pro-list-row:hover { background: var(--pro-hover) !important; }
+/* app.js marks the selected / first-matching row with an inline outline drawn 1px
+   outside the row; inside the scrolling list that gets clipped, so draw it inside */
+html.pro .pro-list .pro-list-row, html.pro .pro-list .gene-card, html.pro .pro-list .operon-card { outline-offset: -2px !important; }
 html.pro .pro-list-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 html.pro input.pro-check { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 html.pro input.pro-swatch {
