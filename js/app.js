@@ -244,6 +244,85 @@ document.addEventListener('pointerdown', (e) => {
 }, { capture: true, passive: false });
 svg.on("wheel.zoom", null);
 
+// ---- Panning and scrolling the expanded tree ----
+// d3-zoom pans on mousedown, but the document-wide pointerdown preventDefault
+// above suppresses mousedown, so drag-panning never started. Pan with pointer
+// events here instead, and let the mouse wheel / trackpad scroll the tree
+// (vertical; horizontal with Shift or a sideways swipe; pinch or Ctrl+wheel
+// zooms). Only active when panning is allowed (Expansion above 0).
+let panBoundsCache = null;   // content bounds in tree coordinates; cleared on every redraw
+function panBounds(){
+  if (!panBoundsCache) {
+    try { const b = g.node().getBBox(); panBoundsCache = { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height }; }
+    catch(e) { panBoundsCache = null; }
+  }
+  return panBoundsCache;
+}
+// screen-pixel pan, limited so the tree cannot be pushed out of view
+function panTreeBy(dx, dy){
+  const node = svg.node();
+  const t = d3.zoomTransform(node);
+  const b = panBounds();
+  const W = node.clientWidth, H = node.clientHeight, pad = 40;
+  let nx = t.x + dx, ny = t.y + dy;
+  if (b) {
+    const clamp = (v, lo, hi) => lo > hi ? Math.min(Math.max(v, hi), lo) : Math.min(Math.max(v, lo), hi);
+    nx = clamp(nx, W - pad - b.x1 * t.k, pad - b.x0 * t.k);
+    ny = clamp(ny, H - pad - b.y1 * t.k, pad - b.y0 * t.k);
+  }
+  if (nx === t.x && ny === t.y) return false;
+  svg.call(zoom.transform, d3.zoomIdentity.translate(nx, ny).scale(t.k));
+  return true;
+}
+(function setupTreePanning(){
+  const node = svg.node();
+  if (!node) return;
+  let drag = null, suppressClick = false;
+  node.addEventListener('pointerdown', (e) => {
+    if (!allowPan || e.button !== 0) return;
+    if (e.target.closest && e.target.closest('.svg-splitter-hit-area, .radial-splitter-hit-area, .radial-splitter-handle, .splitter')) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved) {
+      if (Math.abs(dx) + Math.abs(dy) < 4) return;   // small moves are still clicks
+      drag.moved = true;
+      node.style.cursor = 'grabbing';
+    }
+    drag.x = e.clientX; drag.y = e.clientY;
+    panTreeBy(dx, dy);
+  });
+  const endDrag = (e) => {
+    if (!drag || (e.pointerId !== undefined && e.pointerId !== drag.id)) return;
+    if (drag.moved) suppressClick = true;
+    drag = null;
+    node.style.cursor = '';
+  };
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+  // a drag that ends over a node must not also select it
+  node.addEventListener('click', (e) => {
+    if (suppressClick) { suppressClick = false; e.stopPropagation(); e.preventDefault(); }
+  }, true);
+  node.addEventListener('wheel', (e) => {
+    if (!allowPan) return;
+    e.preventDefault();
+    const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? node.clientHeight : 1);
+    if (e.ctrlKey || e.metaKey) {
+      // pinch-zoom on a trackpad arrives as ctrl+wheel
+      const r = node.getBoundingClientRect();
+      const factor = Math.pow(2, -e.deltaY * unit * 0.002);
+      svg.call(zoom.scaleBy, factor, [e.clientX - r.left, e.clientY - r.top]);
+      return;
+    }
+    let dx = e.deltaX * unit, dy = e.deltaY * unit;
+    if (e.shiftKey && !dx) { dx = dy; dy = 0; }
+    panTreeBy(-dx, -dy);
+  }, { passive: false });
+})();
+
 // OPTIMIZATION: Pre-generate a large palette to avoid expensive HSL→RGB conversion during runtime
 let preGeneratedPalette = null;
 
@@ -2648,6 +2727,9 @@ function toggleLabelsPanelVisibility(hideLabels) {
   
   normalizeWidths();
   // refreshAll();
+  // Labels that were hidden when the tree was drawn (large trees start that
+  // way) don't exist yet, so widening the panel alone shows nothing: redraw.
+  if (!hideLabels && root && !g.select('text.label').node()) drawTree();
   updateMetadataLegend(); // Update legend visibility when labels are toggled
 }
 
@@ -5359,9 +5441,15 @@ window.addEventListener('beforeunload', function() {
   cleanupAlignmentWorker();
 });
 
+// Large trees start with labels hidden, but only once per loaded tree: after
+// that "Hide accession labels" is the user's choice (previously every redraw
+// switched it back on, so labels could never be shown).
+let labelsAutoHideDone = false;
+
 function drawTree(){
   // Auto-hide labels for large trees to improve performance
-  if (root && root.leaves) {
+  if (root && root.leaves && !labelsAutoHideDone) {
+    labelsAutoHideDone = true;
     const leafCount = root.leaves().length;
     const hideLabelsEl = document.getElementById('hideLabels');
     
@@ -5384,6 +5472,7 @@ function drawTree(){
     }
   }
 
+  panBoundsCache = null;
   // Update panel heights to match canvas whenever tree is redrawn
   updatePanelHeights();
 
@@ -15178,6 +15267,7 @@ function hideNoMatchMessage(cardElement) {
 
 // Comprehensive cleanup function for new tree file
 function resetAllFeaturesForNewTree() {
+  labelsAutoHideDone = false;   // a new tree gets the large-tree default again
   
   // 1. Clear all selections and highlights
   highlightedClade = null;
@@ -21485,6 +21575,7 @@ function calculateJaccardDistanceMatrix(dataframe) {
 
 // Generate tree from gene content
 async function generateTreeFromGeneContent() {
+  labelsAutoHideDone = false;
   try {
     if (!selectedGeneDataFile) {
       setStatus('Error: No gene data file selected.');
