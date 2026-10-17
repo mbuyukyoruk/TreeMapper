@@ -5997,6 +5997,8 @@ function drawTree(){
       });
     }
     
+    // PERF: look the active Bootstrap tab up once per redraw, not once per branch
+    const linksBootstrapTab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab') || 'symbol';
     g.append('g').attr('class','links')
       .selectAll('path')
               .data(root.links().filter(d => {
@@ -6047,7 +6049,7 @@ function drawTree(){
           
           // Check if bootstrap color tab is active and apply bootstrap colors
           const bootstrapSettings = getBootstrapSettings();
-          const activeTab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab') || 'symbol';
+          const activeTab = linksBootstrapTab;
           if (bootstrapSettings.show && activeTab === 'color') {
             // Get bootstrap value for this node
             let bootstrapValue = null;
@@ -6230,6 +6232,8 @@ function drawTree(){
     }
     
     // radial elbow: arc at parent radius to child angle, then radial line to child radius
+    // PERF: look the active Bootstrap tab up once per redraw, not once per branch
+    const linksBootstrapTab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab') || 'symbol';
     gSpin.append('g').attr('class','links')
       .selectAll('path')
       .data(root.links().filter(d => {
@@ -6280,7 +6284,7 @@ function drawTree(){
           
           // Check if bootstrap color tab is active and apply bootstrap colors
           const bootstrapSettings = getBootstrapSettings();
-          const activeTab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab') || 'symbol';
+          const activeTab = linksBootstrapTab;
           if (bootstrapSettings.show && activeTab === 'color') {
             // Get bootstrap value for this node
             let bootstrapValue = null;
