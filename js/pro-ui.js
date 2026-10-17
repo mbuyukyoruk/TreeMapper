@@ -101,19 +101,42 @@
   // ------------------------------------------------ canvas width changes
   // app.js re-lays out its columns (tree, labels, dataframes, heatmaps) only
   // on a browser-window resize. Here the canvas also changes width when the
-  // legend panel is shown/hidden, so report such changes as a window resize;
-  // otherwise data added while the legend was hidden overflowed under it.
+  // legend panel is shown/hidden. For those changes the columns are
+  // re-measured and the tree redrawn once, right away: inside the resize
+  // callback, before the browser paints, so there is no frame with the old
+  // layout overlapping the legend. The app's own resize redraws (one on the
+  // next frame and another 120 ms later) are cancelled, since they would only
+  // repeat the same drawing.
+  function redrawForNewWidth() {
+    call(function () { if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = null; } });
+    call(function () { if (_resizeTO) { clearTimeout(_resizeTO); _resizeTO = null; } });
+    if (!treeRoot()) return;
+    call(function () { normalizeWidths(); updatePanelPositions(); updateSplitterPositions(); updatePanelHeights(); });
+    // same drawing and fitting the app does after a window resize
+    call(function () {
+      if (geometry === 'radial') {
+        // circular layout: refit the data rings first, as a window resize does
+        if (radialSvg && !radialSvg.empty()) { fitRadialRingsToCanvas(); calculateRadialRings(); drawRadialPanels(); }
+        drawTree(); centerRadial();
+        // centring uses a zero-length d3 transition, which would only apply on the next frame
+        if (window.d3 && d3.timerFlush) d3.timerFlush();
+        return;
+      }
+      var expPct = tipSpacingSel ? (+tipSpacingSel.value || 0) : 0;
+      if (expPct <= 0) { onFitToViewRect(); return; }   // fitting redraws by itself
+      drawTree(); anchorTopLeftPreserveScale(); try { updateMetaAddButtonY(); } catch (e) {}
+    });
+  }
   (function () {
     var canvas = $('canvas');
     if (!canvas || !window.ResizeObserver) return;
-    var lastW = canvas.clientWidth, lastWin = window.innerWidth + 'x' + window.innerHeight, timer = 0;
+    var lastW = canvas.clientWidth, lastWin = window.innerWidth + 'x' + window.innerHeight;
     new ResizeObserver(function () {
       var w = canvas.clientWidth, win = window.innerWidth + 'x' + window.innerHeight;
       if (w === lastW) return;
       lastW = w;
-      if (win !== lastWin) { lastWin = win; return; }   // a real window resize: the app already handles it
-      clearTimeout(timer);
-      timer = setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 60);
+      if (win !== lastWin) { lastWin = win; return; }   // a real window resize: the app handles it
+      redrawForNewWidth();
     }).observe(canvas);
   })();
 
