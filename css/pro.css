@@ -440,3 +440,12 @@ html.pro .pro-modal #generateTreeBtn:disabled { opacity: .5; }
   .pro-actions .pro-btn span { display: none; }
   .pro-actions .pro-btn { padding: 0 9px; }
 }
+
+/* ---------- Layout containment ----------
+   The canvas, side panel and legend are fixed-size regions: changes inside one
+   (e.g. thousands of tree labels restyled, a data card opened) must not make the
+   browser re-measure the rest of the page. Safari/WebKit benefits most. */
+html.pro .canvas { flex: 1 1 0; contain: strict; }
+html.pro .sidepanel { contain: strict; }
+.pro-legend-panel { contain: strict; }
+.pro-center { contain: layout style; }
