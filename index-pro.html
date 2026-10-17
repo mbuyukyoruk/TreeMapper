@@ -6,10 +6,10 @@
 <title>TreeMapper</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind-pro.css?v=202610171751" rel="stylesheet">
-<link href="css/styles.css?v=202610171751" rel="stylesheet">
-<link href="css/pro.css?v=202610171751" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="css/tailwind-pro.css?v=202610171833" rel="stylesheet">
+<link href="css/styles.css?v=202610171833" rel="stylesheet">
+<link href="css/pro.css?v=202610171833" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -94,6 +94,11 @@
         </div>
         <div class="card-container" id="textContainer"></div>
       </div>
+
+      <section class="pro-anno" id="proAnno" hidden>
+        <div class="pro-layers-head"><span class="pro-section-title">Colours &amp; highlights</span><button type="button" class="pro-link-btn" id="proAnnoClear">Clear all</button></div>
+        <div class="pro-anno-list" id="proAnnoList"></div>
+      </section>
 
       <div id="addDataframeContainer" style="display: none;"></div>
 
@@ -316,11 +321,18 @@
           <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 12H12M12 6v12M12 6h3.5M12 18h3.5"/></svg><span>Nodes</span>
         </label>
         <div id="colorPathCard" class="color-path-card" style="display: none;">
-          <span class="color-path-label">Color path:</span>
+          <button type="button" class="pro-colorpath-btn" id="proColorPathBtn" title="Colour the branches leading to the search matches"><span class="pro-colorpath-dot" id="proColorPathDot"></span><span>Colour matches</span></button><span class="color-path-label">Color path:</span>
           <input type="color" id="pathColorPicker" class="path-color-picker" value="#ff6b35" title="Choose color for highlighted paths">
           <button id="applyPathColor" class="apply-path-color" title="Apply color to highlighted paths">Apply</button>
         </div>
-        <button id="resetPathColors" class="reset-path-colors" style="display: none;" title="Reset all colored branches and clades to original"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg><span>Reset colours</span></button>
+        <div class="pro-spacer"></div>
+        <div class="pro-reset" id="proReset" hidden>
+          <button type="button" class="pro-restore-btn" id="proRestoreDropped" hidden title="Bring back every dropped tip"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Restore <b id="proRestoreCount">0</b> dropped</span></button>
+          <button type="button" class="pro-reset-btn" id="proResetBtn" aria-haspopup="menu" aria-expanded="false" title="Undo tree edits, colours and highlights"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg><span>Reset</span><span class="pro-count" id="proResetCount">0</span><svg class="pro-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+        </div>
+        <!-- the app's own reset buttons; the Reset menu drives them -->
+        <div class="pro-reset-sources" id="proResetSources" hidden>
+          <button id="resetPathColors" class="reset-path-colors" style="display: none;" title="Reset all colored branches and clades to original"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg><span>Reset colours</span></button>
         <button id="resetHighlights" class="reset-path-colors" style="display: none;" title="Reset all clade background highlights"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg><span>Reset highlights</span></button>
         <button id="resetRoot" class="clade-toolbar-btn reset-root-btn" title="Reset tree to original root" style="display: none;">
           <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
@@ -328,9 +340,9 @@
         </button>
         <button id="clearAllColors" class="clade-toolbar-btn clear-btn" title="Clear all clade colors">
           <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
-          <span>Clear colours</span>
+          <span>Clear all colours and highlights</span>
         </button>
-        <div class="pro-spacer"></div>
+        </div>
         <div class="search-container">
           <input type="text" id="accessionSearch" placeholder="Search accessions or genes" title="Search accessions or genes (separate several with commas)" class="search-input">
           <button id="clearSearch" class="search-clear" title="Clear search">×</button>
@@ -419,7 +431,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610171751"></script>
+      <script src="js/drag-fastpath.js?v=202610171833"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -480,6 +492,20 @@
     <span id="proZoomStatus"></span>
     <span class="pro-credit">Created by <a href="https://github.com/mbuyukyoruk" target="_blank" rel="noopener">Murat Buyukyoruk</a></span>
   </footer>
+</div>
+
+<!-- Reset menu and unified colour pop-up (pro-ui.js) -->
+<div class="pro-menu" id="proResetMenu" role="menu" hidden></div>
+<div class="pro-colorpop" id="proColorPop" role="dialog" aria-labelledby="proColorPopTitle" hidden>
+  <div class="pro-colorpop-head"><span id="proColorPopTitle">Colour</span><span class="pro-colorpop-sub" id="proColorPopSub"></span></div>
+  <div class="pro-colorpop-grid" id="proColorPopGrid"></div>
+  <div class="pro-colorpop-label" id="proColorPopRecentLabel" hidden>Recent</div>
+  <div class="pro-colorpop-grid" id="proColorPopRecent"></div>
+  <div class="pro-colorpop-custom">
+    <label class="pro-colorpop-swatch" title="Pick any colour"><input type="color" id="proColorPopInput" value="#ff6b35" aria-label="Custom colour"></label>
+    <input type="text" id="proColorPopHex" class="pro-colorpop-hex" value="#ff6b35" spellcheck="false" aria-label="Hex colour">
+    <button type="button" class="pro-btn pro-btn-primary" id="proColorPopApply">Apply</button>
+  </div>
 </div>
 
 <!-- Pop-up cards: positioned by app.js in page coordinates, so they live directly in <body> -->
@@ -625,9 +651,9 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610171751"></script>
-<script src="js/app-pro.js?v=202610171751"></script>
-<script src="js/pro-ui.js?v=202610171751"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610171833"></script>
+<script src="js/app-pro.js?v=202610171833"></script>
+<script src="js/pro-ui.js?v=202610171833"></script>
 <script>
   // Opt-in debug monitor: open index-pro.html?debug to enable it
   (function () {
