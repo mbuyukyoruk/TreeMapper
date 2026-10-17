@@ -98,6 +98,25 @@
   if (legendToggle) legendToggle.addEventListener('click', function () { setLegend(body.classList.contains('pro-legend-hidden')); });
   if ($('proLegendClose')) $('proLegendClose').addEventListener('click', function () { setLegend(false); });
 
+  // ------------------------------------------------ canvas width changes
+  // app.js re-lays out its columns (tree, labels, dataframes, heatmaps) only
+  // on a browser-window resize. Here the canvas also changes width when the
+  // legend panel is shown/hidden, so report such changes as a window resize;
+  // otherwise data added while the legend was hidden overflowed under it.
+  (function () {
+    var canvas = $('canvas');
+    if (!canvas || !window.ResizeObserver) return;
+    var lastW = canvas.clientWidth, lastWin = window.innerWidth + 'x' + window.innerHeight, timer = 0;
+    new ResizeObserver(function () {
+      var w = canvas.clientWidth, win = window.innerWidth + 'x' + window.innerHeight;
+      if (w === lastW) return;
+      lastW = w;
+      if (win !== lastWin) { lastWin = win; return; }   // a real window resize: the app already handles it
+      clearTimeout(timer);
+      timer = setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 60);
+    }).observe(canvas);
+  })();
+
   // ------------------------------------------------------- shared helpers
   var SVG = function (paths, size) {
     return '<svg class="pro-ico" width="' + (size || 15) + '" height="' + (size || 15) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
