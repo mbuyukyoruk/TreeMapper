@@ -23236,9 +23236,8 @@ if(bootstrapFontColorEl){
 
 if(bootstrapBoldEl){
   bootstrapBoldEl.addEventListener('click', ()=>{
-    const isActive = bootstrapBoldEl.style.backgroundColor === 'var(--accent)';
-    bootstrapBoldEl.style.backgroundColor = isActive ? 'var(--chip)' : 'var(--accent)';
-    bootstrapBoldEl.style.color = isActive ? 'var(--text)' : 'white';
+    // pro UI: state lives in aria-pressed (styled by CSS)
+    bootstrapBoldEl.setAttribute('aria-pressed', String(bootstrapBoldEl.getAttribute('aria-pressed') !== 'true'));
     drawTree();
     console.log('drawTree in bootstrapBoldEl');
   });
@@ -23246,9 +23245,7 @@ if(bootstrapBoldEl){
 
 if(bootstrapItalicEl){
   bootstrapItalicEl.addEventListener('click', ()=>{
-    const isActive = bootstrapItalicEl.style.backgroundColor === 'var(--accent)';
-    bootstrapItalicEl.style.backgroundColor = isActive ? 'var(--chip)' : 'var(--accent)';
-    bootstrapItalicEl.style.color = isActive ? 'var(--text)' : 'white';
+    bootstrapItalicEl.setAttribute('aria-pressed', String(bootstrapItalicEl.getAttribute('aria-pressed') !== 'true'));
     drawTree();
     console.log('drawTree in bootstrapItalicEl');
   });
@@ -23322,11 +23319,8 @@ if(bootstrapColorMidEl){
 }
 
 if(bootstrapColorMidToggleEl){
-  bootstrapColorMidToggleEl.addEventListener('click', ()=>{
-    const isOff = bootstrapColorMidToggleEl.textContent === 'Off';
-    bootstrapColorMidToggleEl.textContent = isOff ? 'On' : 'Off';
-    bootstrapColorMidToggleEl.style.backgroundColor = isOff ? 'var(--accent)' : 'var(--chip)';
-    bootstrapColorMidToggleEl.style.color = isOff ? 'white' : 'var(--text)';
+  // pro UI: the midpoint toggle is a switch (checkbox)
+  bootstrapColorMidToggleEl.addEventListener('change', ()=>{
     drawTree();
     console.log('drawTree in bootstrapColorMidToggleEl');
     updateMetadataLegend();
@@ -23356,14 +23350,12 @@ document.addEventListener('DOMContentLoaded', function() {
       // Remove active class from all tabs
       bootstrapTabs.forEach(t => {
         t.classList.remove('active');
-        t.style.borderBottom = 'none';
-        t.style.opacity = '0.7';
+        t.setAttribute('aria-selected', 'false');
       });
       
-      // Add active class to clicked tab
+      // Add active class to clicked tab (pro UI: styled by CSS)
       this.classList.add('active');
-      this.style.borderBottom = '2px solid var(--accent)';
-      this.style.opacity = '1';
+      this.setAttribute('aria-selected', 'true');
       
       // Hide all tab contents
       bootstrapTabContents.forEach(content => {
@@ -23431,8 +23423,8 @@ function getBootstrapSettings() {
     // Text tab settings
     fontSize: bootstrapFontSizeEl ? +bootstrapFontSizeEl.value || 8 : 8,
     fontColor: bootstrapFontColorEl ? bootstrapFontColorEl.value || '#374151' : '#374151',
-    bold: bootstrapBoldEl ? bootstrapBoldEl.style.backgroundColor === 'var(--accent)' : false,
-    italic: bootstrapItalicEl ? bootstrapItalicEl.style.backgroundColor === 'var(--accent)' : false,
+    bold: bootstrapBoldEl ? bootstrapBoldEl.getAttribute('aria-pressed') === 'true' : false,
+    italic: bootstrapItalicEl ? bootstrapItalicEl.getAttribute('aria-pressed') === 'true' : false,
     textPosition: bootstrapTextPositionEl ? (isNaN(+bootstrapTextPositionEl.value) ? 50 : +bootstrapTextPositionEl.value) : 50,
     verticalShift: bootstrapVerticalShiftEl ? +bootstrapVerticalShiftEl.value || 0 : 0,
     scaleFactor: bootstrapScaleFactorEl ? +bootstrapScaleFactorEl.value || 1 : 1,
@@ -23444,7 +23436,7 @@ function getBootstrapSettings() {
     // Color tab settings
     colorMin: bootstrapColorMinEl ? bootstrapColorMinEl.value || '#0000ff' : '#0000ff',
     colorMid: bootstrapColorMidEl ? bootstrapColorMidEl.value || '#ffffff' : '#ffffff',
-    colorMidEnabled: bootstrapColorMidToggleEl ? bootstrapColorMidToggleEl.textContent === 'On' : false,
+    colorMidEnabled: bootstrapColorMidToggleEl ? !!bootstrapColorMidToggleEl.checked : false,
     colorMax: bootstrapColorMaxEl ? bootstrapColorMaxEl.value || '#8b0000' : '#8b0000'
   };
 }

@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind-pro.css?v=202610170325" rel="stylesheet">
-<link href="css/styles.css?v=202610170325" rel="stylesheet">
-<link href="css/pro.css?v=202610170325" rel="stylesheet">
+<link href="css/tailwind-pro.css?v=202610170339" rel="stylesheet">
+<link href="css/styles.css?v=202610170339" rel="stylesheet">
+<link href="css/pro.css?v=202610170339" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -97,319 +97,199 @@
 
       <div id="addDataframeContainer" style="display: none;"></div>
 
-      <div class="layout-card pro-layout">
+      <div class="layout-card pro-layout pro-group">
         <div class="pro-section-title">Layout</div>
-        <div class="span-2" id="expansionRow">
-          <label>
-            <span style="font-weight:200; min-width:70px;">Expansion:</span><br>
-            <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-              <input id="tipSpacing" type="range" min="0" max="100" value="0" step="1" style="flex:1 1 auto">
-              <input id="tipSpacingNum" type="number" min="0" max="100" value="0" step="1" class="value-box">
-            </div>
-          </label>
+        <div class="span-2 pro-range-row" id="expansionRow">
+          <label for="tipSpacing">Expansion</label>
+          <input id="tipSpacing" type="range" min="0" max="100" value="0" step="1">
+          <span class="pro-num-wrap"><input id="tipSpacingNum" type="number" min="0" max="100" value="0" step="1" class="pro-num" aria-label="Expansion (%)"><span class="pro-unit">%</span></span>
         </div>
-        <div class="span-2" id="radialControls" style="display:none; flex-direction:column; gap:10px;">
-          <label>
-            <span style="font-weight:200; min-width:70px;">Rotation:</span><br>
-            <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-              <input id="rotationDeg" type="range" min="0" max="360" value="0" step="1" style="flex:1 1 auto">
-              <input id="rotationDegNum" type="number" min="0" max="360" value="0" step="1" class="value-box">
-            </div>
-          </label>
-          <label>
-            <span style="font-weight:200; min-width:70px;">Opening:</span><br>
-            <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-              <input id="openAngleDeg" type="range" min="0" max="300" value="0" step="1" style="flex:1 1 auto">
-              <input id="openAngleDegNum" type="number" min="0" max="300" value="0" step="1" class="value-box">
-            </div>
-          </label>
+        <div class="span-2" id="radialControls" style="display:none; flex-direction:column; gap:6px;">
+          <div class="pro-range-row">
+            <label for="rotationDeg">Rotation</label>
+            <input id="rotationDeg" type="range" min="0" max="360" value="0" step="1">
+            <span class="pro-num-wrap"><input id="rotationDegNum" type="number" min="0" max="360" value="0" step="1" class="pro-num" aria-label="Rotation (degrees)"><span class="pro-unit">°</span></span>
+          </div>
+          <div class="pro-range-row">
+            <label for="openAngleDeg">Opening</label>
+            <input id="openAngleDeg" type="range" min="0" max="300" value="0" step="1">
+            <span class="pro-num-wrap"><input id="openAngleDegNum" type="number" min="0" max="300" value="0" step="1" class="pro-num" aria-label="Opening angle (degrees)"><span class="pro-unit">°</span></span>
+          </div>
         </div>
       </div>
 
       <details>
         <summary>Labels</summary>
-        <div class="section">
-          <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:0">
-            <input type="checkbox" id="hideLabels">
-            <span class="checkbox-label">Hide accession labels</span>
-          </div>
-          <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:0">
-            <input type="checkbox" id="labelGuides">
-            <span class="checkbox-label">Show label guide dashes</span>
-          </div>
+        <div class="section pro-group">
+          <label class="pro-row"><span>Hide accession labels</span><input type="checkbox" id="hideLabels" class="pro-switch"></label>
+          <label class="pro-row"><span>Guide lines to labels</span><input type="checkbox" id="labelGuides" class="pro-switch"></label>
         </div>
       </details>
+
       <details>
         <summary>Tree</summary>
-        <div class="section tree-form">
-          <!-- Root tree -->
-          <div class="group">
-            <input type="checkbox" id="rootEnable">
-            <span>Root tree</span>
-          </div>
-          <div class="subrow">
-            <label>Rooting:</label>
-              <select id="rootMode" disabled>
-                <option value="user" selected>User Selection</option>
-                <option value="midpoint">Midpoint</option>
-              </select>
-          </div>
-
-          <!-- Order nodes -->
-          <div class="group">
-            <input type="checkbox" id="orderEnable" checked>
-            <span>Order nodes</span>
-          </div>
-          <div class="subrow">
-            <label>Ordering:</label>
-            <select id="orderDir">
-              <option value="increasing" selected>increasing</option>
-              <option value="decreasing">decreasing</option>
+        <div class="section pro-group">
+          <label class="pro-row"><span>Root tree</span><input type="checkbox" id="rootEnable" class="pro-switch"></label>
+          <div class="pro-row pro-sub">
+            <label for="rootMode">Rooting</label>
+            <select id="rootMode" class="pro-select" disabled>
+              <option value="user" selected>User selection</option>
+              <option value="midpoint">Midpoint</option>
             </select>
           </div>
-
-          <!-- Transform branches -->
-          <div class="group">
-            <input type="checkbox" id="transformEnable">
-            <span>Transform branches</span>
-          </div>
-          <div class="subrow">
-            <label>Transform:</label>
-            <select id="layoutMode" disabled>
-              <option value="clado" selected>cladogram</option>
-              <option value="equal">equal</option>
+          <label class="pro-row"><span>Order nodes</span><input type="checkbox" id="orderEnable" class="pro-switch" checked></label>
+          <div class="pro-row pro-sub">
+            <label for="orderDir">Ordering</label>
+            <select id="orderDir" class="pro-select">
+              <option value="increasing" selected>Increasing</option>
+              <option value="decreasing">Decreasing</option>
             </select>
           </div>
-
-          <!-- Edge style (kept here, always enabled) -->
-          <div class="subrow" style="margin-top:2px">
-            <label>Edge style:</label>
-            <select id="edgeStyle">
+          <label class="pro-row"><span>Transform branches</span><input type="checkbox" id="transformEnable" class="pro-switch"></label>
+          <div class="pro-row pro-sub">
+            <label for="layoutMode">Transform</label>
+            <select id="layoutMode" class="pro-select" disabled>
+              <option value="clado" selected>Cladogram</option>
+              <option value="equal">Equal</option>
+            </select>
+          </div>
+          <div class="pro-row">
+            <label for="edgeStyle">Edge style</label>
+            <select id="edgeStyle" class="pro-select">
               <option value="rect" selected>Rectangular</option>
               <option value="curve">Curved</option>
             </select>
           </div>
-
-          <!-- Remove redundant end nodes option -->
-          <div class="group" style="margin-top: 12px;">
-            <input type="checkbox" id="uniqueBranchTips">
-            <span>Remove redundant tips</span>
-          </div>
+          <label class="pro-row"><span>Remove redundant tips</span><input type="checkbox" id="uniqueBranchTips" class="pro-switch"></label>
         </div>
       </details>
+
       <details id="nodeShapesSection">
-        <summary>Node shapes</summary>
-        <div class="section">
-          <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:0">
-            <input type="checkbox" id="hideInternal">
-            <span class="checkbox-label">Show internal nodes</span>
-          </div>
-
-          <!-- Internal node shape controls -->
-          <div style="margin-left: 20px; margin-top: 8px; margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Shape:</label>
-              <select id="internalNodeShape" style="font-size: 12px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text);">
-                <option value="circle">● Circle</option>
-                <option value="square">■ Square</option>
-                <option value="diamond" selected>◆ Diamond</option>
-                <option value="triangle">▲ Triangle</option>
-              </select>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Size (px):</label>
-              <input type="number" id="internalNodeSize" min="2" max="12" step="1" value="2" class="value-box">
-            </div>
-          </div>
-
-          <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:0">
-            <input type="checkbox" id="showTipNodes" checked>
-            <span class="checkbox-label">Show tip nodes</span>
-          </div>
-
-          <!-- Tip node shape controls -->
-          <div style="margin-left: 20px; margin-top: 8px; margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Shape:</label>
-              <select id="tipNodeShape" style="font-size: 12px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text);">
-                <option value="circle" selected>● Circle</option>
-                <option value="square">■ Square</option>
-                <option value="diamond">◆ Diamond</option>
-                <option value="triangle">▲ Triangle</option>
-              </select>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Size (px):</label>
-              <input type="number" id="tipNodeSize" min="1" max="8" step="1" value="2" class="value-box">
-            </div>
-          </div>
-        </div>
-      </details>
-      <details id="treeScaleSection">
-        <summary>Tree Scale</summary>
-        <div class="section">
-          <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:0">
-            <input type="checkbox" id="hideScaleBar">
-            <label style="font-size: 12px; color: var(--muted);">Hide scale bar</label>
-          </div>
-          <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:0">
-            <input type="checkbox" id="coverScaleBar">
-            <label style="font-size: 12px; color: var(--muted);">Cover scale bar</label>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <label style="font-size: 12px; color: var(--muted);">Scale range:</label>
-            <input type="number" id="scaleRange" min="0.25" step="0.25" value="0.5" class="value-box" disabled>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 12px; color: var(--muted);">Line stroke width (px):</label>
-            <input type="number" id="scaleStrokeWidth" min="0.1" step="0.1" value="2" class="value-box">
-          </div>
-        </div>
-      </details>
-      <details id="bootstrapSection">
-        <summary>Bootstrap</summary>
-        <div class="section">
-          <!-- General Settings -->
-          <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:8px">
-            <input type="checkbox" id="showBootstrap">
-            <label style="font-size: 12px; color: var(--muted);">Show bootstrap values</label>
-          </div>
-
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <label style="font-size: 12px; color: var(--muted);">Data source:</label>
-            <select id="bootstrapDataSource" class="value-box" style="width: 100px;">
-              <option value="bootstrap">bootstrap</option>
+        <summary>Nodes</summary>
+        <div class="section pro-group">
+          <label class="pro-row"><span>Show internal nodes</span><input type="checkbox" id="hideInternal" class="pro-switch"></label>
+          <div class="pro-row pro-sub">
+            <label for="internalNodeShape">Shape</label>
+            <select id="internalNodeShape" class="pro-select">
+              <option value="circle">Circle</option>
+              <option value="square">Square</option>
+              <option value="diamond" selected>Diamond</option>
+              <option value="triangle">Triangle</option>
             </select>
           </div>
-
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <label style="font-size: 12px; color: var(--muted);">Display range:</label>
+          <div class="pro-row pro-sub">
+            <label for="internalNodeSize">Size</label>
+            <span class="pro-num-wrap"><input type="number" id="internalNodeSize" min="2" max="12" step="1" value="2" class="pro-num"><span class="pro-unit">px</span></span>
           </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <div style="display: flex; align-items: center; gap: 4px;">
-              <input type="number" id="bootstrapMinRange" min="0" max="100" step="1" value="23" class="value-box">
-              <span style="font-size: 11px; color: var(--muted);">to</span>
-              <input type="number" id="bootstrapMaxRange" min="0" max="100" step="1" value="100" class="value-box">
-            </div>
+          <label class="pro-row"><span>Show tip nodes</span><input type="checkbox" id="showTipNodes" class="pro-switch" checked></label>
+          <div class="pro-row pro-sub">
+            <label for="tipNodeShape">Shape</label>
+            <select id="tipNodeShape" class="pro-select">
+              <option value="circle" selected>Circle</option>
+              <option value="square">Square</option>
+              <option value="diamond">Diamond</option>
+              <option value="triangle">Triangle</option>
+            </select>
+          </div>
+          <div class="pro-row pro-sub">
+            <label for="tipNodeSize">Size</label>
+            <span class="pro-num-wrap"><input type="number" id="tipNodeSize" min="1" max="8" step="1" value="2" class="pro-num"><span class="pro-unit">px</span></span>
+          </div>
+        </div>
+      </details>
+
+      <details id="treeScaleSection">
+        <summary>Scale bar</summary>
+        <div class="section pro-group">
+          <label class="pro-row"><span>Hide scale bar</span><input type="checkbox" id="hideScaleBar" class="pro-switch"></label>
+          <label class="pro-row"><span>Cover scale bar</span><input type="checkbox" id="coverScaleBar" class="pro-switch"></label>
+          <div class="pro-row pro-sub">
+            <label for="scaleRange">Scale range</label>
+            <span class="pro-num-wrap"><input type="number" id="scaleRange" min="0.25" step="0.25" value="0.5" class="pro-num" disabled></span>
+          </div>
+          <div class="pro-row">
+            <label for="scaleStrokeWidth">Line width</label>
+            <span class="pro-num-wrap"><input type="number" id="scaleStrokeWidth" min="0.1" step="0.1" value="2" class="pro-num"><span class="pro-unit">px</span></span>
+          </div>
+        </div>
+      </details>
+
+      <details id="bootstrapSection">
+        <summary>Support values</summary>
+        <div class="section pro-group">
+          <label class="pro-row"><span>Show bootstrap values</span><input type="checkbox" id="showBootstrap" class="pro-switch"></label>
+          <div class="pro-row">
+            <label for="bootstrapDataSource">Data source</label>
+            <select id="bootstrapDataSource" class="pro-select">
+              <option value="bootstrap">Bootstrap</option>
+            </select>
+          </div>
+          <div class="pro-row">
+            <span>Show range</span>
+            <span class="pro-range-pair">
+              <input type="number" id="bootstrapMinRange" min="0" max="100" step="1" value="23" class="pro-num" aria-label="Minimum shown value">
+              <span class="pro-unit">to</span>
+              <input type="number" id="bootstrapMaxRange" min="0" max="100" step="1" value="100" class="pro-num" aria-label="Maximum shown value">
+            </span>
           </div>
 
-          <!-- Tab Navigation -->
-          <div style="display: flex; margin-bottom: 8px; border-bottom: 1px solid var(--ring);">
-            <button type="button" class="bootstrap-tab active" data-tab="symbol" style="flex: 1; padding: 6px 12px; font-size: 11px; font-weight: 600; background: var(--chip); border: none; border-bottom: 2px solid var(--accent); color: var(--text); border-radius: 6px 6px 0 0; transition: all 0.2s ease;">Symbol</button>
-            <button type="button" class="bootstrap-tab" data-tab="text" style="flex: 1; padding: 6px 12px; font-size: 11px; font-weight: 600; background: var(--chip); border: none; color: var(--text); border-radius: 6px 6px 0 0; transition: all 0.2s ease; opacity: 0.7;">Text</button>
-            <button type="button" class="bootstrap-tab" data-tab="color" style="flex: 1; padding: 6px 12px; font-size: 11px; font-weight: 600; background: var(--chip); border: none; color: var(--text); border-radius: 6px 6px 0 0; transition: all 0.2s ease; opacity: 0.7;">Color</button>
+          <div class="pro-segmented" role="tablist" aria-label="Support value display">
+            <button type="button" class="bootstrap-tab active" data-tab="symbol" role="tab">Symbol</button>
+            <button type="button" class="bootstrap-tab" data-tab="text" role="tab">Text</button>
+            <button type="button" class="bootstrap-tab" data-tab="color" role="tab">Colour</button>
           </div>
 
-          <!-- Symbol Tab Content -->
-          <div id="bootstrap-symbol-tab" class="bootstrap-tab-content" style="display: block;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Symbol:</label>
-              <select id="bootstrapSymbolType" class="value-box" style="width: 100px;">
+          <div id="bootstrap-symbol-tab" class="bootstrap-tab-content pro-tabpane" style="display: block;">
+            <div class="pro-row">
+              <label for="bootstrapSymbolType">Symbol</label>
+              <select id="bootstrapSymbolType" class="pro-select">
                 <option value="1">Circle</option>
                 <option value="2">Triangle</option>
                 <option value="3">Square</option>
                 <option value="4">Star</option>
               </select>
             </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Fill color:</label>
-              <input type="color" id="bootstrapFillColor" value="#ffffff" class="value-box" style="width: 40px; height: 20px;">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Border color:</label>
-              <input type="color" id="bootstrapBorderColor" value="#000000" class="value-box" style="width: 40px; height: 20px;">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Border width:</label>
-              <input type="number" id="bootstrapBorderWidth" min="0" max="5" step="0.1" value="1" class="value-box">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Minimum size:</label>
-              <input type="number" id="bootstrapMinSize" min="1" max="50" step="1" value="5" class="value-box">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Maximum size:</label>
-              <input type="number" id="bootstrapMaxSize" min="1" max="50" step="1" value="10" class="value-box">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0;">
-              <label style="font-size: 12px; color: var(--muted);">Position on branch:</label>
-              <input type="number" id="bootstrapPosition" min="0" max="100" step="1" value="50" class="value-box">
-            </div>
+            <div class="pro-row"><label for="bootstrapFillColor">Fill colour</label><input type="color" id="bootstrapFillColor" value="#ffffff" class="pro-color"></div>
+            <div class="pro-row"><label for="bootstrapBorderColor">Border colour</label><input type="color" id="bootstrapBorderColor" value="#000000" class="pro-color"></div>
+            <div class="pro-row"><label for="bootstrapBorderWidth">Border width</label><span class="pro-num-wrap"><input type="number" id="bootstrapBorderWidth" min="0" max="5" step="0.1" value="1" class="pro-num"><span class="pro-unit">px</span></span></div>
+            <div class="pro-row"><label for="bootstrapMinSize">Minimum size</label><span class="pro-num-wrap"><input type="number" id="bootstrapMinSize" min="1" max="50" step="1" value="5" class="pro-num"><span class="pro-unit">px</span></span></div>
+            <div class="pro-row"><label for="bootstrapMaxSize">Maximum size</label><span class="pro-num-wrap"><input type="number" id="bootstrapMaxSize" min="1" max="50" step="1" value="10" class="pro-num"><span class="pro-unit">px</span></span></div>
+            <div class="pro-row"><label for="bootstrapPosition">Position on branch</label><span class="pro-num-wrap"><input type="number" id="bootstrapPosition" min="0" max="100" step="1" value="50" class="pro-num"><span class="pro-unit">%</span></span></div>
           </div>
 
-          <!-- Text Tab Content -->
-          <div id="bootstrap-text-tab" class="bootstrap-tab-content" style="display: none;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Font:</label>
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <input type="number" id="bootstrapFontSize" min="6" max="24" step="1" value="8" class="value-box" style="width: 40px;">
-                <span style="font-size: 11px; color: var(--muted);">px</span>
-                <input type="color" id="bootstrapFontColor" value="#374151" class="value-box" style="width: 30px; height: 20px;">
-                <button type="button" id="bootstrapBold" class="value-box" style="width: 20px; height: 20px; padding: 0; font-size: 10px; font-weight: bold;">B</button>
-                <button type="button" id="bootstrapItalic" class="value-box" style="width: 20px; height: 20px; padding: 0; font-size: 10px; font-style: italic;">I</button>
-              </div>
+          <div id="bootstrap-text-tab" class="bootstrap-tab-content pro-tabpane" style="display: none;">
+            <div class="pro-row">
+              <label for="bootstrapFontSize">Font</label>
+              <span class="pro-inline">
+                <span class="pro-num-wrap"><input type="number" id="bootstrapFontSize" min="6" max="24" step="1" value="8" class="pro-num pro-num-sm"><span class="pro-unit">px</span></span>
+                <input type="color" id="bootstrapFontColor" value="#374151" class="pro-color" aria-label="Font colour">
+                <button type="button" id="bootstrapBold" class="pro-toggle-btn" aria-pressed="false" aria-label="Bold"><b>B</b></button>
+                <button type="button" id="bootstrapItalic" class="pro-toggle-btn" aria-pressed="false" aria-label="Italic"><i>I</i></button>
+              </span>
             </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Position on branch:</label>
-              <input type="number" id="bootstrapTextPosition" min="0" max="100" step="1" value="50" class="value-box">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Vertical shift:</label>
-              <input type="number" id="bootstrapVerticalShift" min="-50" max="50" step="1" value="0" class="value-box">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Scale by factor:</label>
-              <input type="number" id="bootstrapScaleFactor" min="0.1" max="2" step="0.1" value="1" class="value-box">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Round to:</label>
-              <input type="number" id="bootstrapRounding" min="0" max="5" step="1" value="0" class="value-box">
-            </div>
-            <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:8px">
-              <input type="checkbox" id="bootstrapScientific">
-              <label style="font-size: 12px; color: var(--muted);">Scientific notation</label>
-            </div>
-            <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:8px">
-              <input type="checkbox" id="bootstrapPercent">
-              <label style="font-size: 12px; color: var(--muted);">Display as %</label>
-            </div>
-            <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:8px">
-              <input type="checkbox" id="bootstrapShowAll">
-              <label style="font-size: 12px; color: var(--muted);">Show all values</label>
-            </div>
+            <div class="pro-row"><label for="bootstrapTextPosition">Position on branch</label><span class="pro-num-wrap"><input type="number" id="bootstrapTextPosition" min="0" max="100" step="1" value="50" class="pro-num"><span class="pro-unit">%</span></span></div>
+            <div class="pro-row"><label for="bootstrapVerticalShift">Vertical shift</label><span class="pro-num-wrap"><input type="number" id="bootstrapVerticalShift" min="-50" max="50" step="1" value="0" class="pro-num"><span class="pro-unit">px</span></span></div>
+            <div class="pro-row"><label for="bootstrapScaleFactor">Scale by factor</label><span class="pro-num-wrap"><input type="number" id="bootstrapScaleFactor" min="0.1" max="2" step="0.1" value="1" class="pro-num"><span class="pro-unit">×</span></span></div>
+            <div class="pro-row"><label for="bootstrapRounding">Decimal places</label><span class="pro-num-wrap"><input type="number" id="bootstrapRounding" min="0" max="5" step="1" value="0" class="pro-num"></span></div>
+            <label class="pro-row"><span>Scientific notation</span><input type="checkbox" id="bootstrapScientific" class="pro-switch"></label>
+            <label class="pro-row"><span>Display as %</span><input type="checkbox" id="bootstrapPercent" class="pro-switch"></label>
+            <label class="pro-row"><span>Show all values</span><input type="checkbox" id="bootstrapShowAll" class="pro-switch"></label>
           </div>
 
-          <!-- Color Tab Content -->
-          <div id="bootstrap-color-tab" class="bootstrap-tab-content" style="display: none;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Minimum:</label>
-              <input type="color" id="bootstrapColorMin" value="#0000ff" class="value-box" style="width: 40px; height: 20px;">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <label style="font-size: 12px; color: var(--muted);">Midpoint:</label>
-              <div style="display: flex; align-items: center; gap: 4px;">
-                <button type="button" id="bootstrapColorMidToggle" class="value-box" style="width: 30px; height: 20px; padding: 0; font-size: 10px;">Off</button>
-                <input type="color" id="bootstrapColorMid" value="#ffffff" class="value-box" style="width: 40px; height: 20px;">
-              </div>
-            </div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0;">
-              <label style="font-size: 12px; color: var(--muted);">Maximum:</label>
-              <input type="color" id="bootstrapColorMax" value="#8b0000" class="value-box" style="width: 40px; height: 20px;">
-            </div>
+          <div id="bootstrap-color-tab" class="bootstrap-tab-content pro-tabpane" style="display: none;">
+            <div class="pro-row"><label for="bootstrapColorMin">Minimum</label><input type="color" id="bootstrapColorMin" value="#0000ff" class="pro-color"></div>
+            <label class="pro-row"><span>Use a midpoint colour</span><input type="checkbox" id="bootstrapColorMidToggle" class="pro-switch"></label>
+            <div class="pro-row pro-sub"><label for="bootstrapColorMid">Midpoint</label><input type="color" id="bootstrapColorMid" value="#ffffff" class="pro-color"></div>
+            <div class="pro-row"><label for="bootstrapColorMax">Maximum</label><input type="color" id="bootstrapColorMax" value="#8b0000" class="pro-color"></div>
           </div>
         </div>
       </details>
+
       <details id="appearanceSection">
         <summary>Appearance</summary>
-        <div class="section">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 12px; color: var(--muted);">Branch width (px):</label>
-            <input type="number" id="branchStrokeWidth" min="0.1" step="0.1" value="1" class="value-box">
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <label style="font-size: 12px; color: var(--muted);">Data margin (%):</label>
-            <input type="number" id="dataMargin" min="1" max="20" step="1" value="5" class="value-box">
-          </div>
+        <div class="section pro-group">
+          <div class="pro-row"><label for="branchStrokeWidth">Branch width</label><span class="pro-num-wrap"><input type="number" id="branchStrokeWidth" min="0.1" step="0.1" value="1" class="pro-num"><span class="pro-unit">px</span></span></div>
+          <div class="pro-row"><label for="dataMargin">Data margin</label><span class="pro-num-wrap"><input type="number" id="dataMargin" min="1" max="20" step="1" value="5" class="pro-num"><span class="pro-unit">%</span></span></div>
         </div>
       </details>
 
@@ -567,7 +447,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610170325"></script>
+      <script src="js/drag-fastpath.js?v=202610170339"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -790,9 +670,9 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610170325"></script>
-<script src="js/app-pro.js?v=1"></script>
-<script src="js/pro-ui.js?v=202610170325"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610170339"></script>
+<script src="js/app-pro.js?v=202610170339"></script>
+<script src="js/pro-ui.js?v=202610170339"></script>
 <script>
   // Opt-in debug monitor: open index-pro.html?debug to enable it
   (function () {
