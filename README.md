@@ -6,8 +6,9 @@ display and SVG export. Everything runs in the browser; no data is uploaded.
 
 ## How to run
 
-There are two versions of the interface. Both use the same features and the
-same application code (`js/app.js`); only the layout and look differ:
+There are two versions of the interface with the same features. The classic
+page uses `js/app.js`; the new page uses its own copy, `js/app-pro.js`, so its
+interface can be redesigned without affecting the classic version:
 
 - **`index-pro.html`**: the new application-style interface (full-window
   workspace, top bar, Layers/Style side panel, legend panel, status bar).
@@ -45,7 +46,8 @@ css/
   pro.css                  styles for the new interface (index-pro.html only)
 js/
   vendor/d3.v7.9.0.min.js  D3 library, bundled locally (pinned version)
-  app.js                   the application (both versions)
+  app.js                   the application (classic version)
+  app-pro.js               the application, new-version copy (redesigned UI)
   drag-fastpath.js         splitter-drag flag helper (runs before app.js)
   pro-ui.js                layout logic for the new interface (index-pro.html only)
   shimmer.js               Clade Tools accent bar animation (classic version)
