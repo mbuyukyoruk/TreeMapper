@@ -3166,6 +3166,40 @@ function validateChartFormat(text) {
   };
 }
 
+// NEXUS tree files (#NEXUS ... BEGIN TREES; [TRANSLATE ...;] TREE name = (...);)
+// are converted to a plain Newick string: comments in [...] are removed, the
+// first tree is taken, and numbered tip labels are replaced through the
+// TRANSLATE table. Anything that is not NEXUS is returned unchanged.
+function nexusToNewick(text){
+  if (!/^\s*#nexus/i.test(text)) return text;
+  const clean = text.replace(/\[[^\]]*\]/g, '');                    // [comments] / [&R]
+  const block = /begin\s+trees\s*;([\s\S]*?)\bend(?:block)?\s*;/i.exec(clean);
+  if (!block) throw new Error('NEXUS file has no TREES block');
+  const body = block[1];
+  const unquote = (v) => v.trim().replace(/^'(.*)'$/s, '$1').replace(/''/g, "'");
+  const translate = new Map();
+  const tr = /\btranslate\b([\s\S]*?);/i.exec(body);
+  if (tr) {
+    tr[1].split(',').forEach(pair => {
+      const m = /^\s*(\S+)\s+([\s\S]+?)\s*$/.exec(pair);
+      if (m) translate.set(m[1], unquote(m[2]));
+    });
+  }
+  const treeStmt = /\btree\s+[^=]+=\s*([\s\S]*?;)/i.exec(body);
+  if (!treeStmt) throw new Error('NEXUS TREES block has no tree');
+  let nwk = treeStmt[1].trim();
+  // quoted Newick labels: keep the text, drop the quotes
+  nwk = nwk.replace(/'([^']*)'/g, (_, t) => t);
+  if (translate.size) {
+    // tip labels follow "(" or "," and end at ":", ",", ")" or ";"
+    nwk = nwk.replace(/([(,]\s*)([^(),:;]+?)(\s*[:,);])/g, (m, a, name, b) => {
+      const t = translate.get(name.trim());
+      return t !== undefined ? a + t + b : m;
+    });
+  }
+  return nwk;
+}
+
 function parseNewick(newick){
   newick = newick.trim();
   if(!newick.endsWith(';')) newick += ';';
@@ -15442,7 +15476,9 @@ async function handleTreeFile(f){
     }
     
     // Time file reading
-    const txt = await readFileAsText(f);
+    let txt = await readFileAsText(f);
+    try { txt = nexusToNewick(txt); }
+    catch (e) { alert('Could not read this NEXUS file: ' + e.message); setStatus('Load a Newick tree'); return; }
     
     if (isLargeFile) {
       setStatus('Validating Newick format...');
@@ -23820,11 +23856,15 @@ if(window.ResizeObserver && canvasEl){
 }
 window.addEventListener('resize', scheduleResizeRedraw);
 
-$('#exportSVG').addEventListener('click', ()=>{
+// Builds the standalone SVG document used by every export (SVG, PNG, PDF).
+function buildExportSvgSource(){
   const svgEl = document.getElementById('svg');
   
   // Create a clone of the SVG for export
   const svgClone = svgEl.cloneNode(true);
+  // the pinned header of the expanded view goes back to its normal place
+  svgClone.querySelectorAll('.pro-sticky-header').forEach(n => n.removeAttribute('transform'));
+  svgClone.querySelectorAll('.pro-sticky-header-bg').forEach(n => n.remove());
   
   // Helper function to resolve CSS variables
   const resolveCSSVariable = (value) => {
@@ -24455,6 +24495,10 @@ $('#exportSVG').addEventListener('click', ()=>{
   svgClone.setAttribute('width', viewBoxWidth);
   svgClone.setAttribute('height', viewBoxHeight);
   
+  // Text had no font in exports, so viewers fell back to a serif font (Times);
+  // use a portable sans-serif like the screen (elements that set their own font keep it)
+  if (!svgClone.getAttribute('font-family')) svgClone.setAttribute('font-family', 'Helvetica, Arial, sans-serif');
+
   // 17. Add xmlns if missing
   if (!svgClone.getAttribute('xmlns')) {
     svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
@@ -24468,6 +24512,12 @@ $('#exportSVG').addEventListener('click', ()=>{
   if (!src.match(/^<svg[^>]+xmlns=/)) {
     src = src.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
   }
+  return { src, width: viewBoxWidth, height: viewBoxHeight };
+}
+window.buildExportSvgSource = buildExportSvgSource;
+
+$('#exportSVG').addEventListener('click', ()=>{
+  const src = buildExportSvgSource().src;
   
   // Ask user for filename
   let filename = prompt('Enter filename for SVG export:', 'tree.svg');
