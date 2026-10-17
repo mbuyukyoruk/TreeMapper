@@ -204,7 +204,11 @@ const zoom = d3.zoom()
     if(!allowPan && (ev.type === 'mousedown' || ev.type === 'touchstart' || ev.type === 'pointerdown')) return false;
     return true;
   })
-  .on('start', ()=>{
+  .on('start', (ev)=>{
+    // Programmatic moves (Fit, zoom buttons, wheel scrolling) have no source
+    // event: skip the cursor change there, because changing the cursor on the
+    // SVG restyles every element of the tree.
+    if (!ev || !ev.sourceEvent) return;
     // JS cursor change instead of CSS :active (avoids expensive style recalc)
     const svgNode = svg.node();
     if(svgNode && !svgNode.classList.contains('no-pan')) svgNode.style.cursor = 'grabbing';
@@ -215,7 +219,8 @@ const zoom = d3.zoom()
     try{ updateMetaAddButtonY(); }catch(e){}
     try{ updateSplitterLineHeights(); }catch(e){}
   })
-  .on('end', ()=>{
+  .on('end', (ev)=>{
+    if (!ev || !ev.sourceEvent) return;
     const svgNode = svg.node();
     if(svgNode) svgNode.style.cursor = '';
   });
@@ -258,26 +263,39 @@ function panBounds(){
   }
   return panBoundsCache;
 }
-// screen-pixel pan, limited so the tree cannot be pushed out of view
-function panTreeBy(dx, dy){
+// Screen-pixel pan, limited so the tree cannot be pushed out of view.
+// Moving the tree re-renders every element, which on a large tree takes far
+// longer than the gap between wheel/pointer events; applying each event
+// directly queued seconds of work and froze the page. Movements are therefore
+// added up and applied at most once per animation frame.
+let panPending = null, panFrame = 0;
+function applyPendingPan(){
+  panFrame = 0;
+  const p = panPending; panPending = null;
+  if (!p) return;
   const node = svg.node();
   const t = d3.zoomTransform(node);
   const b = panBounds();
   const W = node.clientWidth, H = node.clientHeight, pad = 40;
-  let nx = t.x + dx, ny = t.y + dy;
+  let nx = t.x + p.dx, ny = t.y + p.dy;
   if (b) {
     const clamp = (v, lo, hi) => lo > hi ? Math.min(Math.max(v, hi), lo) : Math.min(Math.max(v, lo), hi);
     nx = clamp(nx, W - pad - b.x1 * t.k, pad - b.x0 * t.k);
     ny = clamp(ny, H - pad - b.y1 * t.k, pad - b.y0 * t.k);
   }
-  if (nx === t.x && ny === t.y) return false;
+  if (nx === t.x && ny === t.y) return;
   svg.call(zoom.transform, d3.zoomIdentity.translate(nx, ny).scale(t.k));
-  return true;
+}
+function panTreeBy(dx, dy){
+  if (!panPending) panPending = { dx: 0, dy: 0 };
+  panPending.dx += dx; panPending.dy += dy;
+  if (!panFrame) panFrame = requestAnimationFrame(applyPendingPan);
 }
 (function setupTreePanning(){
   const node = svg.node();
   if (!node) return;
   let drag = null, suppressClick = false;
+  const pinch = { factor: 1, at: [0, 0], frame: 0 };
   node.addEventListener('pointerdown', (e) => {
     if (!allowPan || e.button !== 0) return;
     if (e.target.closest && e.target.closest('.svg-splitter-hit-area, .radial-splitter-hit-area, .radial-splitter-handle, .splitter')) return;
@@ -288,8 +306,7 @@ function panTreeBy(dx, dy){
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (!drag.moved) {
       if (Math.abs(dx) + Math.abs(dy) < 4) return;   // small moves are still clicks
-      drag.moved = true;
-      node.style.cursor = 'grabbing';
+      drag.moved = true;   // (no cursor change: restyling the SVG costs a full style pass)
     }
     drag.x = e.clientX; drag.y = e.clientY;
     panTreeBy(dx, dy);
@@ -298,7 +315,6 @@ function panTreeBy(dx, dy){
     if (!drag || (e.pointerId !== undefined && e.pointerId !== drag.id)) return;
     if (drag.moved) suppressClick = true;
     drag = null;
-    node.style.cursor = '';
   };
   window.addEventListener('pointerup', endDrag);
   window.addEventListener('pointercancel', endDrag);
@@ -313,8 +329,13 @@ function panTreeBy(dx, dy){
     if (e.ctrlKey || e.metaKey) {
       // pinch-zoom on a trackpad arrives as ctrl+wheel
       const r = node.getBoundingClientRect();
-      const factor = Math.pow(2, -e.deltaY * unit * 0.002);
-      svg.call(zoom.scaleBy, factor, [e.clientX - r.left, e.clientY - r.top]);
+      pinch.factor *= Math.pow(2, -e.deltaY * unit * 0.002);
+      pinch.at = [e.clientX - r.left, e.clientY - r.top];
+      if (!pinch.frame) pinch.frame = requestAnimationFrame(() => {
+        pinch.frame = 0;
+        const f = pinch.factor; pinch.factor = 1;
+        svg.call(zoom.scaleBy, f, pinch.at);
+      });
       return;
     }
     let dx = e.deltaX * unit, dy = e.deltaY * unit;
@@ -2698,7 +2719,7 @@ window.radialPanelSystem = {
 // END RADIAL PANEL SPLITTER SYSTEM
 // ============================================================
 
-function toggleLabelsPanelVisibility(hideLabels) {
+function toggleLabelsPanelVisibility(hideLabels, fromDrawTree) {
   // Reset font cache since label panel visibility affects available space for truncation
   if (typeof resetFontTruncationCache === 'function') {
     resetFontTruncationCache();
@@ -2710,6 +2731,7 @@ function toggleLabelsPanelVisibility(hideLabels) {
     if (window.radialPanelSystem) {
       window.radialPanelSystem.sync();
     }
+    if (fromDrawTree) return;   // already inside a redraw
     drawTree();
     console.log('drawTree in toggleLabelsPanelVisibility');
     updateMetadataLegend(); // Update legend visibility when labels are toggled
@@ -2727,9 +2749,9 @@ function toggleLabelsPanelVisibility(hideLabels) {
   
   normalizeWidths();
   // refreshAll();
-  // Labels that were hidden when the tree was drawn (large trees start that
-  // way) don't exist yet, so widening the panel alone shows nothing: redraw.
-  if (!hideLabels && root && !g.select('text.label').node()) drawTree();
+  // Resizing the label column alone neither removes drawn labels nor creates
+  // missing ones (large trees start without labels), so redraw either way.
+  if (root && !fromDrawTree) drawTree();
   updateMetadataLegend(); // Update legend visibility when labels are toggled
 }
 
@@ -5467,7 +5489,7 @@ function drawTree(){
       
       // Update panel visibility
       if (typeof toggleLabelsPanelVisibility === 'function') {
-        toggleLabelsPanelVisibility(true);
+        toggleLabelsPanelVisibility(true, true);   // we are already drawing
       }
     }
   }

@@ -646,6 +646,14 @@ html.pro .pro-toggle:hover { background: var(--pro-hover); color: var(--text); }
 html.pro .pro-toggle.is-on { color: var(--accent); background: var(--pro-accent-soft); border-color: var(--pro-accent-border); }  /* class set by pro-ui.js */
 html.pro .pro-toggle:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* Copy rows (selected genes) */
+html.pro .pro-canvas-toolbar .pro-copy-btn:not([style*="none"]) { display: inline-flex !important; }  /* app.js shows it with display:flex */
+html.pro .pro-canvas-toolbar .pro-copy-btn {
+  height: 32px; border-radius: 10px; border-color: var(--pro-accent-border); background: var(--pro-accent-soft); color: var(--accent); font-weight: 600;
+}
+html.pro .pro-canvas-toolbar .pro-copy-btn:hover { background: rgba(var(--accent-rgb), .18); color: var(--accent); }
+html.pro .pro-canvas-toolbar .pro-copy-btn svg { width: 14px; height: 14px; }
+
 /* Reset group */
 html.pro .pro-reset { display: flex; align-items: center; gap: 6px; flex: none; }
 html.pro .pro-reset[hidden], html.pro .pro-reset-sources, html.pro .pro-reset [hidden] { display: none !important; }
@@ -741,12 +749,10 @@ html.pro #cladeToolbar .clade-toolbar-btn.clear-btn { color: var(--pro-hud-muted
 html.pro #cladeToolbar #dropNode span,
 html.pro #cladeToolbar #isolateNodes span,
 html.pro #cladeToolbar #isolateLUCA span,
-html.pro #cladeToolbar #copySelectedFeatures span,
 html.pro #cladeToolbar #clearCladeSelection span { display: none; }
 html.pro #cladeToolbar #dropNode,
 html.pro #cladeToolbar #isolateNodes,
 html.pro #cladeToolbar #isolateLUCA,
-html.pro #cladeToolbar #copySelectedFeatures,
 html.pro #cladeToolbar #clearCladeSelection { width: 30px; padding: 0; justify-content: center; }
 html.pro #cladeToolbar #dropNode:hover { background: rgba(248, 113, 113, .16); }
 html.pro #cladeToolbar #dropNode:hover svg { color: #FCA5A5; }

@@ -288,6 +288,18 @@
     }
   }
 
+  // --------------------------------------------- Copy rows (selected genes)
+  // The button lives in the canvas toolbar so it is reachable without a node
+  // selection; app.js shows/hides it and puts the gene count in its title.
+  var copyBtn = $('copySelectedFeatures'), copyCount = $('proCopyCount');
+  function syncCopyCount() {
+    if (!copyBtn || !copyCount) return;
+    var m = /for (\d+) selected/.exec(copyBtn.title || '');
+    copyCount.textContent = m ? m[1] : '';
+    copyCount.hidden = !m || m[1] === '1';
+  }
+  if (copyBtn) { new MutationObserver(syncCopyCount).observe(copyBtn, { attributes: true, attributeFilter: ['title', 'style'] }); syncCopyCount(); }
+
   // ------------------------------------------- Colours & highlights list
   // Every colour the user has applied (to search matches or to selected
   // clades) and every clade background, newest first, each with its own
@@ -435,7 +447,8 @@
     if (!zoomEl || !zoomable) return;
     var m = /scale\(\s*([-\d.e]+)/.exec(zoomable.getAttribute('transform') || '');
     var k = m ? parseFloat(m[1]) : 1;
-    zoomEl.textContent = Math.round(k * 100) + '%';
+    var txt = Math.round(k * 100) + '%';
+    if (zoomEl.textContent !== txt) zoomEl.textContent = txt;   // scrolling changes only the position
   }
   if (zoomable) {
     // redraws replace #zoomable's children; zooming changes its transform
