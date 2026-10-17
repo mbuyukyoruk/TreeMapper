@@ -23,6 +23,7 @@ js/
   vendor/d3.v7.9.0.min.js  D3 library, bundled locally (pinned version)
   drag-fastpath.js         splitter-drag flag helper (runs before app.js)
   app.js                   the application
+  shimmer.js               Clade Tools accent bar animation
   debug-monitor.js         optional performance/click debugger (see below)
 ```
 
@@ -48,9 +49,10 @@ on a 120-tip and a 1500-tip tree.
    during every redraw. Values are re-read when the theme changes.
 5. **Faster search matching** (also used when loading clade data): text is
    lower-cased once per value instead of once per search term.
-6. **Clade Tools shimmer bar animates on the GPU** (`transform` instead of
-   `background-position`). It looks the same but no longer repaints the page
-   every frame.
+6. **Clade Tools accent bar no longer repaints the page every frame.** It moves
+   the same way as before and, as before, pauses while the app is busy, but it
+   now slides a GPU layer (`js/shimmer.js`) instead of animating
+   `background-position`. Idle CPU use on a large tree is about 5× lower.
 7. **The tree SVG gets its own compositing layer** (`will-change: transform`).
    This removed ~1.2 s per repaint on large trees.
 8. **Theme preference storage can't crash the app.** If the browser blocks

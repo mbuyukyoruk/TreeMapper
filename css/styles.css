@@ -512,10 +512,11 @@ input:checked + .slider:before{ content:"🌙"; transform:translateX(26px); back
   border: var(--chip-border);
 }
 
-/* PERF: the shimmer used to animate background-position, which forces a repaint on
-   every frame (continuous CPU use, worse with large trees). The strip is now twice the
-   toolbar width and slides with transform, which runs on the GPU compositor. The visual
-   result is the same: a 200%-wide gradient moving left by one toolbar width and back. */
+/* PERF: the shimmer used to be a CSS animation of background-position, which repaints
+   the page every frame (continuous CPU use, worse with large trees). The strip is now
+   twice the toolbar width on its own GPU layer, and js/shimmer.js slides it with
+   transform from requestAnimationFrame: no repaint, and, like the original, it pauses
+   while the app is busy. Same motion: left by one toolbar width and back every 3 s. */
 .clade-toolbar::before {
   content: '';
   position: absolute;
@@ -525,13 +526,15 @@ input:checked + .slider:before{ content:"🌙"; transform:translateX(26px); back
   height: 5px;
   background: linear-gradient(90deg, var(--accent), #667eea, var(--accent));
   background-size: 100% 100%;
-  animation: shimmer 3s ease-in-out infinite;
+  transform: translateX(var(--shimmer-x));
   will-change: transform;
 }
 
-@keyframes shimmer {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(-50%); }
+/* Non-inherited, so updating it on the toolbar restyles only the toolbar and its bar */
+@property --shimmer-x {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
 }
 
 .clade-toolbar-header {
@@ -2015,4 +2018,3 @@ summary[id^="cladeSummary"] button[id^="deleteclade"]{
 }
 
 /* Drag handle at the far right; show grabbing cursor while dragging */
-
