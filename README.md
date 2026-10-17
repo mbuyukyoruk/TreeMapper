@@ -30,6 +30,19 @@ The earlier classic-layout interface is kept in git history under the tag
   with Rotate, Collapse, Cartoon, Colour, Highlight, Re-root and more.
 - **Legend panel** on the right (can be hidden), **status bar** at the bottom.
 - You can drop a Newick file onto the canvas to open it.
+- **Undo / redo** (toolbar arrows, ⌘Z / ⇧⌘Z) for rotate, collapse, cartoon,
+  drop, isolate, colours, highlights and the Reset-menu actions. Re-rooting
+  or loading a new tree starts a fresh history.
+- **Export** menu: SVG, PNG (2× or 4×, about 300 dpi) and PDF (vector, via
+  the print dialog's "Save as PDF").
+- **Tree files:** Newick and NEXUS (TRANSLATE tables are applied).
+- **Expanded view:** scroll with the mouse wheel or trackpad (Shift for
+  sideways, pinch or ⌘-scroll to zoom); the scale bar and data axes stay
+  pinned at the top.
+- **Keyboard shortcuts:** press `?` (or *Shortcuts* in the status bar).
+- **Display settings are remembered** in the browser (Style tab → *Restore
+  default display settings* to reset). Tree-specific settings such as
+  rooting, expansion and data columns are not remembered.
 
 ## Folder layout
 
@@ -42,7 +55,8 @@ css/
 js/
   vendor/d3.v7.9.0.min.js  D3 library, bundled locally (pinned version)
   app.js                   the application
-  pro-ui.js                layout logic (panels, Reset menu, colour pop-up, ...)
+  pro-ui.js                layout logic (panels, Reset/Export menus, colour pop-up, shortcuts, ...)
+  undo.js                  undo / redo history
   drag-fastpath.js         splitter-drag flag helper (runs before app.js)
   bench.js                 built-in speed test (index.html?bench)
   debug-monitor.js         optional performance/click debugger (index.html?debug)

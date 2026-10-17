@@ -119,7 +119,7 @@
   document.addEventListener('mousedown', function (e) {
     if (openPop && !openPop.el.contains(e.target) && !(openPop.anchor && openPop.anchor.contains(e.target))) closePop();
   }, true);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && openPop) { var a = openPop.anchor; closePop(); if (a && a.focus) a.focus(); } });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && openPop) { e.preventDefault(); var a = openPop.anchor; closePop(); if (a && a.focus) a.focus(); } });
   window.addEventListener('resize', closePop);
 
   // ------------------------------------------------- unified colour pop-up
@@ -369,6 +369,7 @@
   }
   function cladeTs(e) { return +e.key.split('_')[1]; }
   function editEntry(e, colour) {   // colour === null removes the entry
+    var done = window.tmUndo ? tmUndo.begin(colour === null ? 'remove colour' : 'recolour', 'anno') : function () {};
     if (e.kind === 'bg') {
       if (colour === null) cladeBackgroundColors.delete(e.node); else cladeBackgroundColors.set(e.node, colour);
     } else {
@@ -384,6 +385,7 @@
       if (colour === null && e.kind === 'path') call(function () { window.pathLeafNames.delete(e.key); });
     }
     afterColourChange();
+    done();
   }
   if (annoList) {
     annoList.addEventListener('click', function (ev) {
@@ -440,6 +442,55 @@
     if (counts) counts.textContent = plural(tips, 'tip') + ' · ' + plural(nodes, 'node');
   }
 
+  // ------------------------------------------------- pinned header (expanded)
+  // In the expanded view the scale bar, dataframe/chart axes and heatmap
+  // titles sit above the first row and would scroll away with the tree.
+  // After each redraw they are gathered into one group that is shifted down
+  // just enough to stay at the top of the canvas while scrolling.
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var sticky = null;   // { g, bg, top }
+  function isRectLayout() { var b = $('btnRect'); return !b || b.classList.contains('active'); }
+  function buildStickyHeader() {
+    sticky = null;
+    var svgEl = $('svg');
+    if (!zoomable || !svgEl || svgEl.classList.contains('no-pan') || !isRectLayout()) return;
+    var vTop = window.currentVTop; if (!(vTop > 0)) return;
+    var ctm = zoomable.getScreenCTM(); if (!ctm || !ctm.d) return;
+    var k = ctm.d, header = [], contentTop = Infinity, headTop = Infinity;
+    for (var c = zoomable.firstElementChild; c; c = c.nextElementSibling) {
+      var cls = c.getAttribute('class') || '';
+      if (/svg-splitters|handles|right-gutter/.test(cls)) continue;
+      var r = c.getBoundingClientRect(); if (!r.height && !r.width) continue;
+      var top = (r.top - ctm.f) / k, bottom = (r.bottom - ctm.f) / k;
+      if (bottom <= vTop + 12 && top < vTop) { header.push(c); headTop = Math.min(headTop, top); }
+      else contentTop = Math.min(contentTop, top);
+    }
+    if (!header.length) return;
+    var g = document.createElementNS(SVGNS, 'g'); g.setAttribute('class', 'pro-sticky-header');
+    var bg = document.createElementNS(SVGNS, 'rect'); bg.setAttribute('class', 'pro-sticky-header-bg');
+    var bb = null; try { bb = zoomable.getBBox(); } catch (e) {}
+    var rectTop = headTop - 4, rectBottom = Math.min(contentTop - 1, vTop + 10);
+    bg.setAttribute('x', bb ? bb.x - 20 : -2000); bg.setAttribute('width', bb ? bb.width + 40 : 8000);
+    bg.setAttribute('y', rectTop); bg.setAttribute('height', Math.max(1, rectBottom - rectTop));
+    bg.setAttribute('fill', getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff');
+    bg.setAttribute('visibility', 'hidden');
+    g.appendChild(bg);
+    header.forEach(function (h) { g.appendChild(h); });
+    zoomable.appendChild(g);
+    sticky = { g: g, bg: bg, top: rectTop, dy: 0 };
+    updateStickyHeader();
+  }
+  function updateStickyHeader() {
+    if (!sticky || !sticky.g.isConnected) return;
+    var m = /translate\(\s*([-\d.e]+)[ ,]+([-\d.e]+)\)\s*scale\(\s*([-\d.e]+)/.exec(zoomable.getAttribute('transform') || '');
+    var ty = m ? parseFloat(m[2]) : 0, k = m ? parseFloat(m[3]) : 1;
+    var dy = Math.max(0, -ty / k - sticky.top);   // keep the whole header on screen
+    if (dy === sticky.dy) return;
+    sticky.dy = dy;
+    if (dy) sticky.g.setAttribute('transform', 'translate(0,' + dy + ')'); else sticky.g.removeAttribute('transform');
+    sticky.bg.setAttribute('visibility', dy ? 'visible' : 'hidden');
+  }
+
   // ------------------------------------------------------------ zoom value
   var zoomEl = $('proZoom');
   var zoomable = $('zoomable');
@@ -452,14 +503,18 @@
   }
   if (zoomable) {
     // redraws replace #zoomable's children; zooming changes its transform
-    new MutationObserver(function (muts) {
+    var zoomObs = new MutationObserver(function (muts) {
       var redraw = false, zoom = false;
       for (var i = 0; i < muts.length; i++) {
-        if (muts[i].type === 'childList') redraw = true; else zoom = true;
+        if (muts[i].type !== 'childList') { zoom = true; continue; }
+        // our own pinned-header group being inserted is not a redraw
+        var own = muts[i].addedNodes.length === 1 && muts[i].addedNodes[0].getAttribute && muts[i].addedNodes[0].getAttribute('class') === 'pro-sticky-header';
+        if (!own && (muts[i].addedNodes.length || muts[i].removedNodes.length)) redraw = true;
       }
-      if (redraw) { updateDoc(); refreshAnno(); }
-      if (zoom || redraw) updateZoom();
-    }).observe(zoomable, { childList: true, attributes: true, attributeFilter: ['transform'] });
+      if (redraw) { updateDoc(); refreshAnno(); buildStickyHeader(); zoomObs.takeRecords(); if (window.tmUndo) tmUndo.refresh(); }   // drop the records of our own regrouping
+      if (zoom || redraw) { updateZoom(); updateStickyHeader(); }
+    });
+    zoomObs.observe(zoomable, { childList: true, attributes: true, attributeFilter: ['transform'] });
   }
 
   // ---------------------------------------------------------- status text
@@ -475,12 +530,217 @@
     };
   }
 
-  // "/" focuses the search box (unless already typing somewhere)
+  // ------------------------------------------------------------ undo / redo
+  var undoBtn = $('proUndo'), redoBtn = $('proRedo');
+  function syncUndo() {
+    if (!window.tmUndo || !undoBtn) return;
+    var u = tmUndo.canUndo(), r = tmUndo.canRedo();
+    undoBtn.disabled = !u; redoBtn.disabled = !r;
+    undoBtn.title = u ? 'Undo ' + tmUndo.undoLabel() + ' (⌘Z)' : 'Undo (⌘Z)';
+    redoBtn.title = r ? 'Redo ' + tmUndo.redoLabel() + ' (⇧⌘Z)' : 'Redo (⇧⌘Z)';
+  }
+  if (window.tmUndo && undoBtn) {
+    tmUndo.onChange(syncUndo);
+    undoBtn.addEventListener('click', function () { tmUndo.undo(); });
+    redoBtn.addEventListener('click', function () { tmUndo.redo(); });
+    syncUndo();
+  }
+
+  // ----------------------------------------------------------------- export
+  var exportBtn = $('proExportBtn'), exportMenu = $('proExportMenu');
+  function askName(def) {
+    var n = prompt('File name:', def);
+    if (n === null) return null;
+    n = n.trim() || def;
+    var ext = def.slice(def.lastIndexOf('.'));
+    return n.toLowerCase().endsWith(ext) ? n : n + ext;
+  }
+  function download(blob, name) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+  }
+  function exportPng(scale) {
+    var out; try { out = window.buildExportSvgSource(); } catch (e) { alert('Export failed: ' + e.message); return; }
+    var name = askName('tree.png'); if (!name) return;
+    // browsers limit canvas size; lower the scale for very large trees
+    var maxSide = 16000, maxArea = 120e6, w = out.width, h = out.height;
+    var fit = Math.min(scale, maxSide / w, maxSide / h, Math.sqrt(maxArea / (w * h)));
+    if (fit < scale) setStatus('Tree is very large: PNG made at ' + fit.toFixed(2) + '× instead of ' + scale + '×');
+    var img = new Image();
+    img.onload = function () {
+      var c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w * fit)); c.height = Math.max(1, Math.round(h * fit));
+      var ctx = c.getContext('2d');
+      ctx.fillStyle = document.documentElement.getAttribute('data-theme') === 'dark'
+        ? getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#0F1419' : '#ffffff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(function (blob) {
+        if (!blob) { alert('PNG export failed (the image may be too large for this browser).'); return; }
+        download(blob, name);
+        setStatus('Exported ' + name + ' (' + c.width + ' × ' + c.height + ' px)');
+      }, 'image/png');
+    };
+    img.onerror = function () { alert('PNG export failed: the browser could not render the tree image.'); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(out.src);
+  }
+  function exportPdf() {
+    var out; try { out = window.buildExportSvgSource(); } catch (e) { alert('Export failed: ' + e.message); return; }
+    // one page the size of the tree (vector); browsers that ignore custom page
+    // sizes fit it to the paper size chosen in the print dialog
+    var w = out.width / 96, h = out.height / 96, big = Math.max(w, h);
+    if (big > 200) { w *= 200 / big; h *= 200 / big; }
+    var frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    document.body.appendChild(frame);
+    var doc = frame.contentDocument;
+    doc.open();
+    doc.write('<!doctype html><html><head><title>TreeMapper tree</title><style>@page{size:' + w.toFixed(2) + 'in ' + h.toFixed(2) +
+      'in;margin:0}html,body{margin:0;padding:0}svg{display:block;width:100%;height:auto;page-break-inside:avoid}</style></head><body>' +
+      out.src + '</body></html>');
+    doc.close();
+    setTimeout(function () {
+      try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { alert('Could not open the print dialog: ' + e.message); }
+      setTimeout(function () { frame.remove(); }, 60000);
+    }, 250);
+    setStatus('Choose "Save as PDF" in the print dialog');
+  }
+  if (exportBtn && exportMenu) {
+    exportBtn.addEventListener('click', function () {
+      if (openPop && openPop.el === exportMenu) { closePop(); return; }
+      closePop();
+      exportMenu.hidden = false; place(exportMenu, exportBtn, 'right');
+      exportBtn.setAttribute('aria-expanded', 'true');
+      openPop = { el: exportMenu, anchor: exportBtn, close: function () { exportMenu.hidden = true; exportBtn.setAttribute('aria-expanded', 'false'); } };
+      var f = exportMenu.querySelector('.pro-menu-item'); if (f) f.focus();
+    });
+    exportMenu.addEventListener('click', function (e) {
+      var b = e.target.closest('.pro-menu-item'); if (!b) return;
+      closePop();
+      var kind = b.getAttribute('data-export');
+      if (kind === 'svg') $('exportSVG').click();
+      else if (kind === 'png2') exportPng(2);
+      else if (kind === 'png4') exportPng(4);
+      else if (kind === 'pdf') exportPdf();
+    });
+    exportMenu.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      var its = Array.prototype.slice.call(exportMenu.querySelectorAll('.pro-menu-item')), i = its.indexOf(document.activeElement);
+      its[(i + (e.key === 'ArrowDown' ? 1 : its.length - 1)) % its.length].focus(); e.preventDefault();
+    });
+  }
+
+  // ------------------------------------------------------ keyboard shortcuts
+  var keysModal = $('proKeysModal');
+  function openKeys() { if (keysModal) { keysModal.hidden = false; var c = $('proKeysClose'); if (c) c.focus(); } }
+  function closeKeys() { if (keysModal && !keysModal.hidden) { keysModal.hidden = true; return true; } return false; }
+  if ($('proKeysBtn')) $('proKeysBtn').addEventListener('click', openKeys);
+  if ($('proKeysClose')) $('proKeysClose').addEventListener('click', closeKeys);
+  if (keysModal) keysModal.addEventListener('mousedown', function (e) { if (e.target === keysModal) closeKeys(); });
+  function typing(t) { var tag = t && t.tagName; return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable); }
+  function shown2(id) { var el = $(id); return !!el && el.offsetParent !== null && !el.disabled; }
   document.addEventListener('keydown', function (e) {
-    if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
-    var t = e.target, tag = t && t.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
-    var s = $('accessionSearch'); if (s) { e.preventDefault(); s.focus(); s.select(); }
+    var mod = e.metaKey || e.ctrlKey, k = e.key;
+    // undo / redo work everywhere except while editing a text field
+    if (mod && !e.altKey && (k === 'z' || k === 'Z' || k === 'y' || k === 'Y') && !typing(e.target) && window.tmUndo) {
+      var redoKey = k === 'y' || k === 'Y' || e.shiftKey;
+      if (redoKey ? tmUndo.redo() : tmUndo.undo()) e.preventDefault();
+      return;
+    }
+    if (mod || e.altKey || typing(e.target)) return;
+    if (k === 'Escape') {
+      if (e.defaultPrevented || closeKeys() || openPop || (modal && !modal.hidden)) return;   // a menu or dialog took this Escape
+      if (shown2('clearCladeSelection')) { $('clearCladeSelection').click(); e.preventDefault(); }
+      return;
+    }
+    if (!keysModal || !keysModal.hidden) return;
+    if (k === '/') { var s = $('accessionSearch'); if (s) { e.preventDefault(); s.focus(); s.select(); } }
+    else if (k === '?') { e.preventDefault(); openKeys(); }
+    else if (k === 'f' || k === 'F') { if ($('fit')) { e.preventDefault(); $('fit').click(); } }
+    else if (k === '+' || k === '=') { if ($('zoomIn')) { e.preventDefault(); $('zoomIn').click(); } }
+    else if (k === '-' || k === '_') { if ($('zoomOut')) { e.preventDefault(); $('zoomOut').click(); } }
+    else if (k === 'l' || k === 'L') { e.preventDefault(); setLegend(body.classList.contains('pro-legend-hidden')); }
+    else if (k === 'Delete' || k === 'Backspace') { if (shown2('dropNode')) { e.preventDefault(); $('dropNode').click(); } }
+  });
+
+  // --------------------------------------------- remember display settings
+  // Style-tab preferences are saved in this browser and applied again on the
+  // next visit. Settings that depend on the loaded tree or its data (rooting,
+  // layout/expansion, label hiding, ranges, data columns) are not remembered.
+  var SETTINGS_KEY = 'treemapper.settings.v1';
+  var REMEMBER = ['labelGuides', 'edgeStyle', 'orderEnable', 'orderDir', 'transformEnable', 'layoutMode', 'hideInternal',
+    'internalNodeShape', 'internalNodeSize', 'showTipNodes', 'tipNodeShape', 'tipNodeSize', 'hideScaleBar', 'coverScaleBar',
+    'scaleStrokeWidth', 'showBootstrap', 'bootstrapSymbolType', 'bootstrapFillColor', 'bootstrapBorderColor',
+    'bootstrapBorderWidth', 'bootstrapMinSize', 'bootstrapMaxSize', 'bootstrapPosition', 'bootstrapFontSize',
+    'bootstrapFontColor', 'bootstrapBold', 'bootstrapItalic', 'bootstrapTextPosition', 'bootstrapVerticalShift',
+    'bootstrapScaleFactor', 'bootstrapRounding', 'bootstrapScientific', 'bootstrapPercent', 'bootstrapShowAll',
+    'bootstrapColorMin', 'bootstrapColorMidToggle', 'bootstrapColorMid', 'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin'];
+  function readCtl(el) {
+    if (el.tagName === 'BUTTON') return el.getAttribute('aria-pressed') === 'true';
+    if (el.type === 'checkbox' || el.type === 'radio') return el.checked;
+    return el.value;
+  }
+  // the value written in the page itself (Firefox restores form values on
+  // reload, so the current value at start-up is not necessarily the default)
+  function defaultOf(el) {
+    if (el.tagName === 'BUTTON') return el.getAttribute('aria-pressed') === 'true';
+    if (el.type === 'checkbox' || el.type === 'radio') return el.defaultChecked;
+    if (el.tagName === 'SELECT') {
+      for (var i = 0; i < el.options.length; i++) if (el.options[i].defaultSelected) return el.options[i].value;
+      return el.options.length ? el.options[0].value : '';
+    }
+    return el.defaultValue;
+  }
+  function writeCtl(el, v) {
+    if (readCtl(el) === v) return false;
+    if (el.tagName === 'BUTTON') { el.click(); return true; }          // bold / italic toggles
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v; else el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+  var defaults = {}, applying = false, saveTimer = 0;
+  function loadSaved() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function saveSettings() {
+    if (applying) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      var out = {};
+      REMEMBER.forEach(function (id) { var el = $(id); if (el && readCtl(el) !== defaults[id]) out[id] = readCtl(el); });
+      var tab = document.querySelector('.bootstrap-tab.active');
+      if (tab) out.__supportTab = tab.getAttribute('data-tab');
+      if (body.classList.contains('pro-legend-hidden')) out.__legendHidden = true;
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(out)); } catch (e) {}
+    }, 300);
+  }
+  function applySettings(values) {
+    applying = true;
+    REMEMBER.forEach(function (id) {
+      var el = $(id); if (!el || !(id in values)) return;
+      try { writeCtl(el, values[id]); } catch (e) {}
+    });
+    if (values.__supportTab) { var t = document.querySelector('.bootstrap-tab[data-tab="' + values.__supportTab + '"]'); if (t && !t.classList.contains('active')) t.click(); }
+    setLegend(!values.__legendHidden);
+    applying = false;
+  }
+  REMEMBER.forEach(function (id) {
+    var el = $(id); if (!el) return;
+    defaults[id] = defaultOf(el);
+    el.addEventListener('change', saveSettings); el.addEventListener('input', saveSettings);
+    if (el.tagName === 'BUTTON') el.addEventListener('click', function () { setTimeout(saveSettings, 0); });
+  });
+  document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('.bootstrap-tab, #proLegendToggle, #proLegendClose')) setTimeout(saveSettings, 0); });
+  // apply after app.js has finished wiring its controls
+  setTimeout(function () { var saved = loadSaved(); if (Object.keys(saved).length) applySettings(saved); }, 0);
+  if ($('proResetSettings')) $('proResetSettings').addEventListener('click', function () {
+    var vals = {}; REMEMBER.forEach(function (id) { vals[id] = defaults[id]; });
+    vals.__supportTab = 'symbol';
+    applySettings(vals);
+    try { localStorage.removeItem(SETTINGS_KEY); } catch (e) {}
+    setStatus('Display settings restored to their defaults');
   });
 
   updateDoc();

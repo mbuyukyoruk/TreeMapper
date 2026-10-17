@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610171955" rel="stylesheet">
-<link href="css/styles.css?v=202610171955" rel="stylesheet">
-<link href="css/pro.css?v=202610171955" rel="stylesheet">
+<link href="css/tailwind.css?v=202610172019" rel="stylesheet">
+<link href="css/styles.css?v=202610172019" rel="stylesheet">
+<link href="css/pro.css?v=202610172019" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -30,7 +30,8 @@
       <button type="button" class="pro-btn" id="proOpenTree" title="Open a Newick tree file"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H7.5a2 2 0 0 0-1.9 1.4L3 19V7z"/><path d="M3 19l2.6-7.6A2 2 0 0 1 7.5 10H21l-2.7 7.7A2 2 0 0 1 16.4 19H3z"/></svg><span>Open tree</span></button>
       <button type="button" class="pro-btn" id="proGenerate" title="Build a tree from a gene presence/absence table"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-4 4-10 7"/></svg><span>Generate tree</span></button>
       <button type="button" class="pro-btn pro-btn-primary" id="addDataframe" title="Add a dataframe, heatmap, highlight, clade or chart layer"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add data</span></button>
-      <button type="button" class="pro-btn" id="exportSVG" title="Export the current view as SVG"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Export SVG</span></button>
+      <button type="button" class="pro-btn" id="proExportBtn" aria-haspopup="menu" aria-expanded="false" title="Export the tree as SVG, PNG or PDF"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Export</span><svg class="pro-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <button type="button" id="exportSVG" hidden>Export SVG</button>
       <span class="pro-vsep"></span>
       <label class="pro-icon-btn pro-theme-toggle" title="Toggle dark mode">
         <input type="checkbox" id="themeToggle" class="pro-sr-only" aria-label="Dark mode">
@@ -300,6 +301,9 @@
 
       <select id="trackWidth" style="display:none"><option value="0"></option></select>
       <select id="metaColumn" style="display:none"><option value=""></option></select>
+      <div class="pro-style-foot">
+        <button type="button" class="pro-link-btn" id="proResetSettings" title="Put every display setting back to its default (remembered settings are cleared)">Restore default display settings</button>
+      </div>
     </aside>
 
     <!-- ===== Centre: canvas ===== -->
@@ -308,6 +312,11 @@
         <div class="segbtn layout-toggle pro-seg" role="group" aria-label="Tree shape">
           <button type="button" id="btnRect" class="seg active" title="Rectangular" aria-pressed="true"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4M7 6v12M7 6h5M7 18h5M12 4v4M12 4h8M12 8h8M12 16h8"/></svg><span>Rectangular</span></button>
           <button type="button" id="btnRadial" class="seg" title="Circular" aria-pressed="false"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M12 10V5M12 14v5M10 12H5M14 12h5M12 4a8 8 0 0 1 8 8M4 12a8 8 0 0 1 8-8"/></svg><span>Circular</span></button>
+        </div>
+        <span class="pro-vsep"></span>
+        <div class="pro-undo" role="group" aria-label="History">
+          <button type="button" class="pro-icon-btn" id="proUndo" disabled title="Undo (⌘Z)" aria-label="Undo"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+          <button type="button" class="pro-icon-btn" id="proRedo" disabled title="Redo (⇧⌘Z)" aria-label="Redo"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
         </div>
         <span class="pro-vsep"></span>
         <button id="fit" class="pro-btn pro-btn-ghost" title="Fit the tree to the window"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Fit</span></button>
@@ -432,7 +441,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610171955"></script>
+      <script src="js/drag-fastpath.js?v=202610172019"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -491,8 +500,39 @@
     <span class="pro-spacer"></span>
     <span id="proCounts"></span>
     <span id="proZoomStatus"></span>
+    <button type="button" class="pro-status-link" id="proKeysBtn" title="Keyboard shortcuts (?)">Shortcuts</button>
     <span class="pro-credit">Created by <a href="https://github.com/mbuyukyoruk" target="_blank" rel="noopener">Murat Buyukyoruk</a></span>
   </footer>
+</div>
+
+<!-- Export menu and keyboard shortcuts dialog (pro-ui.js) -->
+<div class="pro-menu" id="proExportMenu" role="menu" hidden>
+  <button type="button" role="menuitem" class="pro-menu-item" data-export="svg"><span class="pro-menu-text"><b>SVG</b><small>Vector, editable in Illustrator / Inkscape</small></span></button>
+  <button type="button" role="menuitem" class="pro-menu-item" data-export="png2"><span class="pro-menu-text"><b>PNG</b><small>Image, 2&times; resolution</small></span></button>
+  <button type="button" role="menuitem" class="pro-menu-item" data-export="png4"><span class="pro-menu-text"><b>PNG, print quality</b><small>Image, 4&times; resolution (about 300 dpi)</small></span></button>
+  <button type="button" role="menuitem" class="pro-menu-item" data-export="pdf"><span class="pro-menu-text"><b>PDF</b><small>Vector, via the print dialog (Save as PDF)</small></span></button>
+</div>
+<div class="pro-modal" id="proKeysModal" hidden>
+  <div class="pro-modal-card pro-keys-card" role="dialog" aria-modal="true" aria-labelledby="proKeysTitle">
+    <div class="pro-panel-head">
+      <span class="pro-panel-title" id="proKeysTitle">Keyboard shortcuts</span>
+      <button type="button" class="pro-icon-btn pro-icon-btn-sm" id="proKeysClose" aria-label="Close"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="pro-modal-body">
+      <dl class="pro-keys">
+        <dt><kbd>⌘</kbd><kbd>Z</kbd></dt><dd>Undo</dd>
+        <dt><kbd>⇧</kbd><kbd>⌘</kbd><kbd>Z</kbd></dt><dd>Redo</dd>
+        <dt><kbd>/</kbd></dt><dd>Search accessions or genes</dd>
+        <dt><kbd>F</kbd></dt><dd>Fit the tree to the window</dd>
+        <dt><kbd>+</kbd> <kbd>&minus;</kbd></dt><dd>Zoom in / out</dd>
+        <dt><kbd>Delete</kbd></dt><dd>Drop the selected node(s)</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Close a menu, or clear the selection</dd>
+        <dt><kbd>L</kbd></dt><dd>Show or hide the legend panel</dd>
+        <dt><kbd>?</kbd></dt><dd>Show this list</dd>
+      </dl>
+      <p class="pro-keys-note">On Windows and Linux use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>. Scroll an expanded tree with the mouse wheel or trackpad; hold <kbd>⇧</kbd> to scroll sideways, pinch or <kbd>⌘</kbd>-scroll to zoom.</p>
+    </div>
+  </div>
 </div>
 
 <!-- Reset menu and unified colour pop-up (pro-ui.js) -->
@@ -652,9 +692,10 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610171955"></script>
-<script src="js/app.js?v=202610171955"></script>
-<script src="js/pro-ui.js?v=202610171955"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610172019"></script>
+<script src="js/app.js?v=202610172019"></script>
+<script src="js/undo.js?v=202610172019"></script>
+<script src="js/pro-ui.js?v=202610172019"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {
