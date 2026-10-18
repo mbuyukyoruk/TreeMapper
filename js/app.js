@@ -5671,11 +5671,21 @@ let drawTreeDepth = 0;
 function drawTree(){
   const outer = drawTreeDepth === 0 ? null : layerReuseSaveState();
   drawTreeDepth++;
-  try { return drawTreeBody.apply(this, arguments); }
+  let done = false, out;
+  try { out = drawTreeBody.apply(this, arguments); done = true; }
   finally {
     drawTreeDepth--;
     if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
   }
+  if (done && !outer) drawTreeFinish();
+  return out;
+}
+// After every redraw: re-apply search / selection colours (path to the selected
+// clade, tip labels) to the new elements.
+function drawTreeFinish(){
+  const isRadial = (geometry === 'radial');
+  if(!isRadial){ linkSel = null; nodeSel = null; leafNodes = []; gSpin = null; }
+  updateSearchHighlights();
 }
 function drawTreeBody(){
   // Auto-hide labels for large trees to improve performance
@@ -6402,16 +6412,10 @@ function drawTreeBody(){
             }
           }
           
-          // Highlight branches that belong to any highlighted clade
-          if(highlightedClade && isDescendantOf(d.target, highlightedClade)) {
-            return '#ff6b6b'; // Red highlight
-          }
-          // Check if the branch belongs to any node in the multi-selection
-          for(const node of highlightedClades) {
-            if(isDescendantOf(d.target, node)) {
-              return '#ff6b6b'; // Red highlight
-            }
-          }
+          // (A selected clade is shown by the selection overlay that
+          // updateSearchHighlights applies after every redraw. It used to be
+          // written in here as well, and then stayed red after the selection
+          // was cleared.)
           return ringCol;
         })
         .attr('stroke-width', d => {
@@ -6422,10 +6426,6 @@ function drawTreeBody(){
           // Thicker stroke for permanent colors (path colors)
           if(d.target && d.target.permanentColors && d.target.permanentColors.size > 0) {
             return getBranchStrokeWidth() * 1.3;
-          }
-          // Thicker stroke for highlighted branches
-          if(highlightedClade && isDescendantOf(d.target, highlightedClade)) {
-            return getBranchStrokeWidth() * 1.5;
           }
           return getBranchStrokeWidth();
         })
@@ -6637,16 +6637,10 @@ function drawTreeBody(){
             }
           }
           
-          // Highlight branches that belong to any highlighted clade
-          if(highlightedClade && isDescendantOf(d.target, highlightedClade)) {
-            return '#ff6b6b'; // Red highlight
-          }
-          // Check if the branch belongs to any node in the multi-selection
-          for(const node of highlightedClades) {
-            if(isDescendantOf(d.target, node)) {
-              return '#ff6b6b'; // Red highlight
-            }
-          }
+          // (A selected clade is shown by the selection overlay that
+          // updateSearchHighlights applies after every redraw. It used to be
+          // written in here as well, and then stayed red after the selection
+          // was cleared.)
           return ringCol;
         })
         .attr('stroke-width', d => {
@@ -6657,10 +6651,6 @@ function drawTreeBody(){
           // Thicker stroke for permanent colors (path colors)
           if(d.target && d.target.permanentColors && d.target.permanentColors.size > 0) {
             return getBranchStrokeWidth() * 1.3;
-          }
-          // Thicker stroke for highlighted branches
-          if(highlightedClade && isDescendantOf(d.target, highlightedClade)) {
-            return getBranchStrokeWidth() * 1.5;
           }
           return getBranchStrokeWidth();
         })
@@ -25635,14 +25625,9 @@ function applySpin(){
 setStatus('Load a Newick tree to begin');
 
 (function(){
-const origDrawTree = drawTree;
-drawTree = function(){
-  origDrawTree.apply(this, arguments);
-  const isRadial = (geometry === 'radial');
-  if(!isRadial){ linkSel = null; nodeSel = null; leafNodes = []; gSpin = null; }
-  
-  updateSearchHighlights();
-};
+// (the work that used to be added here after each redraw now runs inside
+// drawTree itself, see drawTreeFinish, so that every way of calling drawTree
+// gets it; some handlers keep a reference to drawTree from before this point)
 })();
 
 (function initTheme(){
