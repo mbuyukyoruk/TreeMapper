@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610181928" rel="stylesheet">
-<link href="css/styles.css?v=202610181928" rel="stylesheet">
-<link href="css/pro.css?v=202610181928" rel="stylesheet">
+<link href="css/tailwind.css?v=202610182047" rel="stylesheet">
+<link href="css/styles.css?v=202610182047" rel="stylesheet">
+<link href="css/pro.css?v=202610182047" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -224,21 +224,23 @@
       <details id="bootstrapSection">
         <summary>Support values</summary>
         <div class="section pro-group">
-          <label class="pro-row"><span>Show bootstrap values</span><input autocomplete="off" type="checkbox" id="showBootstrap" class="pro-switch"></label>
+          <label class="pro-row"><span>Show support values</span><input autocomplete="off" type="checkbox" id="showBootstrap" class="pro-switch"></label>
           <div class="pro-row">
             <label for="bootstrapDataSource">Data source</label>
             <select autocomplete="off" id="bootstrapDataSource" class="pro-select">
-              <option value="bootstrap">Bootstrap</option>
+              <option value="bootstrap">Support values</option>
             </select>
           </div>
           <div class="pro-row">
             <span>Show range</span>
             <span class="pro-range-pair">
-              <input autocomplete="off" type="number" id="bootstrapMinRange" min="0" max="100" step="1" value="23" class="pro-num" aria-label="Minimum shown value">
+              <input autocomplete="off" type="number" id="bootstrapMinRange" min="0" max="100" step="1" value="23" class="pro-num" aria-label="Minimum shown value, percent of the tree's support scale">
               <span class="pro-unit">to</span>
               <input autocomplete="off" type="number" id="bootstrapMaxRange" min="0" max="100" step="1" value="100" class="pro-num" aria-label="Maximum shown value">
+              <span class="pro-unit">%</span>
             </span>
           </div>
+          <p class="pro-support-note" id="bootstrapScaleNote" aria-live="polite"></p>
 
           <div class="pro-segmented" role="tablist" aria-label="Support value display">
             <button type="button" class="bootstrap-tab active" data-tab="symbol" role="tab">Symbol</button>
@@ -444,7 +446,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610181928"></script>
+      <script src="js/drag-fastpath.js?v=202610182047"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -698,11 +700,12 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610181928"></script>
-<script src="js/app.js?v=202610181928"></script>
-<script src="js/session.js?v=202610181928"></script>
-<script src="js/undo.js?v=202610181928"></script>
-<script src="js/pro-ui.js?v=202610181928"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610182047"></script>
+<script src="js/tree-core.js?v=202610182047"></script>
+<script src="js/app.js?v=202610182047"></script>
+<script src="js/session.js?v=202610182047"></script>
+<script src="js/undo.js?v=202610182047"></script>
+<script src="js/pro-ui.js?v=202610182047"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {

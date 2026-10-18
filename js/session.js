@@ -224,13 +224,18 @@
     // root: re-rooted by hand (midpoint rooting is part of the settings)
     var midpoint = settings.rootEnable && settings.rootMode === 'midpoint';
     if (!midpoint && call(function () { return !!originalRootNewick; })) {
-      // the app re-roots AT a node: that node becomes the root and its sides are
-      // its own branches plus the way back to the old root. Store every side.
-      s.rootSides = fullChildren(root, R.dbp).map(function (k) {
+      // the tips on each side of the root; with two sides (the app roots on a branch)
+      // also where on that branch: rootFrac = share of the branch on the first side
+      var rk = fullChildren(root, R.dbp);
+      s.rootSides = rk.map(function (k) {
         var names = [], st = [k];
         while (st.length) { var n = st.pop(), ks = fullChildren(n, R.dbp); if (!ks.length) names.push(String(n.data.name)); else ks.forEach(function (c) { st.push(c); }); }
         return names;
       });
+      if (rk.length === 2) {
+        var la = rk[0].data.length, lb = rk[1].data.length, tot = (la || 0) + (lb || 0);
+        s.rootFrac = tot !== 0 ? (la || 0) / tot : 0.5;
+      }
     }
 
     var edits = { order: [], rotations: [], collapsed: [], cartooned: [], dropped: [] };
@@ -300,31 +305,6 @@
   function xor(a, b) { return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0]; }
   function key(h) { return h[0] + ':' + h[1]; }
   function setHash(names) { var h = [0, 0]; names.forEach(function (n) { h = xor(h, tipHash(String(n))); }); return h; }
-  function findRerootNode(sides) {
-    var want = sides.map(function (n) { return key(setHash(n)); }).sort().join('|');
-    var hash = new Map();
-    root.eachAfter(function (n) {
-      var h = [0, 0];
-      if (!n.children || !n.children.length) h = tipHash(String(n.data.name));
-      else n.children.forEach(function (c) { h = xor(h, hash.get(c)); });
-      hash.set(n, h);
-    });
-    var total = hash.get(root), found = null;
-    root.each(function (n) {
-      if (found || !n.children || !n.children.length) return;
-      var ks = n.children.map(function (c) { return key(hash.get(c)); });
-      if (n !== root) ks.push(key(xor(total, hash.get(n))));
-      if (ks.sort().join('|') === want) found = n;
-    });
-    if (found) return found;
-    // re-rooted at a tip: the app wraps the tip, giving two sides (the tip, the rest)
-    if (sides.length === 2) {
-      var tipSide = sides[0].length === 1 ? sides[0] : (sides[1].length === 1 ? sides[1] : null);
-      if (tipSide) root.leaves().forEach(function (l) { if (!found && String(l.data.name) === String(tipSide[0])) found = l; });
-    }
-    return found;
-  }
-
   // ------------------------------------------------------------------ open
   var busy = false;
   async function waitForRootChange(before, ms) {
@@ -401,9 +381,12 @@
         ROOT_IDS.forEach(function (id) { var el = $(id); if (el && id in st) call(function () { writeCtl(el, st[id], true); }); });
         await waitForRootChange(r0, 15000);
       } else if (s.rootSides && s.rootSides.length >= 2) {
-        var target = findRerootNode(s.rootSides);
-        if (target) { await rerootAtNode(target, true); await waitForRootChange(r0, 15000); }
-        else problems.push('the saved root could not be found');
+        // two sides: on that branch at the saved position; more: at the node with those sides
+        var spec = s.rootSides.length === 2
+          ? { side: s.rootSides[0], frac: typeof s.rootFrac === 'number' ? s.rootFrac : 0.5 }
+          : { sides: s.rootSides };
+        await rerootAtNode(spec, true);
+        if (root === r0) problems.push('the saved root could not be found');
       }
 
       mark('root');
