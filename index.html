@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610182047" rel="stylesheet">
-<link href="css/styles.css?v=202610182047" rel="stylesheet">
-<link href="css/pro.css?v=202610182047" rel="stylesheet">
+<link href="css/tailwind.css?v=202610182222" rel="stylesheet">
+<link href="css/styles.css?v=202610182222" rel="stylesheet">
+<link href="css/pro.css?v=202610182222" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -299,6 +299,8 @@
         <div class="section pro-group">
           <div class="pro-row"><label for="branchStrokeWidth">Branch width</label><span class="pro-num-wrap"><input autocomplete="off" type="number" id="branchStrokeWidth" min="0.1" step="0.1" value="1" class="pro-num"><span class="pro-unit">px</span></span></div>
           <div class="pro-row"><label for="dataMargin">Data margin</label><span class="pro-num-wrap"><input autocomplete="off" type="number" id="dataMargin" min="1" max="20" step="1" value="5" class="pro-num"><span class="pro-unit">%</span></span></div>
+          <label class="pro-row"><span>Axes below the tree</span><input autocomplete="off" type="checkbox" id="axesBelow" class="pro-switch" aria-describedby="axesBelowHint"></label>
+          <p class="pro-support-note" id="axesBelowHint">Scale bar, dataframe and chart axes and heatmap titles go under the last tip, like an x-axis.</p>
         </div>
       </details>
 
@@ -446,7 +448,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610182047"></script>
+      <script src="js/drag-fastpath.js?v=202610182222"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -700,12 +702,12 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610182047"></script>
-<script src="js/tree-core.js?v=202610182047"></script>
-<script src="js/app.js?v=202610182047"></script>
-<script src="js/session.js?v=202610182047"></script>
-<script src="js/undo.js?v=202610182047"></script>
-<script src="js/pro-ui.js?v=202610182047"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610182222"></script>
+<script src="js/tree-core.js?v=202610182222"></script>
+<script src="js/app.js?v=202610182222"></script>
+<script src="js/session.js?v=202610182222"></script>
+<script src="js/undo.js?v=202610182222"></script>
+<script src="js/pro-ui.js?v=202610182222"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {

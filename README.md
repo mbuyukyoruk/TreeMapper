@@ -76,7 +76,11 @@ The earlier classic-layout interface is kept in git history under the tag
   that root.)
 - **Expanded view:** scroll with the mouse wheel or trackpad (Shift for
   sideways, pinch or ⌘-scroll to zoom); the scale bar and data axes stay
-  pinned at the top.
+  pinned at the top (or at the bottom, see below).
+- **Axes below the tree** (Style → Appearance): the scale bar, the dataframe
+  and chart axes and the heatmap titles move under the last tip, like an
+  x-axis (rectangular layout). Fit and exports include them; in the expanded
+  view they stay pinned to the bottom of the canvas until you reach the end.
 - **Keyboard shortcuts:** press `?` (or *Shortcuts* in the status bar).
 - **Display settings are remembered** in the browser (Style tab → *Restore
   default display settings* to reset). Tree-specific settings such as

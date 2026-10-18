@@ -2766,6 +2766,19 @@ function toggleLabelsPanelVisibility(hideLabels, fromDrawTree) {
   updateMetadataLegend(); // Update legend visibility when labels are toggled
 }
 
+// ---- axis row
+// The tree scale bar, the dataframe and chart axes and the heatmap titles form one
+// row: above the first tip (default) or below the last tip, like an x-axis
+// (Style > Appearance > Axes below the tree; rectangular layout only).
+// drawTree sets axisRow before anything in the row is drawn.
+let axisRow = { below: false, y: 0 };
+function axesBelowWanted() {
+  const el = document.getElementById('axesBelow');
+  return !!(el && el.checked) && geometry !== 'radial';
+}
+// an axis whose ticks and numbers point away from the tree
+function axisForRow(scale) { return axisRow.below ? d3.axisBottom(scale) : d3.axisTop(scale); }
+
 function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain) {
     
     d3.selectAll('.scale-title-1, .scale-title-2, .axis-line-1, .axis-line-2, .tick-line-1, .tick-line-2, .tick-text-1, .tick-text-2').remove();
@@ -2781,7 +2794,7 @@ function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain) {
   g.attr('transform', `translate(${x0}, ${axisY})`);
 
   const x = d3.scaleLinear().domain(domain).range([0, widthPx]);
-    const axis = d3.axisTop(x).ticks(4).tickSizeOuter(0);
+    const axis = axisForRow(x).ticks(4).tickSizeOuter(0);
     g.call(axis);
     
     // Get ring color for scale bar
@@ -2806,7 +2819,7 @@ function upsertChartScaleBar(panelIndex, x0, axisY, widthPx, domain) {
   g.attr('transform', `translate(${x0}, ${axisY})`);
 
   const x = d3.scaleLinear().domain(domain).range([0, widthPx]);
-  const axis = d3.axisTop(x).ticks(4).tickSizeOuter(0);
+  const axis = axisForRow(x).ticks(4).tickSizeOuter(0);
   g.call(axis);
   
   // Get ring color for scale bar
@@ -2839,7 +2852,7 @@ function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
   if (coverScaleBar && !hideScaleBar) {
     // Cover scale bar mode - show full scale (use exact tree positioning)
     const x = d3.scaleLinear().domain(domain).range([0, widthPx]);
-    const axis = d3.axisTop(x).ticks(4).tickSizeOuter(0);
+    const axis = axisForRow(x).ticks(4).tickSizeOuter(0);
     g.call(axis);
     
     // Use .attr() instead of .style() for SVG export compatibility
@@ -2882,7 +2895,7 @@ function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
       // Add scale value text - show the actual scale value the line represents
       g.append('text')
         .attr('x', lineX + lineLength / 2)
-        .attr('y', lineY - 8)
+        .attr('y', axisRow.below ? lineY + 18 : lineY - 8)   // the value sits on the side away from the tree
         .attr('text-anchor', 'middle')
         .attr('fill', 'var(--tree)')
         .attr('font-size', '12px')
@@ -5663,6 +5676,12 @@ function drawTree(){
 // clade, tip labels) to the new elements.
 let supportSourcesRoot = null;
 function drawTreeFinish(){
+  const axesBelowEl = document.getElementById('axesBelow');
+  if (axesBelowEl) {
+    axesBelowEl.disabled = (geometry === 'radial');
+    const row = axesBelowEl.closest('.pro-row');
+    if (row) row.title = axesBelowEl.disabled ? 'Circular trees keep their scales in the opening of the circle' : '';
+  }
   if (root && root !== supportSourcesRoot) {
     supportSourcesRoot = root;
     const before = bootstrapDataSourceEl ? bootstrapDataSourceEl.value : null;
@@ -5840,12 +5859,15 @@ function drawTreeBody(){
   // Disable panning when in fit-height mode (spacing at minimum)
   allowPan = !fitHeightMode;
   svg.classed('no-pan', fitHeightMode);
-  // when fitting height, reserve top space for the metadata axis/title ("legend")
-  const vTop = fitHeightMode ? axisClear : margin.top;
+  // when fitting height, reserve top space for the metadata axis/title ("legend");
+  // with the axes below the tree that space is reserved at the bottom instead
+  const axesBelow = axesBelowWanted();
+  const vTop = fitHeightMode ? (axesBelow ? calcLegendTopPad(labelPx, false, false) : axisClear) : margin.top;
   // Store tree dimensions for splitter lines
   window.currentVTop = vTop;
   // also reserve bottom space for label descenders and half the bar height so the last row never clips
-  const bottomClear = fitHeightMode ? (Math.ceil(labelPx * 0.6) + (meta && metaColumn && barW>0 ? Math.ceil(barH/2) + 6 : 6)) : margin.bottom;
+  const bottomClear0 = fitHeightMode ? (Math.ceil(labelPx * 0.6) + (meta && metaColumn && barW>0 ? Math.ceil(barH/2) + 6 : 6)) : margin.bottom;
+  const bottomClear = (fitHeightMode && axesBelow) ? Math.max(bottomClear0, axisClear) : bottomClear0;
   const vBottom = bottomClear;
 
   // Compute leaf separation
@@ -5946,7 +5968,18 @@ function drawTreeBody(){
     } else {
       root.each(n => { n.x = n.x + vTop; });
     }
+    // the axis row: 18px above the first tip, or the same distance below the last one
+    // (more when tall heatmap boxes or bars reach further below the last tip)
+    if (axesBelow) {
+      const lastY = d3.max(root.descendants(), d => d.x) || (vTop + plotH);
+      axisRow = { below: true, y: lastY + Math.max(18, Math.min(leafSep * 0.4, 50) + 10) };
+    } else {
+      axisRow = { below: false, y: (fitHeightMode ? (vTop - 8) : (margin.top - 8)) - 10 };
+    }
+    window.currentAxisRow = axisRow;
   } else {
+    axisRow = { below: false, y: 0 };
+    window.currentAxisRow = axisRow;
     // --- RADIAL ---
     // Get the radial tree panel radius from the radial panel system
     let radialTreePanelRadius = 120; // Default fallback
@@ -9366,7 +9399,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
           const splitterMargin = 8;
           const scaleBarX = treePanel.x + margin.left + splitterMargin; // Same as treeImageX
           const scaleBarWidth = treePanel.width - margin.left - (splitterMargin * 2); // Same as treeImageWidth
-          const scaleBarY = (fitHeightMode ? (vTop - 8) : (margin.top - 8)) - 10; // Same Y position as dataframe/chart scale bars
+          const scaleBarY = axisRow.y; // the axis row, with the dataframe/chart axes
           const domain = [0, maxCum]; // Branch length domain
       
       upsertTreeScaleBar(scaleBarX, scaleBarY, scaleBarWidth, domain);
@@ -9386,7 +9419,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
     const barX0 = labelRight + barGap; // start of bar area with gap
     const firstY = d3.min(leaves, d=> d.x) || 0; // y of first tip
     const uiBaseY = fitHeightMode ? (vTop - 8) : (margin.top - 8);
-    layerReuseBlockBegin(leaves, [vTop, uiBaseY, currentBarH, plotH, margin.top, margin.right, barW, labelSpace, hideLabels2, labelRight, barX0, fitHeightMode, labelPx, canvasW, svgH]);
+    layerReuseBlockBegin(leaves, [vTop, uiBaseY, currentBarH, plotH, margin.top, margin.right, barW, labelSpace, hideLabels2, labelRight, barX0, fitHeightMode, labelPx, canvasW, svgH, axisRow.below, axisRow.y]);
 
         // Get first dataframe's metadata (replaces global meta variable)
     const firstMeta = getFirstDataframeMeta();
@@ -10038,7 +10071,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
             
             const left = dataframePanel.x + 8; // Left margin from panel edge
             const width = dataframePanel.width - 16 - margin.right; // Panel width minus margins AND right padding (match bar drawing)
-            const axisY = uiBaseY - 10;
+            const axisY = axisRow.y;
             let domain = [vmin, vmax]; // Fallback to global range
             
             if (dataframe && dataframe.meta) {
@@ -10281,7 +10314,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
       spanG.attr('clip-path', null);
       
       // Draw rotated title above the heatmap data (outside clipping path)
-      const titleY = uiBaseY - 10; // Position higher to avoid clipping
+      const titleY = axisRow.below ? axisRow.y + 6 : axisRow.y; // in the axis row (above: higher to avoid clipping)
       const titleX = panelX + (panelWidth / 2); // Center horizontally
       
       // Get the column title from the heatmap data (second column contains the values)
@@ -10293,11 +10326,12 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
       const titleG = g.append('g')
         .attr('class', `heatmap-title-${heatmapId}`);
       
+      // above the tree it slants up; below it starts at the column and slants down, away from the tree
       titleG.append('text')
         .attr('x', titleX)
         .attr('y', titleY)
-        .attr('text-anchor', 'middle')
-        .attr('transform', `rotate(-45, ${titleX}, ${titleY})`)
+        .attr('text-anchor', axisRow.below ? 'start' : 'middle')
+        .attr('transform', `rotate(${axisRow.below ? 45 : -45}, ${titleX}, ${titleY})`)
         .style('fill', 'var(--tree)')
         .style('font-size', '12px')
         .style('font-weight', 'bold')
@@ -11576,7 +11610,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
       // Draw scale bar for chart
       const left = chartPanel.x + 8; // Left margin from panel edge
       const width = chartPanel.width - 16; // Panel width minus margins
-      const axisY = uiBaseY - 10;
+      const axisY = axisRow.y;
       
       // Calculate domain from chart data
       let domain = [0, 1]; // Default range
@@ -21860,8 +21894,12 @@ function onFitToViewRect(){
   const hasBars = !!(firstMeta && barW > 0);
   const hasTwoLinePlaceholder = hasBars && !(metaColumn && firstMeta && firstMeta.rows && firstMeta.rows.length);
   const barH    = 8;
-  const axisClear = calcLegendTopPad(labelPx, hasBars, hasTwoLinePlaceholder);
-  const bottomClear = Math.ceil(labelPx * 0.6) + (hasBars ? Math.ceil(barH/2) + 6 : 6);
+  const axisClear0 = calcLegendTopPad(labelPx, hasBars, hasTwoLinePlaceholder);
+  const bottomClear0 = Math.ceil(labelPx * 0.6) + (hasBars ? Math.ceil(barH/2) + 6 : 6);
+  // with the axes below the tree, their space is at the bottom (same as drawTree)
+  const below = axesBelowWanted();
+  const axisClear = below ? calcLegendTopPad(labelPx, false, false) : axisClear0;
+  const bottomClear = below ? Math.max(bottomClear0, axisClear0) : bottomClear0;
   const availableH = Math.max(20, canvasH - axisClear - bottomClear);
   if(tipSpacingSel){ tipSpacingSel.value = '0'; }
   if(tipSpacingNum){ tipSpacingNum.value = '0'; }
@@ -23024,6 +23062,17 @@ if(coverScaleBarEl){
     }
     drawTree();
     console.log('drawTree in coverScaleBarEl');
+  });
+}
+
+// Axes below the tree: every data layer's axis moves, so this is a full redraw;
+// in the fit view the tip spacing is worked out again for the new margins
+{
+  const axesBelowEl = document.getElementById('axesBelow');
+  if (axesBelowEl) axesBelowEl.addEventListener('change', () => {
+    const expanded = tipSpacingSel && +tipSpacingSel.value > 0;
+    if (!expanded && geometry === 'rect') onFitToViewRect();
+    else { drawTree(); updateZoomBounds(); adjustSvgHeightForExpansion(); }
   });
 }
 
