@@ -26,6 +26,15 @@ The earlier classic-layout interface is kept in git history under the tag
   internal nodes so you can click a clade), **Reset** menu (restore dropped
   tips, undo rotations/collapses/cartoons, original root, colours,
   highlights), search (press `/`), legend panel toggle.
+- **Search** (press `/`): type accessions, genes or any data value. Separate
+  several terms with commas, spaces or new lines (paste a list); put a phrase
+  that contains spaces in "double quotes". *Look in* (left of the box) limits
+  the search to Accessions, Genes or a single data layer (Dataframe 1,
+  Heatmap 1, ...). **ab** (right of the box) switches to *Exact match*: whole
+  values only, ignoring case; an accession matches with or without its
+  version (`ACC123` finds `ACC123.1`). Both choices are remembered and saved
+  in sessions (a single-layer choice is kept in sessions only, and goes back
+  to *All* if that layer is removed).
 - **Selecting a clade** shows a floating toolbar at the bottom of the canvas
   with Rotate, Collapse, Cartoon, Colour, Highlight, Re-root and more.
 - **Legend panel** on the right (can be hidden), **status bar** at the bottom.
@@ -101,8 +110,9 @@ on a 120-tip and a 1500-tip tree.
 4. **`cssVar()` caches theme colours.** Each call used `getComputedStyle()`,
    forcing a full style recalculation of tens of thousands of SVG elements
    during every redraw. Values are re-read when the theme changes.
-5. **Faster search matching** (also used when loading clade data): text is
-   lower-cased once per value instead of once per search term.
+5. **Faster search matching** (also used when loading clade data): the
+   searchable text of every tip is collected and lower-cased once into an
+   index, rebuilt only when the tree or a data layer changes.
 6. **Clade Tools accent bar no longer repaints the page every frame** (classic
    layout): it slides a GPU layer instead of animating `background-position`.
    Idle CPU use on a large tree is about 5× lower.

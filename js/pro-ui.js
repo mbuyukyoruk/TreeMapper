@@ -615,6 +615,103 @@
     tmSession.load(sf);
   }, true);
 
+  // --------------------------------------------------------- search options
+  // "Look in" (where to search) and "Exact match", inside the search box.
+  // app.js reads window.tmSearchOptions when the search box is used; searches
+  // the app runs itself (e.g. Clade layer colouring) never use these options.
+  var searchOpts = window.tmSearchOptions = { scope: 'all', exact: false };
+  var scopeBtn = $('proSearchScope'), scopeLabel = $('proSearchScopeLabel'), scopeMenu = $('proSearchScopeMenu');
+  var exactBtn = $('proSearchExact'), searchBox = $('accessionSearch');
+  var LAYER_SCOPES = [['dataframeContainer', 'dataframe'], ['heatmapContainer', 'heatmap'], ['chartContainer', 'chart'],
+    ['highlightContainer', 'highlight'], ['cladeContainer', 'clade']];
+  function scopeChoices() {
+    var out = [{ v: 'all', label: 'All', hint: 'Accessions and every data layer' },
+               { v: 'accession', label: 'Accessions', hint: 'Tip names only' }];
+    var dfBox = $('dataframeContainer');
+    if (dfBox && dfBox.querySelector('details')) out.push({ v: 'genes', label: 'Genes', hint: 'Gene column of every dataframe' });
+    var layers = [];
+    LAYER_SCOPES.forEach(function (x) {
+      var box = $(x[0]); if (!box) return;
+      Array.prototype.forEach.call(box.children, function (card) {
+        if (card.tagName !== 'DETAILS') return;
+        var m = /(\d+)$/.exec(card.id || ''); if (!m) return;
+        var t = card.querySelector('.pro-card-title');
+        layers.push({ v: x[1] + ':' + m[1], label: (t && t.textContent.trim()) || (x[1] + ' ' + m[1]), hint: 'Only this layer' });
+      });
+    });
+    if (layers.length) { out.push({ sep: true }); out = out.concat(layers); }
+    return out;
+  }
+  function choiceFor(v) { var c = scopeChoices().filter(function (x) { return x.v === v; })[0]; return c || null; }
+  function placeholderFor(c) {
+    if (!c || c.v === 'all') return 'Search accessions or genes';
+    if (c.v === 'accession') return 'Search accessions';
+    if (c.v === 'genes') return 'Search genes';
+    return 'Search ' + c.label;
+  }
+  function rerunSearch() {
+    if (searchBox && searchBox.value.trim()) searchBox.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function showScope() {
+    var c = choiceFor(searchOpts.scope) || choiceFor('all');
+    if (scopeLabel) scopeLabel.textContent = c.label;
+    if (scopeBtn) { scopeBtn.classList.toggle('is-narrowed', c.v !== 'all'); scopeBtn.title = 'Where to search: ' + c.label + (c.hint ? ' (' + c.hint.toLowerCase() + ')' : ''); }
+    if (searchBox) searchBox.placeholder = placeholderFor(c);
+  }
+  function setScope(v, quiet) {
+    if (!choiceFor(v)) v = 'all';
+    var changed = searchOpts.scope !== v;
+    searchOpts.scope = v; showScope();
+    if (changed && !quiet) { rerunSearch(); saveSettings(); }
+  }
+  function setExact(on, quiet) {
+    on = !!on;
+    var changed = searchOpts.exact !== on;
+    searchOpts.exact = on;
+    if (exactBtn) exactBtn.setAttribute('aria-pressed', String(on));
+    if (changed && !quiet) { rerunSearch(); saveSettings(); }
+  }
+  function renderScopeMenu() {
+    scopeMenu.innerHTML = scopeChoices().map(function (c) {
+      if (c.sep) return '<div class="pro-menu-sep" role="separator"></div><div class="pro-menu-label">Data layers</div>';
+      var on = c.v === searchOpts.scope;
+      return '<button type="button" role="menuitemradio" aria-checked="' + on + '" class="pro-menu-item' + (on ? ' is-current' : '') + '" data-scope="' + esc(c.v) + '">' +
+        '<span class="pro-menu-check">' + (on ? SVG('<path d="M5 12l5 5L20 7"/>', 14) : '') + '</span><span class="pro-menu-text"><b>' + esc(c.label) + '</b><small>' + esc(c.hint) + '</small></span></button>';
+    }).join('');
+  }
+  if (scopeBtn && scopeMenu) {
+    scopeBtn.addEventListener('click', function () {
+      if (openPop && openPop.el === scopeMenu) { closePop(); return; }
+      closePop();
+      renderScopeMenu();
+      scopeMenu.hidden = false; place(scopeMenu, scopeBtn, 'left');
+      scopeBtn.setAttribute('aria-expanded', 'true');
+      openPop = { el: scopeMenu, anchor: scopeBtn, close: function () { scopeMenu.hidden = true; scopeBtn.setAttribute('aria-expanded', 'false'); } };
+      var cur = scopeMenu.querySelector('.is-current') || scopeMenu.querySelector('.pro-menu-item'); if (cur) cur.focus();
+    });
+    scopeMenu.addEventListener('click', function (e) {
+      var b = e.target.closest('.pro-menu-item'); if (!b) return;
+      closePop(); setScope(b.getAttribute('data-scope'));
+      if (searchBox) searchBox.focus();
+    });
+    scopeMenu.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      var its = Array.prototype.slice.call(scopeMenu.querySelectorAll('.pro-menu-item')), i = its.indexOf(document.activeElement);
+      its[(i + (e.key === 'ArrowDown' ? 1 : its.length - 1)) % its.length].focus(); e.preventDefault();
+    });
+  }
+  if (exactBtn) exactBtn.addEventListener('click', function () { setExact(!searchOpts.exact); });
+  // a layer that is searched in may be removed (or renamed): keep the choice valid
+  LAYER_SCOPES.forEach(function (x) {
+    var box = $(x[0]); if (!box) return;
+    new MutationObserver(function () { if (!choiceFor(searchOpts.scope)) setScope('all'); else showScope(); }).observe(box, { childList: true, subtree: true, characterData: true });
+  });
+  window.tmSearch = {
+    get: function () { return { scope: searchOpts.scope, exact: searchOpts.exact }; },
+    set: function (o) { if (!o) return; if ('exact' in o) setExact(o.exact, true); if ('scope' in o) setScope(o.scope, true); rerunSearch(); }
+  };
+  showScope();
+
   // ------------------------------------------------------------ undo / redo
   var undoBtn = $('proUndo'), redoBtn = $('proRedo');
   function syncUndo() {
@@ -804,6 +901,9 @@
       var tab = document.querySelector('.bootstrap-tab.active');
       if (tab) out.__supportTab = tab.getAttribute('data-tab');
       if (body.classList.contains('pro-legend-hidden')) out.__legendHidden = true;
+      // search options; a single data layer is not remembered (it may not exist next time)
+      if (searchOpts.exact) out.__searchExact = true;
+      if (searchOpts.scope === 'accession' || searchOpts.scope === 'genes') out.__searchScope = searchOpts.scope;
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(out)); } catch (e) {}
     }, 300);
   }
@@ -815,6 +915,8 @@
     });
     if (values.__supportTab) { var t = document.querySelector('.bootstrap-tab[data-tab="' + values.__supportTab + '"]'); if (t && !t.classList.contains('active')) t.click(); }
     setLegend(!values.__legendHidden);
+    setExact(!!values.__searchExact, true);
+    setScope(values.__searchScope || 'all', true);
     applying = false;
   }
   REMEMBER.forEach(function (id) {
@@ -830,6 +932,7 @@
     var vals = {}; REMEMBER.forEach(function (id) { vals[id] = defaults[id]; });
     vals.__supportTab = 'symbol';
     applySettings(vals);
+    rerunSearch();
     try { localStorage.removeItem(SETTINGS_KEY); } catch (e) {}
     setStatus('Display settings restored to their defaults');
   });
