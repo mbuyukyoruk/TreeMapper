@@ -5906,6 +5906,12 @@ function drawTree(){
     
     // Process each clade that has a background color
     cladeBackgroundColors.forEach((backgroundColor, rootNode) => {
+      // Only clades that are part of the drawn tree: one inside a collapsed
+      // clade (or dropped) keeps the position it had when last drawn, which
+      // would leave a stray highlight behind.
+      for (let x = rootNode; x !== root; x = x.parent) {
+        if (!x.parent || !x.parent.children || x.parent.children.indexOf(x) < 0) return;
+      }
       
       // Find all descendants of this clade to determine the bounding box
       // EXCLUDE the root node - only use child nodes for positioning
