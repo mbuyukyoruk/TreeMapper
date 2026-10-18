@@ -2777,8 +2777,8 @@ function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain) {
     const ringCol = cssVar('--tree') || '#e5e7eb';
     
     // Use .attr() instead of .style() for SVG export compatibility
-    g.selectAll('text').attr('fill', ringCol).attr('font-size', '12px').attr('font-weight', 'bold');
-    g.selectAll('path, line').attr('stroke', ringCol).attr('stroke-width', '2px').attr('opacity', '1.0');
+    g.selectAll('text').attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', 'bold');
+    g.selectAll('path, line').attr('stroke', 'var(--tree)').attr('stroke-width', '2px').attr('opacity', '1.0');
 }
 
 function upsertChartScaleBar(panelIndex, x0, axisY, widthPx, domain) {
@@ -2802,8 +2802,8 @@ function upsertChartScaleBar(panelIndex, x0, axisY, widthPx, domain) {
   const ringCol = cssVar('--tree') || '#e5e7eb';
   
   // Use .attr() instead of .style() for SVG export compatibility
-  g.selectAll('text').attr('fill', ringCol).attr('font-size', '12px').attr('font-weight', 'bold');
-  g.selectAll('path, line').attr('stroke', ringCol).attr('stroke-width', '2px').attr('opacity', '1.0');
+  g.selectAll('text').attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', 'bold');
+  g.selectAll('path, line').attr('stroke', 'var(--tree)').attr('stroke-width', '2px').attr('opacity', '1.0');
 }
 
 function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
@@ -5497,12 +5497,187 @@ window.addEventListener('beforeunload', function() {
   cleanupAlignmentWorker();
 });
 
+// ======================= Incremental redraw of data layers =======================
+// drawTree rebuilds the whole drawing. The data layers (dataframe bars, heatmap
+// cells, chart bars, each with its axis and title) are by far the largest part
+// of it, and most actions do not change them. Each layer is therefore drawn
+// into its own <g> inside one container (.layers-container) in #zoomable and
+// kept between redraws when nothing it depends on has changed:
+//   - the layout: tip order and positions, the tree object, column geometry,
+//     row height, theme and the other values passed to layerReuseBlockBegin;
+//   - its content: every redraw invalidates all layers, unless the action that
+//     caused it was declared narrower with setDrawScope() (only vetted actions
+//     do: 'tree' = changes only the tree's own drawing, 'dataframe' / 'heatmap'
+//     / 'chart' = changes only layers of that type).
+// Drawing order is unchanged: while drawTree runs, elements appended to
+// #zoomable before the layer block are inserted in front of the container,
+// those of a layer go into that layer's <g>, and those after the block follow
+// the container, exactly as before. Open the page with ?noreuse to disable.
+const layerReuse = {
+  container: null,
+  byKey: new Map(),                 // 'dataframe:1' -> { el, sig }
+  epoch: { dataframe: 0, heatmap: 0, chart: 0 },   // per type
+  keyEpoch: new Map(),                               // per layer ('dataframe:1')
+  scope: null, scopeTimer: 0,
+  blockRan: false, layoutSig: '', visited: null, lastEl: null,
+  disabled: /[?&]noreuse\b/.test(location.search),
+  rootIds: new WeakMap(), nextRootId: 1
+};
+function setDrawScope(scope) {
+  // the scope lasts for the current task only (the action's own synchronous redraws)
+  const cur = layerReuse.scope;
+  layerReuse.scope = (cur && cur !== scope) ? 'all' : scope;
+  clearTimeout(layerReuse.scopeTimer);
+  layerReuse.scopeTimer = setTimeout(() => { layerReuse.scope = null; }, 0);
+}
+window.setDrawScope = setDrawScope;
+function layerAppendMode(mode, target) {
+  const z = g.node();
+  if (mode === 'pre') z.appendChild = function (child) { return this.insertBefore(child, layerReuse.container); };
+  else if (mode === 'layer') z.appendChild = function (child) { return target.appendChild(child); };
+  else delete z.appendChild;   // native appendChild
+}
+function layerReuseBegin() {
+  // let the page interface put back anything it moved out of the drawing
+  // (the pinned header of the expanded view) before the drawing is rebuilt
+  if (typeof window.onBeforeRedraw === 'function') { try { window.onBeforeRedraw(); } catch (e) { console.warn(e); } }
+  const z = g.node();
+  let c = layerReuse.container;
+  if (!c || c.parentNode !== z) {
+    c = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    c.setAttribute('class', 'layers-container');
+    layerReuse.byKey.clear();
+  }
+  // remove everything but the layer container (direct children only: removing
+  // a parent removes its contents, no need to visit every element)
+  for (let n = z.firstChild; n; ) { const next = n.nextSibling; if (n !== c && n.nodeType === 1) z.removeChild(n); n = next; }
+  if (c.parentNode !== z) Element.prototype.appendChild.call(z, c);
+  layerReuse.container = c;
+  // what may have changed: unless the action declared a narrower scope, every layer
+  const scope = layerReuse.disabled ? null : layerReuse.scope;
+  if (!scope || scope === 'all') { layerReuse.epoch.dataframe++; layerReuse.epoch.heatmap++; layerReuse.epoch.chart++; }
+  else if (scope in layerReuse.epoch) layerReuse.epoch[scope]++;
+  else if (scope.indexOf(':') > 0) layerReuse.keyEpoch.set(scope, (layerReuse.keyEpoch.get(scope) || 0) + 1);
+  layerReuse.blockRan = false;
+  layerAppendMode('pre');
+}
+function layerReuseBlockBegin(leaves, values) {
+  let rid = layerReuse.rootIds.get(root);
+  if (!rid) { rid = layerReuse.nextRootId++; layerReuse.rootIds.set(root, rid); }
+  // (no theme: the few theme colours inside data layers are var(--tree) references)
+  const parts = [rid, values.join(',')];
+  for (let i = 0; i < leaves.length; i++) parts.push(leaves[i].data.name + '@' + Math.round(leaves[i].x * 100));
+  layerReuse.layoutSig = parts.join('|');
+  layerReuse.blockRan = true;
+  layerReuse.visited = new Set();
+  layerReuse.lastEl = null;
+}
+function layerIteration(type, panelFn, draw) {
+  return function (id, index) {
+    const key = type + ':' + id;
+    const panel = panelFn(index);
+    const sig = layerReuse.layoutSig + '#' + index + '#' + layerReuse.epoch[type] + '.' + (layerReuse.keyEpoch.get(key) || 0) + '#' +
+      (panel ? [panel.x, panel.width, panel.height, panel.y].join(',') : 'none');
+    layerReuse.visited.add(key);
+    const c = layerReuse.container, cached = layerReuse.byKey.get(key);
+    let after = layerReuse.lastEl ? layerReuse.lastEl.nextSibling : c.firstChild;
+    if (cached && cached.sig === sig && cached.el.parentNode === c) {
+      if (cached.el !== after) c.insertBefore(cached.el, after);   // keep the drawing order
+      layerReuse.lastEl = cached.el;
+      return;
+    }
+    if (cached && cached.el.parentNode) {
+      if (after === cached.el) after = cached.el.nextSibling;
+      cached.el.parentNode.removeChild(cached.el);
+    }
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    el.setAttribute('class', 'data-layer data-layer-' + type);
+    c.insertBefore(el, after);
+    layerReuse.byKey.set(key, { el, sig });
+    layerReuse.lastEl = el;
+    layerAppendMode('layer', el);
+    try { draw(id, index); }
+    finally { layerAppendMode('pre'); }
+  };
+}
+function layerReuseBlockEnd() {
+  // layers that were not drawn this time (removed, or now without a panel) go away
+  layerReuse.byKey.forEach((v, key) => {
+    if (!layerReuse.visited.has(key)) { if (v.el.parentNode) v.el.parentNode.removeChild(v.el); layerReuse.byKey.delete(key); }
+  });
+  layerAppendMode(null);
+}
+function layerReuseSaveState() {
+  const z = g.node();
+  return { own: Object.prototype.hasOwnProperty.call(z, 'appendChild') ? z.appendChild : null,
+    blockRan: layerReuse.blockRan, layoutSig: layerReuse.layoutSig, visited: layerReuse.visited, lastEl: layerReuse.lastEl };
+}
+function layerReuseRestoreState(st) {
+  const z = g.node();
+  if (st.own) z.appendChild = st.own; else delete z.appendChild;
+  layerReuse.blockRan = st.blockRan; layerReuse.layoutSig = st.layoutSig; layerReuse.visited = st.visited; layerReuse.lastEl = st.lastEl;
+}
+function layerReuseEnd() {
+  // after drawTree: normal appends again; no layer block (circular layout, no
+  // data columns, early return) means no data layers on screen
+  layerAppendMode(null);
+  if (!layerReuse.blockRan && layerReuse.container) {
+    const c = layerReuse.container;
+    while (c.firstChild) c.removeChild(c.firstChild);
+    layerReuse.byKey.clear();
+  }
+}
+
+// Actions whose redraw cannot change any data layer. Anything not listed here
+// redraws every layer, exactly as before.
+(function declareDrawScopes() {
+  // buttons and controls that only change how the tree itself is drawn
+  const TREE_BUTTONS = new Set(['fit', 'applyCladeColor', 'applyHighlightBackground', 'applyPathColor', 'resetPathColors',
+    'resetHighlights', 'clearAllColors', 'clearCladeSelection']);
+  const TREE_CONTROLS = new Set(['themeToggle', 'edgeStyle', 'branchStrokeWidth', 'hideInternal', 'hideInternalClade', 'internalNodeShape',
+    'internalNodeSize', 'showTipNodes', 'tipNodeShape', 'tipNodeSize', 'labelGuides', 'hideScaleBar', 'coverScaleBar',
+    'scaleStrokeWidth', 'showBootstrap']);
+  // data cards: a control in a card changes layers of that card's type only
+  const CARD_TYPES = [['dataframeContainer', 'dataframe'], ['heatmapContainer', 'heatmap'], ['chartContainer', 'chart']];
+  function scopeFor(t) {
+    if (!t || !t.closest) return null;
+    const btn = t.closest('button');
+    if (btn && TREE_BUTTONS.has(btn.id)) return 'tree';
+    if (t.id && (TREE_CONTROLS.has(t.id) || /^bootstrap/.test(t.id))) return 'tree';
+    if (t.closest('.bootstrap-tab')) return 'tree';
+    for (const [cid, type] of CARD_TYPES) {
+      if (!t.closest('#' + cid)) continue;
+      // a control in one card changes that card's layer (card ids end in the layer id)
+      const card = t.closest('#' + cid + ' > details[id]');
+      const m = card && /(\d+)$/.exec(card.id);
+      return m ? type + ':' + m[1] : type;
+    }
+    return null;
+  }
+  ['click', 'change', 'input'].forEach(type => document.addEventListener(type, (e) => {
+    const s = scopeFor(e.target);
+    if (s) setDrawScope(s);
+  }, true));
+})();
+
 // Large trees start with labels hidden, but only once per loaded tree: after
 // that "Hide accession labels" is the user's choice (previously every redraw
 // switched it back on, so labels could never be shown).
 let labelsAutoHideDone = false;
 
+// drawTree = the drawing (drawTreeBody) plus the layer-reuse bookkeeping, which
+// must run on every exit and survive a redraw started from inside a redraw.
+let drawTreeDepth = 0;
 function drawTree(){
+  const outer = drawTreeDepth === 0 ? null : layerReuseSaveState();
+  drawTreeDepth++;
+  try { return drawTreeBody.apply(this, arguments); }
+  finally {
+    drawTreeDepth--;
+    if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
+  }
+}
+function drawTreeBody(){
   // Auto-hide labels for large trees to improve performance
   if (root && root.leaves && !labelsAutoHideDone) {
     labelsAutoHideDone = true;
@@ -5532,8 +5707,8 @@ function drawTree(){
   // Update panel heights to match canvas whenever tree is redrawn
   updatePanelHeights();
 
-  // Clear SVG content efficiently
-  g.selectAll('*').remove();
+  // Clear SVG content, except data layers that can be reused (see layerReuseBegin)
+  layerReuseBegin();
   gSpin = null;
   
   // Clear radial labels (they're in svg, not g, so need explicit removal)
@@ -9282,6 +9457,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
     const barX0 = labelRight + barGap; // start of bar area with gap
     const firstY = d3.min(leaves, d=> d.x) || 0; // y of first tip
     const uiBaseY = fitHeightMode ? (vTop - 8) : (margin.top - 8);
+    layerReuseBlockBegin(leaves, [vTop, uiBaseY, currentBarH, plotH, margin.top, margin.right, barW, labelSpace, hideLabels2, labelRight, barX0, fitHeightMode, labelPx, canvasW, svgH]);
 
         // Get first dataframe's metadata (replaces global meta variable)
     const firstMeta = getFirstDataframeMeta();
@@ -9356,7 +9532,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
         .text(buttonText);
       btnG
         .on('mouseenter', ()=>{ btnRect.attr('stroke', accent).attr('stroke-width', 2).attr('fill','rgba(20,184,166,0.22)'); })
-        .on('mouseleave', ()=>{ btnRect.attr('stroke', ringCol).attr('stroke-width', 1).attr('fill','rgba(20,184,166,0.12)'); })
+        .on('mouseleave', ()=>{ btnRect.attr('stroke', 'var(--tree)')   /* follows the theme without a redraw */.attr('stroke-width', 1).attr('fill','rgba(20,184,166,0.12)'); })
         .on('click', (ev)=>{ 
           ev.stopPropagation(); 
           // Show the subcard instead of directly opening file dialog
@@ -9567,7 +9743,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
                 .attr('y1', Math.min(...leafPositions) - (dynamicBarH / 2))
                 .attr('x2', x)
                 .attr('y2', Math.max(...leafPositions) + (dynamicBarH / 2))
-                .attr('stroke', ringCol)
+                .attr('stroke', 'var(--tree)')   /* follows the theme without a redraw */
                 .attr('stroke-width', dataframe.majorGridWidth || 4)
                 .attr('stroke-dasharray', dataframe.dashedMajorGrid ? '5,5' : 'none')
                 .attr('opacity', 0.7);
@@ -9595,7 +9771,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
                   .attr('y1', Math.min(...leafPositions) - (dynamicBarH / 2))
                   .attr('x2', x)
                   .attr('y2', Math.max(...leafPositions) + (dynamicBarH / 2))
-                  .attr('stroke', ringCol)
+                  .attr('stroke', 'var(--tree)')   /* follows the theme without a redraw */
                   .attr('stroke-width', dataframe.minorGridWidth || 2)
                   .attr('stroke-dasharray', dataframe.dashedMinorGrid ? '3,3' : 'none')
                   .attr('opacity', 0.5);
@@ -9623,7 +9799,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
                     .attr('y1', Math.min(...leafPositions) - (dynamicBarH / 2))
                     .attr('x2', x)
                     .attr('y2', Math.max(...leafPositions) + (dynamicBarH / 2))
-                    .attr('stroke', ringCol)
+                    .attr('stroke', 'var(--tree)')   /* follows the theme without a redraw */
                     .attr('stroke-width', dataframe.minorGridWidth || 2)
                     .attr('stroke-dasharray', dataframe.dashedMinorGrid ? '3,3' : 'none')
                     .attr('opacity', 0.5);
@@ -9908,7 +10084,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
       
        
         const dataframeIds = Array.from(dataframes.keys()).sort((a, b) => a - b);        
-        dataframeIds.forEach((dataframeId, index) => {
+        dataframeIds.forEach(layerIteration('dataframe', getDataframePanelDimensions, (dataframeId, index) => {
           const dataframe = dataframes.get(dataframeId);
           const dataframePanel = getDataframePanelDimensions(index);
           
@@ -10157,7 +10333,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
                .on('mouseenter', ()=>{ btnRect.attr('stroke', accent).attr('stroke-width', 2).attr('fill','rgba(239,68,68,0.22)'); })
                .on('mouseleave', ()=>{ btnRect.attr('stroke', accent).attr('stroke-width', 1).attr('fill','rgba(239,68,68,0.12)'); });
           }
-        });
+        }));
     }
 
     const drawMetadataForHeatmap = (heatmapId, panelX, panelWidth, panelTitle) => {
@@ -10193,7 +10369,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
         .attr('y', titleY)
         .attr('text-anchor', 'middle')
         .attr('transform', `rotate(-45, ${titleX}, ${titleY})`)
-        .style('fill', ringCol)
+        .style('fill', 'var(--tree)')
         .style('font-size', '12px')
         .style('font-weight', 'bold')
         .text(columnTitle);
@@ -10372,7 +10548,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
                 .attr('y1', Math.min(...leafPositions) - dynamicBarH)
                 .attr('x2', x)
                 .attr('y2', Math.max(...leafPositions) + dynamicBarH)
-                .attr('stroke', ringCol)
+                .attr('stroke', 'var(--tree)')   /* follows the theme without a redraw */
                 .attr('stroke-width', chartData.majorGridWidth || 4)
                 .attr('stroke-dasharray', chartData.dashedMajorGrid ? '5,5' : 'none')
                 .attr('opacity', 0.7);
@@ -10400,7 +10576,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
                   .attr('y1', Math.min(...leafPositions) - dynamicBarH)
                   .attr('x2', x)
                   .attr('y2', Math.max(...leafPositions) + dynamicBarH)
-                  .attr('stroke', ringCol)
+                  .attr('stroke', 'var(--tree)')   /* follows the theme without a redraw */
                   .attr('stroke-width', chartData.minorGridWidth || 2)
                   .attr('stroke-dasharray', chartData.dashedMinorGrid ? '3,3' : 'none')
                   .attr('opacity', 0.5);
@@ -10434,7 +10610,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
                     .attr('y1', Math.min(...leafPositions) - dynamicBarH)
                     .attr('x2', x)
                     .attr('y2', Math.max(...leafPositions) + dynamicBarH)
-                    .attr('stroke', ringCol)
+                    .attr('stroke', 'var(--tree)')   /* follows the theme without a redraw */
                     .attr('stroke-width', chartData.minorGridWidth || 2)
                     .attr('stroke-dasharray', chartData.dashedMinorGrid ? '3,3' : 'none')
                     .attr('opacity', 0.5);
@@ -11226,7 +11402,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
     
     const heatmapIds = Array.from(heatmaps.keys()).sort((a, b) => a - b);
     
-      heatmapIds.forEach((heatmapId, index) => {
+      heatmapIds.forEach(layerIteration('heatmap', getHeatmapPanelDimensions, (heatmapId, index) => {
         const heatmapData = heatmaps.get(heatmapId);
         
         const heatmapPanel = getHeatmapPanelDimensions(index);
@@ -11434,12 +11610,12 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
           .on('mouseenter', ()=>{ btnRect.attr('stroke', accent).attr('stroke-width', 2).attr('fill','rgba(239,68,68,0.22)'); })
           .on('mouseleave', ()=>{ btnRect.attr('stroke', accent).attr('stroke-width', 1).attr('fill','rgba(239,68,68,0.12)'); });
       }
-    });
+    }));
     
     // Draw chart data (independent of dataframe and heatmap presence)
     const chartIds = Array.from(charts.keys()).sort((a, b) => a - b);
     
-    chartIds.forEach((chartId, index) => {
+    chartIds.forEach(layerIteration('chart', getChartPanelDimensions, (chartId, index) => {
       const chartData = charts.get(chartId);
       
       const chartPanel = getChartPanelDimensions(index);
@@ -11699,8 +11875,9 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
         .on('mouseenter', ()=>{ btnRect.attr('stroke', accent).attr('stroke-width', 2).attr('fill','rgba(239,68,68,0.22)'); })
         .on('mouseleave', ()=>{ btnRect.attr('stroke', accent).attr('stroke-width', 1).attr('fill','rgba(239,68,68,0.12)'); });
     }
-  });
+  }));
     
+    layerReuseBlockEnd();
   } 
   // Remove artificial right-side gutter to eliminate padding from bbox/fit calculations
   if(!isRadial){
@@ -23871,6 +24048,25 @@ function buildExportSvgSource(){
   // the pinned header of the expanded view goes back to its normal place
   svgClone.querySelectorAll('.pro-sticky-header').forEach(n => n.removeAttribute('transform'));
   svgClone.querySelectorAll('.pro-sticky-header-bg').forEach(n => n.remove());
+  // the data-layer grouping used for incremental redraws is not part of the
+  // exported drawing: unwrap it so exports keep their usual structure
+  svgClone.querySelectorAll('.data-layer, .layers-container').forEach(wrap => {
+    while (wrap.firstChild) wrap.parentNode.insertBefore(wrap.firstChild, wrap);
+    wrap.remove();
+  });
+  // colours given as var(--name) references in inline styles (theme colours that
+  // follow the theme on screen) become real colours, as attribute references do
+  {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const resolveVars = (v) => v.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^)]*))?\)/g, (m, name, fb) => (rootStyle.getPropertyValue(name).trim() || (fb || '').trim() || m));
+    svgClone.querySelectorAll('[style*="var("]').forEach(el => {
+      const st = el.style;
+      for (let i = st.length - 1; i >= 0; i--) {
+        const prop = st[i], val = st.getPropertyValue(prop);
+        if (val.indexOf('var(') >= 0) st.setProperty(prop, resolveVars(val), st.getPropertyPriority(prop));
+      }
+    });
+  }
   
   // Helper function to resolve CSS variables
   const resolveCSSVariable = (value) => {
@@ -25470,7 +25666,8 @@ drawTree = function(){
       document.documentElement.setAttribute('data-theme', t);
       try { localStorage.setItem(key, t); } catch (_) { /* ignore */ }
       
-      updateTreeBranchColors();
+      // (no updateTreeBranchColors() first: drawTree recreates every branch in the new
+      // colours, and recolouring the old ones forced a restyle of the whole drawing)
       drawTree();
       console.log('drawTree in themeToggle change');
     });

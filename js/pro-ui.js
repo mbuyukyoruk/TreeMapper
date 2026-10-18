@@ -418,6 +418,7 @@
   }
   function cladeTs(e) { return +e.key.split('_')[1]; }
   function editEntry(e, colour) {   // colour === null removes the entry
+    if (window.setDrawScope) setDrawScope('tree');   // colours only change the tree's own drawing
     var done = window.tmUndo ? tmUndo.begin(colour === null ? 'remove colour' : 'recolour', 'anno') : function () {};
     if (e.kind === 'bg') {
       if (colour === null) cladeBackgroundColors.delete(e.node); else cladeBackgroundColors.set(e.node, colour);
@@ -506,7 +507,15 @@
     var vTop = window.currentVTop; if (!(vTop > 0)) return;
     var ctm = zoomable.getScreenCTM(); if (!ctm || !ctm.d) return;
     var k = ctm.d, header = [], contentTop = Infinity, headTop = Infinity;
-    for (var c = zoomable.firstElementChild; c; c = c.nextElementSibling) {
+    // candidates: top-level drawing groups, and the groups inside each data layer
+    var cands = [];
+    for (var c0 = zoomable.firstElementChild; c0; c0 = c0.nextElementSibling) {
+      if ((c0.getAttribute('class') || '') === 'layers-container') {
+        for (var l = c0.firstElementChild; l; l = l.nextElementSibling) for (var c1 = l.firstElementChild; c1; c1 = c1.nextElementSibling) cands.push(c1);
+      } else cands.push(c0);
+    }
+    for (var ci = 0; ci < cands.length; ci++) {
+      var c = cands[ci];
       var cls = c.getAttribute('class') || '';
       if (/svg-splitters|handles|right-gutter/.test(cls)) continue;
       var r = c.getBoundingClientRect(); if (!r.height && !r.width) continue;
@@ -524,11 +533,26 @@
     bg.setAttribute('fill', getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff');
     bg.setAttribute('visibility', 'hidden');
     g.appendChild(bg);
+    // remember where each header element came from: before every redraw they go
+    // back, so data layers that are kept between redraws keep their axes
+    var moved = header.map(function (h) { return [h, h.parentNode, h.nextSibling]; });
     header.forEach(function (h) { g.appendChild(h); });
     zoomable.appendChild(g);
-    sticky = { g: g, bg: bg, top: rectTop, dy: 0 };
+    sticky = { g: g, bg: bg, top: rectTop, dy: 0, moved: moved };
     updateStickyHeader();
   }
+  function restoreStickyHeader() {
+    if (!sticky) return;
+    var s = sticky; sticky = null;
+    for (var i = s.moved.length - 1; i >= 0; i--) {
+      var m = s.moved[i], el = m[0], parent = m[1], next = m[2];
+      if (!parent || !parent.isConnected) continue;
+      parent.insertBefore(el, next && next.parentNode === parent ? next : null);
+    }
+    if (s.g.parentNode) s.g.parentNode.removeChild(s.g);
+  }
+  // called by drawTree before it rebuilds the drawing (every path into drawTree)
+  window.onBeforeRedraw = restoreStickyHeader;
   function updateStickyHeader() {
     if (!sticky || !sticky.g.isConnected) return;
     var m = /translate\(\s*([-\d.e]+)[ ,]+([-\d.e]+)\)\s*scale\(\s*([-\d.e]+)/.exec(zoomable.getAttribute('transform') || '');
