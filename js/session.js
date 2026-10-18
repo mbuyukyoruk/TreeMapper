@@ -203,6 +203,7 @@
     settings.__theme = document.documentElement.getAttribute('data-theme') || 'light';
     settings.__legendHidden = document.body.classList.contains('pro-legend-hidden');
     settings.__layout = (typeof geometry !== 'undefined' && geometry === 'radial') ? 'radial' : 'rect';
+    if (window.tmSearch) settings.__search = window.tmSearch.get();   // Look in / Exact match
     s.settings = settings;
 
     s.layers = [];
@@ -445,6 +446,9 @@
         call(function () { updateMetadataLegend(); });
         mark('controls ' + lay.type);
       }
+
+      // search options (after the layers: Look in may name one of them)
+      if (st.__search && window.tmSearch) call(function () { window.tmSearch.set(st.__search); });
 
       // 6. tree edits and colours (applied directly, then one redraw)
       stubDraw();

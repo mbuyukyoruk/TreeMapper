@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610181732" rel="stylesheet">
-<link href="css/styles.css?v=202610181732" rel="stylesheet">
-<link href="css/pro.css?v=202610181732" rel="stylesheet">
+<link href="css/tailwind.css?v=202610181836" rel="stylesheet">
+<link href="css/styles.css?v=202610181836" rel="stylesheet">
+<link href="css/pro.css?v=202610181836" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -359,8 +359,10 @@
         </button>
         </div>
         <div class="search-container">
-          <input autocomplete="off" type="text" id="accessionSearch" placeholder="Search accessions or genes" title="Search accessions or genes (separate several with commas)" class="search-input">
+          <button type="button" class="pro-search-scope" id="proSearchScope" aria-haspopup="menu" aria-expanded="false" title="Where to search"><span id="proSearchScopeLabel">All</span><svg class="pro-ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <input autocomplete="off" type="text" id="accessionSearch" placeholder="Search accessions or genes" title="Search: separate several terms with commas or spaces; use &quot;quotes&quot; for a phrase with spaces" class="search-input">
           <button id="clearSearch" class="search-clear" title="Clear search">×</button>
+          <button type="button" class="pro-search-exact" id="proSearchExact" aria-pressed="false" title="Exact match: the whole value must match (accessions with or without their version, e.g. .1)">ab</button>
         </div>
         <button type="button" class="pro-icon-btn" id="proLegendToggle" aria-pressed="true" aria-label="Show or hide the legend panel" title="Legend"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
       </div>
@@ -442,7 +444,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610181732"></script>
+      <script src="js/drag-fastpath.js?v=202610181836"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -540,6 +542,7 @@
 
 <!-- Reset menu and unified colour pop-up (pro-ui.js) -->
 <div class="pro-menu" id="proResetMenu" role="menu" hidden></div>
+<div class="pro-menu pro-scope-menu" id="proSearchScopeMenu" role="menu" hidden></div>
 <div class="pro-colorpop" id="proColorPop" role="dialog" aria-labelledby="proColorPopTitle" hidden>
   <div class="pro-colorpop-head"><span id="proColorPopTitle">Colour</span><span class="pro-colorpop-sub" id="proColorPopSub"></span></div>
   <div class="pro-colorpop-grid" id="proColorPopGrid"></div>
@@ -695,11 +698,11 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610181732"></script>
-<script src="js/app.js?v=202610181732"></script>
-<script src="js/session.js?v=202610181732"></script>
-<script src="js/undo.js?v=202610181732"></script>
-<script src="js/pro-ui.js?v=202610181732"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610181836"></script>
+<script src="js/app.js?v=202610181836"></script>
+<script src="js/session.js?v=202610181836"></script>
+<script src="js/undo.js?v=202610181836"></script>
+<script src="js/pro-ui.js?v=202610181836"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {

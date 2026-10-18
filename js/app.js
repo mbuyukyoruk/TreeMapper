@@ -4230,7 +4230,105 @@ function findLowestCommonAncestor(node1, node2) {
   return null;
 }
 
-function performSearch(searchTerm) {
+// ------------------------------------------------------------------ search
+// Terms: separated by commas, spaces or new lines; "double quotes" keep a
+// phrase with spaces together (an unclosed quote runs to the end).
+function parseSearchTerms(raw) {
+  const terms = [];
+  const re = /"([^"]*)"?|[^,\s"]+/g;
+  let m;
+  while ((m = re.exec(raw))) {
+    const t = (m[1] !== undefined ? m[1] : m[0]).trim().toLowerCase();
+    if (t) terms.push(t);
+  }
+  return terms;
+}
+
+// Per tip, the lower-cased text of every place search looks, prepared once and
+// prepared again only when the tree or a data layer changes (loaded, removed,
+// replaced). Typing then only compares text.
+const searchIndex = { sig: null, tips: new Map() };
+const searchObjIds = new WeakMap(); let searchObjSeq = 1;
+function searchObjId(o) {
+  if (!o || typeof o !== 'object') return 0;
+  let id = searchObjIds.get(o);
+  if (!id) { id = searchObjSeq++; searchObjIds.set(o, id); }
+  return id;
+}
+function searchDataSignature(leaves) {
+  const parts = [searchObjId(root), leaves.length];
+  const add = (tag, map, field) => {
+    if (!map) return;
+    map.forEach((v, k) => parts.push(tag + k + ':' + searchObjId(v) + ':' + searchObjId(v && v[field]) + ':' + searchObjId(v && v.meta && v.meta.byIdAll)));
+  };
+  add('d', dataframes, 'meta'); add('h', heatmaps, 'accessionToValue'); add('c', charts, 'accessionToValues');
+  add('l', highlights, 'accessionToValue'); add('k', clades, 'accessionToValue');
+  return parts.join(',');
+}
+function buildSearchIndex(leaves) {
+  const tips = new Map();
+  const dfCols = new Map();
+  const columnsOf = (meta) => {
+    let c = dfCols.get(meta);
+    if (!c) {
+      const set = new Set(Array.isArray(meta.columns) ? meta.columns : []);
+      const { geneCol } = getDataframeColumnIndices(meta);
+      if (geneCol) set.add(geneCol);
+      c = { all: Array.from(set), gene: geneCol || null };
+      dfCols.set(meta, c);
+    }
+    return c;
+  };
+  const valueLayer = (map, key) => {
+    const out = new Map();
+    if (map) map.forEach((data, id) => {
+      if (data && data.accessionToValue && data.accessionToValue.has(key)) out.set(id, [String(data.accessionToValue.get(key) || '').toLowerCase()]);
+    });
+    return out;
+  };
+  for (const leaf of leaves) {
+    const name = leaf.data.name;
+    if (tips.has(name)) continue;
+    const key = normalizeAccession(name);
+    const acc = displayAccession(name || '').toLowerCase();
+    const entry = { acc, accBase: acc.replace(/\.\d+$/, ''), df: new Map(), genes: new Map(), hm: valueLayer(heatmaps, key),
+      ch: new Map(), hl: valueLayer(highlights, key), cl: valueLayer(clades, key) };
+    if (dataframes) dataframes.forEach((df, id) => {
+      const meta = df && df.meta;
+      if (!meta || !meta.byIdAll) return;
+      const records = meta.byIdAll.get(key);
+      if (!records) return;
+      const cols = columnsOf(meta), all = [], genes = [];
+      for (const record of records) {
+        for (const col of cols.all) all.push(String(record[col] || '').toLowerCase());
+        if (cols.gene) genes.push(String(record[cols.gene] || '').toLowerCase());
+      }
+      entry.df.set(id, all); entry.genes.set(id, genes);
+    });
+    if (charts) charts.forEach((chartData, id) => {
+      if (!chartData || !chartData.accessionToValues || !chartData.accessionToValues.has(key)) return;
+      const strings = [];
+      for (const [column, value] of Object.entries(chartData.accessionToValues.get(key))) {
+        strings.push(column.toLowerCase()); strings.push(String(value || '').toLowerCase());
+      }
+      entry.ch.set(id, strings);
+    });
+    tips.set(name, entry);
+  }
+  return tips;
+}
+function getSearchIndex(leaves) {
+  const sig = searchDataSignature(leaves);
+  if (sig !== searchIndex.sig) { searchIndex.tips = buildSearchIndex(leaves); searchIndex.sig = sig; }
+  return searchIndex.tips;
+}
+
+// options (from the search box): scope = 'all' | 'accession' | 'genes' |
+// '<type>:<id>' (dataframe, heatmap, chart, highlight, clade); exact = whole
+// value must equal the term (accessions also without their .1 version).
+// Without options (e.g. the Clade layer colouring its branches) search works
+// exactly as before: any term contained anywhere.
+function performSearch(searchTerm, options) {
   const rawSearchTerm = searchTerm.trim();
   highlightedAccessions.clear();
   
@@ -4240,9 +4338,9 @@ function performSearch(searchTerm) {
     return;
   }
   
-  const searchTerms = rawSearchTerm.split(/[,\s\n]+/)
-    .map(term => term.trim().toLowerCase())
-    .filter(term => term.length > 0);
+  const searchTerms = parseSearchTerms(rawSearchTerm);
+  const scope = (options && options.scope) || 'all';
+  const exact = !!(options && options.exact);
   
   currentSearchTerm = rawSearchTerm;
   
@@ -4250,112 +4348,30 @@ function performSearch(searchTerm) {
     updateSearchHighlights();
     return;
   }
-  
   if (root) {
     const leaves = root.leaves();
-    // PERF: a leaf matches if any search term is a substring of any of its searchable
-    // strings. Lower-case each string once (instead of once per term) and test all terms.
-    const anyTermIn = (strings) => {
-      for (let t = 0; t < searchTerms.length; t++) {
-        const term = searchTerms[t];
-        for (let i = 0; i < strings.length; i++) {
-          if (strings[i].includes(term)) return true;
-        }
-      }
-      return false;
+    const index = getSearchIndex(leaves);
+    const hit = exact
+      ? (strings) => { for (let i = 0; i < strings.length; i++) for (let t = 0; t < searchTerms.length; t++) if (strings[i] === searchTerms[t]) return true; return false; }
+      : (strings) => { for (let t = 0; t < searchTerms.length; t++) for (let i = 0; i < strings.length; i++) if (strings[i].includes(searchTerms[t])) return true; return false; };
+    const accHit = exact
+      ? (e) => searchTerms.some(t => t === e.acc || t === e.accBase)
+      : (e) => searchTerms.some(t => e.acc.includes(t));
+    const anyIn = (m) => { for (const v of m.values()) if (hit(v)) return true; return false; };
+    const colon = scope.indexOf(':');
+    const sType = colon > 0 ? scope.slice(0, colon) : scope, sId = colon > 0 ? +scope.slice(colon + 1) : null;
+    const field = { dataframe: 'df', heatmap: 'hm', chart: 'ch', highlight: 'hl', clade: 'cl' }[sType];
+    const tipMatches = (e) => {
+      if (sType === 'accession') return accHit(e);
+      if (sType === 'genes') return anyIn(e.genes);
+      if (field) { const v = e[field].get(sId); return !!v && hit(v); }
+      return accHit(e) || anyIn(e.df) || anyIn(e.hm) || anyIn(e.ch) || anyIn(e.hl) || anyIn(e.cl);
     };
-    // Columns to search per dataframe: all columns, plus the gene column if present
-    const dfSearchColumns = new Map();
-    const getDfSearchColumns = (meta) => {
-      let cols = dfSearchColumns.get(meta);
-      if (!cols) {
-        const set = new Set(Array.isArray(meta.columns) ? meta.columns : []);
-        const { geneCol } = getDataframeColumnIndices(meta);
-        if (geneCol) set.add(geneCol);
-        cols = Array.from(set);
-        dfSearchColumns.set(meta, cols);
-      }
-      return cols;
-    };
-    const heatmapList = heatmaps ? Array.from(heatmaps.values()) : [];
-    const chartList = charts ? Array.from(charts.values()) : [];
-    const highlightList = highlights ? Array.from(highlights.values()) : [];
-    const cladeList = clades ? Array.from(clades.values()) : [];
-    const valuesFrom = (list, key) => {
-      const out = [];
-      for (const data of list) {
-        if (data.accessionToValue && data.accessionToValue.has(key)) {
-          out.push(String(data.accessionToValue.get(key) || '').toLowerCase());
-        }
-      }
-      return out;
-    };
-
-    leaves.forEach(leaf => {
-      const accession = displayAccession(leaf.data.name || '').toLowerCase();
-
-      let matches = searchTerms.some(term => accession.includes(term));
-
-      // Search across all dataframe metadata (all columns) if no matches yet
-      if (!matches && dataframes && dataframes.size > 0) {
-        const key = normalizeAccession(leaf.data.name);
-        for (const df of dataframes.values()) {
-          const meta = df && df.meta;
-          if (!meta || !meta.byIdAll) continue;
-
-          const records = meta.byIdAll.get(key);
-          if (!records) continue;
-
-          const searchColumns = getDfSearchColumns(meta);
-          const strings = [];
-          for (const record of records) {
-            for (const col of searchColumns) {
-              strings.push(String(record[col] || '').toLowerCase());
-            }
-          }
-
-          if (anyTermIn(strings)) { matches = true; break; }
-        }
-      }
-
-      // Search heatmap values if no matches found yet
-      if (!matches && heatmaps && heatmaps.size > 0) {
-        matches = anyTermIn(valuesFrom(heatmapList, normalizeAccession(leaf.data.name)));
-      }
-
-        // Search chart values if no matches found yet
-        if (!matches && charts && charts.size > 0) {
-          const key = normalizeAccession(leaf.data.name);
-          const strings = [];
-          for (const chartData of chartList) {
-            if (chartData.accessionToValues && chartData.accessionToValues.has(key)) {
-              const values = chartData.accessionToValues.get(key);
-              // Search through all column names and their values
-              for (const [column, value] of Object.entries(values)) {
-                strings.push(column.toLowerCase());
-                strings.push(String(value || '').toLowerCase());
-              }
-            }
-          }
-          matches = anyTermIn(strings);
-        }
-
-        // Search highlight values if no matches found yet
-      if (!matches && highlights && highlights.size > 0) {
-        matches = anyTermIn(valuesFrom(highlightList, normalizeAccession(leaf.data.name)));
-      }
-
-      // Search clade values if no matches found yet
-      if (!matches && clades && clades.size > 0) {
-        matches = anyTermIn(valuesFrom(cladeList, normalizeAccession(leaf.data.name)));
-      }
-
-      if (matches) {
-        highlightedAccessions.add(leaf.data.name);
-      }
-    });
+    for (const leaf of leaves) {
+      const e = index.get(leaf.data.name);
+      if (e && tipMatches(e)) highlightedAccessions.add(leaf.data.name);
+    }
   }
-  
   try {
     const hasSearch = typeof rawSearchTerm === 'string' && rawSearchTerm.trim().length > 0;
     if (hasSearch) {
@@ -21167,7 +21183,7 @@ if (searchInput) {
     } else {
       searchContainer.classList.remove('has-text');
     }
-    performSearch(value);
+    performSearch(value, window.tmSearchOptions);   // Look in / Exact match (set by the page interface)
   });
   
   searchInput.addEventListener('keydown', (e) => {
