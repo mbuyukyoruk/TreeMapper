@@ -172,7 +172,8 @@ html.pro #addDataframe {
 }
 html.pro #addDataframe.active { box-shadow: var(--pro-primary-shadow), 0 0 0 3px rgba(var(--accent-rgb), .22) !important; }
 html.pro body:not(.pro-has-tree) #addDataframe { opacity: .45 !important; pointer-events: none; }
-html.pro body:not(.pro-has-tree) #proExportBtn { opacity: .5; pointer-events: none; }
+html.pro body:not(.pro-has-tree) #proExportBtn,
+html.pro body:not(.pro-has-tree) #proSaveSession { opacity: .5; pointer-events: none; }
 html.pro .pro-btn .pro-ico + span + .pro-ico { margin-left: -2px; color: var(--pro-faint); }
 
 /* ---------- Top bar (sits on the tinted workspace) ---------- */

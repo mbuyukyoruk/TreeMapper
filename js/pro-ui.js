@@ -57,6 +57,13 @@
     // runs after app.js's own listener (which records the selected file)
     treeInput.addEventListener('change', function () {
       if (!treeInput.files || !treeInput.files[0]) return;
+      // a saved session goes to the session loader instead of the tree parser
+      if (window.tmSession && tmSession.isSessionFile(treeInput.files[0])) {
+        var sf = treeInput.files[0];
+        try { currentLoadedTreeFile = null; selectedTreeFile = null; updateLoadSelectedButtonState(); } catch (e) {}
+        tmSession.load(sf);
+        return;
+      }
       if (loadBtn.disabled) {
         // the classic page refuses to reload a file with the same name; allow it here
         try { currentLoadedTreeFile = null; updateLoadSelectedButtonState(); } catch (e) {}
@@ -572,6 +579,18 @@
     };
   }
 
+  // ---------------------------------------------------------------- sessions
+  if ($('proSaveSession') && window.tmSession) $('proSaveSession').addEventListener('click', function () { tmSession.save(); });
+  // dropping a .treemapper file on the canvas opens it (before the app's own tree drop handler)
+  var canvasEl2 = $('canvas');
+  if (canvasEl2 && window.tmSession) canvasEl2.addEventListener('drop', function (e) {
+    var files = e.dataTransfer && e.dataTransfer.files ? Array.prototype.slice.call(e.dataTransfer.files) : [];
+    var sf = files.filter(function (f) { return tmSession.isSessionFile(f); })[0];
+    if (!sf) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    tmSession.load(sf);
+  }, true);
+
   // ------------------------------------------------------------ undo / redo
   var undoBtn = $('proUndo'), redoBtn = $('proRedo');
   function syncUndo() {
@@ -687,6 +706,12 @@
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey, k = e.key;
     // undo / redo work everywhere except while editing a text field
+    if (mod && !e.altKey && (k === 's' || k === 'S') && window.tmSession) {
+      e.preventDefault();
+      if (tmSession.canSave()) tmSession.save();
+      return;
+    }
+    if (mod && !e.altKey && (k === 'o' || k === 'O')) { e.preventDefault(); openTree(); return; }
     if (mod && !e.altKey && (k === 'z' || k === 'Z' || k === 'y' || k === 'Y') && !typing(e.target) && window.tmUndo) {
       var redoKey = k === 'y' || k === 'Y' || e.shiftKey;
       if (redoKey ? tmUndo.redo() : tmUndo.undo()) e.preventDefault();

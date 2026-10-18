@@ -15,6 +15,7 @@
   var LIMIT = 40;
   var undoStack = [], redoStack = [];
   var listeners = [];
+  var suspended = false;   // while a session is being opened
 
   // buttons whose click is an undoable edit (the label is shown as "Undo <label>")
   var ACTIONS = {
@@ -267,7 +268,7 @@
     pendingReroot = before;
     var tries = 0;
     (function wait() {
-      if (root && root !== before.root) { pendingReroot = null; push(before); return; }
+      if (root && root !== before.root) { pendingReroot = null; if (!suspended) push(before); return; }
       if (++tries < 150) setTimeout(wait, 100);   // up to 15 s for very large trees
       else pendingReroot = null;
     })();
@@ -276,7 +277,7 @@
   // record clicks on the app's edit buttons (capture phase: runs before the app's own handler)
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest ? e.target.closest('button') : null;
-    if (!btn || btn.disabled || !root) return;
+    if (suspended || !btn || btn.disabled || !root) return;
     if (REROOTS[btn.id]) { beginReroot(REROOTS[btn.id], btn.id); return; }
     if (!ACTIONS[btn.id]) return;
     var done = begin(ACTIONS[btn.id], btn.id);
@@ -286,7 +287,7 @@
   // midpoint rooting on/off re-roots the tree too
   document.addEventListener('change', function (e) {
     var id = e.target && e.target.id;
-    if ((id === 'rootEnable' || id === 'rootMode') && root) beginReroot('rooting', id, true);
+    if (!suspended && (id === 'rootEnable' || id === 'rootMode') && root) beginReroot('rooting', id, true);
   }, true);
   document.addEventListener('change', function (e) {
     var id = e.target && e.target.id;
@@ -300,6 +301,8 @@
     undoLabel: function () { return undoStack.length ? undoStack[undoStack.length - 1].label : ''; },
     redoLabel: function () { return redoStack.length ? redoStack[redoStack.length - 1].label : ''; },
     onChange: function (f) { listeners.push(f); },
+    suspend: function (on) { suspended = !!on; },
+    clear: function () { clearHistory(); notify(); },
     refresh: notify
   };
 })();

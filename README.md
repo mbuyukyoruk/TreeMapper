@@ -30,6 +30,12 @@ The earlier classic-layout interface is kept in git history under the tag
   with Rotate, Collapse, Cartoon, Colour, Highlight, Re-root and more.
 - **Legend panel** on the right (can be hidden), **status bar** at the bottom.
 - You can drop a Newick file onto the canvas to open it.
+- **Sessions:** *Save session* (⌘S) writes a `.treemapper` file with the
+  tree, every data file, each card's settings (visibility, colours, gene
+  order), the display settings, the root, tree edits (rotations, collapses,
+  cartoons, drops) and colours/highlights. *Open* (⌘O) or dropping the file
+  on the canvas restores it exactly. The file is plain JSON and contains your
+  data files, so share it only where the data may go.
 - **Undo / redo** (toolbar arrows, ⌘Z / ⇧⌘Z) for rotate, collapse, cartoon,
   drop, isolate, colours, highlights, the Reset-menu actions and re-rooting
   (Re-root, Reset root, midpoint rooting). Opening or generating a new tree
@@ -58,6 +64,7 @@ js/
   app.js                   the application
   pro-ui.js                layout logic (panels, Reset/Export menus, colour pop-up, shortcuts, ...)
   undo.js                  undo / redo history
+  session.js               save / open sessions (.treemapper files)
   drag-fastpath.js         splitter-drag flag helper (runs before app.js)
   bench.js                 built-in speed test (index.html?bench)
   debug-monitor.js         optional performance/click debugger (index.html?debug)
