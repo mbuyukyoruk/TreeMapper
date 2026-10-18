@@ -70,10 +70,21 @@ js/
   debug-monitor.js         optional performance/click debugger (index.html?debug)
 ```
 
+## How redrawing works
+
+Most actions redraw the tree. The data layers (dataframe bars, heatmap cells,
+chart bars, with their axes and titles) are by far the largest part of the
+drawing, so each layer is kept between redraws unless something it depends on
+changed: its own card, the tip order or positions, or the column sizes. Style
+changes to the tree, colours, highlights, the theme and Fit therefore redraw
+only the tree, and a change in one data card redraws only that layer. Exports
+are unaffected (byte-identical to a full redraw).
+
 ## Diagnostics
 
 - `index.html?bench`: runs a built-in speed test on generated 3,000-tip data.
 - `index.html?debug`: shows the green "CLICK DEBUG" performance monitor.
+- `index.html?noreuse`: always redraws everything (for comparison).
 
 ## Performance changes (behaviour unchanged)
 
