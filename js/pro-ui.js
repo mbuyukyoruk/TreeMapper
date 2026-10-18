@@ -500,8 +500,67 @@
   var SVGNS = 'http://www.w3.org/2000/svg';
   var sticky = null;   // { g, bg, top }
   function isRectLayout() { var b = $('btnRect'); return !b || b.classList.contains('active'); }
+  // With "Axes below the tree" the axis row is under the last tip instead: it is
+  // gathered the same way into a footer that stays at the bottom of the canvas.
+  var stickyFoot = null;   // { g, bg, bottom, dy, moved }
+  function stickyCandidates() {
+    var cands = [];
+    for (var c0 = zoomable.firstElementChild; c0; c0 = c0.nextElementSibling) {
+      var cl = c0.getAttribute('class') || '';
+      if (cl === 'layers-container') {
+        for (var l = c0.firstElementChild; l; l = l.nextElementSibling) for (var c1 = l.firstElementChild; c1; c1 = c1.nextElementSibling) cands.push(c1);
+      } else if (cl !== 'pro-sticky-header') cands.push(c0);
+    }
+    return cands.filter(function (c) { return !/svg-splitters|handles|right-gutter/.test(c.getAttribute('class') || ''); });
+  }
+  function buildStickyFooter() {
+    stickyFoot = null;
+    var row = window.currentAxisRow, svgEl = $('svg');
+    if (!row || !row.below || !zoomable || !svgEl || svgEl.classList.contains('no-pan') || !isRectLayout()) return;
+    var ctm = zoomable.getScreenCTM(); if (!ctm || !ctm.d) return;
+    var k = ctm.d, foot = [], footTop = Infinity, footBottom = -Infinity;
+    stickyCandidates().forEach(function (c) {
+      var r = c.getBoundingClientRect(); if (!r.height && !r.width) return;
+      var top = (r.top - ctm.f) / k, bottom = (r.bottom - ctm.f) / k;
+      if (top >= row.y - 6) { foot.push(c); footTop = Math.min(footTop, top); footBottom = Math.max(footBottom, bottom); }
+    });
+    if (!foot.length) return;
+    var g = document.createElementNS(SVGNS, 'g'); g.setAttribute('class', 'pro-sticky-header');
+    var bg = document.createElementNS(SVGNS, 'rect'); bg.setAttribute('class', 'pro-sticky-header-bg');
+    var bb = null; try { bb = zoomable.getBBox(); } catch (e) {}
+    var rectTop = Math.min(footTop, row.y) - 6, rectBottom = footBottom + 6;
+    bg.setAttribute('x', bb ? bb.x - 20 : -2000); bg.setAttribute('width', bb ? bb.width + 40 : 8000);
+    bg.setAttribute('y', rectTop); bg.setAttribute('height', Math.max(1, rectBottom - rectTop));
+    bg.setAttribute('fill', getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff');
+    bg.setAttribute('visibility', 'hidden');
+    g.appendChild(bg);
+    var moved = foot.map(function (h) { return [h, h.parentNode, h.nextSibling]; });
+    foot.forEach(function (h) { g.appendChild(h); });
+    zoomable.appendChild(g);
+    stickyFoot = { g: g, bg: bg, bottom: rectBottom, dy: 0, moved: moved };
+  }
+  function updateStickyFooter() {
+    if (!stickyFoot || !stickyFoot.g.isConnected) return;
+    var svgEl = $('svg'), canvasEl = $('canvas'), ctm = zoomable.getScreenCTM(); if (!ctm || !ctm.d || !svgEl) return;
+    var sr = svgEl.getBoundingClientRect(), cr = canvasEl ? canvasEl.getBoundingClientRect() : sr;
+    var visBottom = (Math.min(sr.bottom, cr.bottom) - ctm.f) / ctm.d;   // lowest visible drawing y
+    var dy = Math.min(0, visBottom - stickyFoot.bottom);                 // lift the row while the end is off screen
+    if (Math.abs(dy - stickyFoot.dy) < 0.01) return;
+    stickyFoot.dy = dy;
+    if (dy) stickyFoot.g.setAttribute('transform', 'translate(0,' + dy + ')'); else stickyFoot.g.removeAttribute('transform');
+    stickyFoot.bg.setAttribute('visibility', dy ? 'visible' : 'hidden');
+  }
+  function restoreGroup(s) {
+    for (var i = s.moved.length - 1; i >= 0; i--) {
+      var m = s.moved[i], el = m[0], parent = m[1], next = m[2];
+      if (!parent || !parent.isConnected) continue;
+      parent.insertBefore(el, next && next.parentNode === parent ? next : null);
+    }
+    if (s.g.parentNode) s.g.parentNode.removeChild(s.g);
+  }
   function buildStickyHeader() {
     sticky = null;
+    buildStickyFooter(); updateStickyFooter();
     var svgEl = $('svg');
     if (!zoomable || !svgEl || svgEl.classList.contains('no-pan') || !isRectLayout()) return;
     var vTop = window.currentVTop; if (!(vTop > 0)) return;
@@ -542,18 +601,13 @@
     updateStickyHeader();
   }
   function restoreStickyHeader() {
-    if (!sticky) return;
-    var s = sticky; sticky = null;
-    for (var i = s.moved.length - 1; i >= 0; i--) {
-      var m = s.moved[i], el = m[0], parent = m[1], next = m[2];
-      if (!parent || !parent.isConnected) continue;
-      parent.insertBefore(el, next && next.parentNode === parent ? next : null);
-    }
-    if (s.g.parentNode) s.g.parentNode.removeChild(s.g);
+    if (sticky) { var s = sticky; sticky = null; restoreGroup(s); }
+    if (stickyFoot) { var f = stickyFoot; stickyFoot = null; restoreGroup(f); }
   }
   // called by drawTree before it rebuilds the drawing (every path into drawTree)
   window.onBeforeRedraw = restoreStickyHeader;
   function updateStickyHeader() {
+    updateStickyFooter();
     if (!sticky || !sticky.g.isConnected) return;
     var m = /translate\(\s*([-\d.e]+)[ ,]+([-\d.e]+)\)\s*scale\(\s*([-\d.e]+)/.exec(zoomable.getAttribute('transform') || '');
     var ty = m ? parseFloat(m[2]) : 0, k = m ? parseFloat(m[3]) : 1;
@@ -865,7 +919,7 @@
     'bootstrapBorderWidth', 'bootstrapMinSize', 'bootstrapMaxSize', 'bootstrapPosition', 'bootstrapFontSize',
     'bootstrapFontColor', 'bootstrapBold', 'bootstrapItalic', 'bootstrapTextPosition', 'bootstrapVerticalShift',
     'bootstrapScaleFactor', 'bootstrapRounding', 'bootstrapScientific', 'bootstrapPercent', 'bootstrapShowAll',
-    'bootstrapColorMin', 'bootstrapColorMidToggle', 'bootstrapColorMid', 'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin'];
+    'bootstrapColorMin', 'bootstrapColorMidToggle', 'bootstrapColorMid', 'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin', 'axesBelow'];
   function readCtl(el) {
     if (el.tagName === 'BUTTON') return el.getAttribute('aria-pressed') === 'true';
     if (el.type === 'checkbox' || el.type === 'radio') return el.checked;
