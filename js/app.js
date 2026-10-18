@@ -51,6 +51,17 @@ let highlightedAccessions = new Set();
 let collapsedAccessions = new Set();
 const nodeToElement = new WeakMap();
 let _prevHighlightSet = new Set();
+// true while the selection was made by a search: search hits are shown by the
+// orange paths and labels only; red node markers are for clades the user clicks
+let selectionFromSearch = false;
+// nodes drawn with the red "selected" marker
+function selectedMarkerSet() {
+  const s = new Set();
+  if (selectionFromSearch) return s;
+  highlightedClades.forEach(d => s.add(d));
+  if (highlightedClade) s.add(highlightedClade);
+  return s;
+}
 let treePaneWidth = null;
 let labelPaneWidth = null;
 let barPaneWidthOverride = null;
@@ -4392,6 +4403,7 @@ function performSearch(searchTerm, options) {
         
         // Add the matching leaf nodes to highlightedClades
         matchingLeafNodes.forEach(node => highlightedClades.add(node));
+        selectionFromSearch = true;
         
         // Find the lowest common ancestor of all matching accessions for reroot functionality
         let lowestCommonAncestor = null;
@@ -4439,7 +4451,7 @@ function performSearch(searchTerm, options) {
     }
   } catch (_) { /* best-effort UI sync */ }
   
-  updateSearchHighlights();
+  updateHighlightVisuals();   // node markers (a previous clicked clade loses its red marker), then paths and labels
   updateColorPathCardVisibility();
   
   const count = highlightedAccessions.size;
@@ -4569,7 +4581,7 @@ function clearSearch() {
   const dropBtn = document.getElementById('dropNode');
   if(dropBtn) dropBtn.style.display = 'none';
   
-  updateSearchHighlights();
+  updateHighlightVisuals();
   setStatus('');
   searchContainer.classList.remove('has-text');
   updateColorPathCardVisibility();
@@ -4612,8 +4624,7 @@ function clearCladeSelection() {
 
 function updateHighlightVisuals() {
   // --- 1. Update ONLY the nodes whose state changed (O(k)) ---
-  const curSet = new Set(highlightedClades);
-  if (highlightedClade) curSet.add(highlightedClade);
+  const curSet = selectedMarkerSet();
 
   const changed = [];
   _prevHighlightSet.forEach(d => { if (!curSet.has(d)) changed.push(d); });
@@ -6722,9 +6733,11 @@ function drawTreeBody(){
   
   // Memory optimization: Pre-calculate node styles to reduce object creation
   const nodeStyles = new Map();
+  const markerSet = selectedMarkerSet();
+  _prevHighlightSet = markerSet;   // updateHighlightVisuals() changes markers relative to what is drawn here
   nodes.each(function(d) {
     const isInternal = d.children || d._children;
-    const isHighlighted = highlightedClade === d || highlightedClades.has(d);
+    const isHighlighted = markerSet.has(d);
     const isCollapsed = collapsedNodes.has(d);
     
     // Pre-calculate all style properties to avoid repeated calculations
@@ -12611,6 +12624,7 @@ function cartoonClade(d){
 }
 
 function highlightClade(d, multiSelect = false){
+  selectionFromSearch = false;
   
   if(multiSelect) {
     // Multi-selection mode
@@ -13957,6 +13971,7 @@ function restoreTreeState(state) {
     const node = byKey.get(key);
     if(node) {
       highlightedClade = node;
+      selectionFromSearch = false;
       // Restore highlighted accessions
       highlightedAccessions.clear();
       if (node.children || node._children) {
@@ -21178,11 +21193,14 @@ function getPlaceholderPanelDimensions() {
 if (searchInput) {
   searchInput.addEventListener('input', (e) => {
     const value = e.target.value;
-    if (value) {
-      searchContainer.classList.add('has-text');
-    } else {
-      searchContainer.classList.remove('has-text');
+    if (!value.trim()) {
+      // emptied by hand: same as the clear (×) button, so the search's selection goes too
+      if (currentSearchTerm || selectionFromSearch) { clearSearch(); return; }
+      searchContainer.classList.toggle('has-text', !!value);
+      performSearch(value, window.tmSearchOptions);
+      return;
     }
+    searchContainer.classList.add('has-text');
     performSearch(value, window.tmSearchOptions);   // Look in / Exact match (set by the page interface)
   });
   
