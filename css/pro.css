@@ -503,6 +503,8 @@ html.pro input.pro-num {
 html.pro input.pro-num-sm { width: 52px; }
 html.pro input.pro-num:disabled { opacity: .45; }
 html.pro .pro-unit { min-width: 14px; color: var(--muted); font-size: 12px; }
+html.pro .pro-support-note { margin: 0; padding: 2px 0 8px; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+html.pro .pro-support-note:empty { display: none; }
 html.pro .pro-range-pair { display: inline-flex; align-items: center; gap: 6px; }
 html.pro .pro-range-pair input.pro-num { width: 56px; }
 

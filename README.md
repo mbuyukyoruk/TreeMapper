@@ -51,7 +51,29 @@ The earlier classic-layout interface is kept in git history under the tag
   starts a fresh history.
 - **Export** menu: SVG, PNG (2× or 4×, about 300 dpi) and PDF (vector, via
   the print dialog's "Save as PDF").
-- **Tree files:** Newick and NEXUS (TRANSLATE tables are applied).
+- **Tree files:** Newick and NEXUS (TRANSLATE tables are applied). Quoted
+  names (`'Homo sapiens'`) and [comments] are understood.
+- **Support values** (Style → *Support values*): an internal label made of
+  numbers is the support of the branch above that node: `95`, `0.98`, or
+  `95/88` (IQ-TREE SH-aLRT/UFBoot; *Data source* picks which number).
+  RAxML `A:0.1[95]` labels and MrBayes/BEAST `[&prob=0.97]` annotations are
+  read too. Any other internal label is a clade name. Nothing is ever made up:
+  a tree without support values shows none. The scale is detected per tree
+  (0–1, 0–100, or replicate counts such as 0–1000) and the range, symbol sizes
+  (0% = minimum, 100% = maximum, as in the legend), colours and the percent
+  text all work in percent of that scale.
+- **Re-rooting** puts the root on the branch above the selected clade (or
+  tip), halfway along it, so the clade becomes one side of the root. Every
+  branch keeps its length and support value: on the path to the new root the
+  branches are reversed and their values move with them, so distances between
+  tips never change. A root with two branches is one branch of the unrooted
+  tree; when those two branches had different support values the joined branch
+  keeps the lower one (the Support values panel says so).
+  **Midpoint rooting** puts the root halfway along the longest path between
+  two tips, on the branch where that point falls; it does not depend on the
+  previous root. **Reset root** gives back the file's tree exactly.
+  (Sessions saved before October 2026 with the root at a node still open with
+  that root.)
 - **Expanded view:** scroll with the mouse wheel or trackpad (Shift for
   sideways, pinch or ⌘-scroll to zoom); the scale bar and data axes stay
   pinned at the top.
@@ -70,6 +92,7 @@ css/
   pro.css                  layout and visual design
 js/
   vendor/d3.v7.9.0.min.js  D3 library, bundled locally (pinned version)
+  tree-core.js             tree model: Newick parsing/writing, re-rooting, midpoint (no page code)
   app.js                   the application
   pro-ui.js                layout logic (panels, Reset/Export menus, colour pop-up, shortcuts, ...)
   undo.js                  undo / redo history

@@ -3183,7 +3183,13 @@ function validateChartFormat(text) {
 // TRANSLATE table. Anything that is not NEXUS is returned unchanged.
 function nexusToNewick(text){
   if (!/^\s*#nexus/i.test(text)) return text;
-  const clean = text.replace(/\[[^\]]*\]/g, '');                    // [comments] / [&R]
+  // [comments] and [&R] are dropped; [&key=value] annotations (MrBayes / BEAST
+  // posteriors) are kept aside and put back after the TRANSLATE step
+  const kept = [];
+  const clean = text.replace(/\[([^\]]*)\]/g, (m, body) => {
+    const t = body.trim();
+    return (t[0] === '&' && t.indexOf('=') > 0) ? '\u0001' + (kept.push(m) - 1) + '\u0002' : '';
+  });
   const block = /begin\s+trees\s*;([\s\S]*?)\bend(?:block)?\s*;/i.exec(clean);
   if (!block) throw new Error('NEXUS file has no TREES block');
   const body = block[1];
@@ -3203,65 +3209,19 @@ function nexusToNewick(text){
   nwk = nwk.replace(/'([^']*)'/g, (_, t) => t);
   if (translate.size) {
     // tip labels follow "(" or "," and end at ":", ",", ")" or ";"
-    nwk = nwk.replace(/([(,]\s*)([^(),:;]+?)(\s*[:,);])/g, (m, a, name, b) => {
+    nwk = nwk.replace(/([(,]\s*)([^(),:;\u0001]+?)(\s*[:,);\u0001])/g, (m, a, name, b) => {
       const t = translate.get(name.trim());
       return t !== undefined ? a + t + b : m;
     });
   }
-  return nwk;
+  return nwk.replace(/\u0001(\d+)\u0002/g, (m, k) => kept[+k]);
 }
 
+// Newick parsing lives in js/tree-core.js (quoted names, comments, [&annotations],
+// support labels such as 95, 0.98 or 95/88). Internal labels made of numbers are
+// support values (data.bootstrap, data.supports); other internal labels are names.
 function parseNewick(newick){
-  newick = newick.trim();
-  if(!newick.endsWith(';')) newick += ';';
-  
-  // Use tokenized approach like biojs-io-newick for much better performance
-  const ancestors = [];
-  let tree = {};
-  const tokens = newick.split(/\s*(;|\(|\)|,|:)\s*/);
-  
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    switch (token) {
-      case '(': // new children
-        const subtree = {};
-        tree.children = [subtree];
-        ancestors.push(tree);
-        tree = subtree;
-        break;
-      case ',': // another branch
-        const newSubtree = {};
-        ancestors[ancestors.length - 1].children.push(newSubtree);
-        tree = newSubtree;
-        break;
-      case ')': // optional name/bootstrap next
-        tree = ancestors.pop();
-        break;
-      case ':': // optional length next
-        break;
-      case ';': // end of tree
-        break;
-      default:
-        if (token && token.trim()) {
-          const prevToken = tokens[i - 1];
-          if (prevToken === ')' || prevToken === '(' || prevToken === ',') {
-            // Check if this looks like a bootstrap value (numeric)
-            const numericValue = parseFloat(token);
-            if (!isNaN(numericValue) && prevToken === ')') {
-              // This is likely a bootstrap value after a closing parenthesis
-              tree.bootstrap = numericValue;
-            } else {
-              // This is a regular name
-              tree.name = token;
-            }
-          } else if (prevToken === ':') {
-            tree.length = parseFloat(token);
-          }
-        }
-    }
-  }
-  
-  return tree;
+  return TreeCore.parse(newick);
 }
 
 function toHierarchy(obj){
@@ -3872,15 +3832,6 @@ function processTreeProperties(root){
       
       n._hDown = maxHeight;
       n._downSteps = 1 + maxSteps;
-      
-      // Add test bootstrap values to internal nodes for demonstration
-      if (!n.data.bootstrap && !n.data.bs) {
-        // Generate bootstrap values based on node depth and position
-        const depth = n.depth || 0;
-        const leafCount = n.leaves ? n.leaves().length : 0;
-        const bootstrapValue = Math.min(100, Math.max(50, 95 - depth * 5 + Math.random() * 10));
-        n.data.bootstrap = Math.round(bootstrapValue);
-      }
     }
   });
 }
@@ -5696,6 +5647,7 @@ let labelsAutoHideDone = false;
 // must run on every exit and survive a redraw started from inside a redraw.
 let drawTreeDepth = 0;
 function drawTree(){
+  if (drawTreeDepth === 0) supportPaintCache = null;   // settings may have changed since the last redraw
   const outer = drawTreeDepth === 0 ? null : layerReuseSaveState();
   drawTreeDepth++;
   let done = false, out;
@@ -5709,7 +5661,15 @@ function drawTree(){
 }
 // After every redraw: re-apply search / selection colours (path to the selected
 // clade, tip labels) to the new elements.
+let supportSourcesRoot = null;
 function drawTreeFinish(){
+  if (root && root !== supportSourcesRoot) {
+    supportSourcesRoot = root;
+    const before = bootstrapDataSourceEl ? bootstrapDataSourceEl.value : null;
+    refreshSupportSources();
+    // a new tree whose values come from another source (e.g. MrBayes posteriors): redraw with it
+    if (bootstrapDataSourceEl && bootstrapDataSourceEl.value !== before && showBootstrapEl && showBootstrapEl.checked) setTimeout(() => drawTree(), 0);
+  }
   const isRadial = (geometry === 'radial');
   if(!isRadial){ linkSel = null; nodeSel = null; leafNodes = []; gSpin = null; }
   updateSearchHighlights();
@@ -6410,34 +6370,9 @@ function drawTreeBody(){
             if (bestColor) return bestColor;
           }
           
-          // Check if bootstrap color tab is active and apply bootstrap colors
-          const bootstrapSettings = getBootstrapSettings();
-          const activeTab = linksBootstrapTab;
-          if (bootstrapSettings.show && activeTab === 'color') {
-            // Get bootstrap value for this node
-            let bootstrapValue = null;
-            if (d.target.data && d.target.data.bootstrap !== undefined) {
-              bootstrapValue = d.target.data.bootstrap;
-            } else if (d.target.data && d.target.data.bs !== undefined) {
-              bootstrapValue = d.target.data.bs;
-            }
-            
-            if (bootstrapValue !== null && bootstrapValue >= bootstrapSettings.minRange && bootstrapValue <= bootstrapSettings.maxRange) {
-              // Normalize bootstrap value to 0-1 range for color scale
-              // Always use 0 as minimum and 100 as maximum for consistent color mapping
-              const normalizedValue = bootstrapValue / 100;
-              
-              // Create color scale and get color
-              const colorScale = createBootstrapColorScale(
-                bootstrapSettings.colorMin,
-                bootstrapSettings.colorMax,
-                bootstrapSettings.colorMid,
-                bootstrapSettings.colorMidEnabled
-              );
-              
-              return colorScale(normalizedValue);
-            }
-          }
+          // support-coloured branches (Support values > Colour): the value of this branch
+          const supportCol = supportBranchColor(d.target);
+          if (supportCol) return supportCol;
           
           // (A selected clade is shown by the selection overlay that
           // updateSearchHighlights applies after every redraw. It used to be
@@ -6635,34 +6570,9 @@ function drawTreeBody(){
             if (bestColor) return bestColor;
           }
           
-          // Check if bootstrap color tab is active and apply bootstrap colors
-          const bootstrapSettings = getBootstrapSettings();
-          const activeTab = linksBootstrapTab;
-          if (bootstrapSettings.show && activeTab === 'color') {
-            // Get bootstrap value for this node
-            let bootstrapValue = null;
-            if (d.target.data && d.target.data.bootstrap !== undefined) {
-              bootstrapValue = d.target.data.bootstrap;
-            } else if (d.target.data && d.target.data.bs !== undefined) {
-              bootstrapValue = d.target.data.bs;
-            }
-            
-            if (bootstrapValue !== null && bootstrapValue >= bootstrapSettings.minRange && bootstrapValue <= bootstrapSettings.maxRange) {
-              // Normalize bootstrap value to 0-1 range for color scale
-              // Always use 0 as minimum and 100 as maximum for consistent color mapping
-              const normalizedValue = bootstrapValue / 100;
-              
-              // Create color scale and get color
-              const colorScale = createBootstrapColorScale(
-                bootstrapSettings.colorMin,
-                bootstrapSettings.colorMax,
-                bootstrapSettings.colorMid,
-                bootstrapSettings.colorMidEnabled
-              );
-              
-              return colorScale(normalizedValue);
-            }
-          }
+          // support-coloured branches (Support values > Colour): the value of this branch
+          const supportCol = supportBranchColor(d.target);
+          if (supportCol) return supportCol;
           
           // (A selected clade is shown by the selection overlay that
           // updateSearchHighlights applies after every redraw. It used to be
@@ -13105,8 +13015,62 @@ function isolateLucaOfSelectedTips() {
   isolateSelectedNodes();
 }
 
+// A node's tree values (name, length, support...) without the app's own "_" fields.
+function treeDataCopy(d) {
+  const o = {};
+  for (const k in d) if (k !== 'children' && k[0] !== '_' && Object.prototype.hasOwnProperty.call(d, k)) o[k] = d[k];
+  return o;
+}
+// Full tree below a node as plain objects, including collapsed, cartooned, dropped
+// and hidden duplicate tips (re-rooting always works on the whole tree).
+function fullTreeObject(n, droppedByParent) {
+  if (!droppedByParent) {
+    droppedByParent = new Map();
+    droppedNodes.forEach(d => { if (d.parent) { if (!droppedByParent.has(d.parent)) droppedByParent.set(d.parent, []); droppedByParent.get(d.parent).push(d); } });
+  }
+  const o = treeDataCopy(n.data);
+  const kids = [], seen = new Set();
+  [n.children, n._children, n._originalChildren, n._dedupOriginalChildren, droppedByParent.get(n)].forEach(list => {
+    if (list) list.forEach(c => { if (!seen.has(c)) { seen.add(c); kids.push(c); } });
+  });
+  if (kids.length) o.children = kids.map(c => fullTreeObject(c, droppedByParent));
+  return o;
+}
+
+// Where to put the root. `target` is a node of the current tree (root on the branch
+// above it, halfway), or a description that does not depend on node objects:
+//   { side: [tip names], frac }  on the branch separating these tips, frac along it from their end
+//   { sides: [[...], ...] }      at the node with exactly these sides (sessions saved before 2026-10)
+//   { midpoint: true }           halfway along the longest tip-to-tip path
+function rootTargetSpec(target) {
+  if (!target) return null;
+  if (target.side || target.sides || target.midpoint) return target;
+  if (target === root) return null;
+  return { side: TreeCore.tipNames(fullTreeObject(target)), frac: 0.5 };
+}
+function rerootObject(obj, spec) {
+  if (spec.midpoint) {
+    const m = TreeCore.midpoint(obj);
+    return m ? TreeCore.rootOnBranch(obj, m.side, m.frac) : null;
+  }
+  if (spec.sides) return TreeCore.rootAtNode(obj, spec.sides);
+  return TreeCore.rootOnBranch(obj, spec.side, spec.frac);
+}
+
 async function rerootAtNode(selected, userInitiated = false) {
   if(!root || !selected) return;
+  // Work out the new root first, on a copy, so nothing changes if it is not possible
+  const spec = rootTargetSpec(selected);
+  if (!spec) { setStatus('That node is already the root'); return; }
+  if (selected.data && (selected._children && !selected.children)) {
+    alert('Cannot root tree to collapsed node. Please first uncollapse the node to re-root at this node.');
+    return;
+  }
+  if (!rerootObject(fullTreeObject(root), spec)) {
+    setStatus(spec.midpoint ? 'Midpoint rooting needs branch lengths, and this tree has none'
+                            : 'The new root position could not be found in this tree');
+    return;
+  }
    
    // Reset font/truncation cache to ensure recalculation after rerooting
    resetFontTruncationCache();
@@ -13119,15 +13083,9 @@ async function rerootAtNode(selected, userInitiated = false) {
     rootModeEl.value = 'user';
   }
   
-  // Store selected node as last known user root (only if midpoint is not currently active)
-  if(!(rootModeEl.value === 'midpoint')) {
-    lastKnownUserRoot = selected;
-  }
-  
-  // Check if the selected node is collapsed
-  if(selected._children && !selected.children) {
-    alert('Cannot root tree to collapsed node. Please first uncollapse the node to re-root at this node.');
-    return;
+  // Remember the user's root (not a midpoint root) so turning midpoint off can go back to it
+  if(!spec.midpoint && !(rootModeEl && rootModeEl.value === 'midpoint')) {
+    lastKnownUserRoot = spec;
   }
   
   // Store collapsed accessions IMMEDIATELY at the start (before any operations)
@@ -13201,109 +13159,11 @@ async function rerootAtNode(selected, userInitiated = false) {
     }
   }catch(_){/* best-effort */}
   
-  // Build mutable object with parent links
-  function toObj(n){ 
-    const o = { name: n.data && n.data.name || undefined }; 
-    if(Number.isFinite(n.data && n.data.length)) o.length = n.data.length; 
-    const kids = (n.children && n.children.length) ? n.children : []; 
-    if(kids.length) o.children = kids.map(toObj); 
-    return o; 
-  }
-  
-  const objRoot = toObj(root);
-  
-  function indexParents(o, parent = null){ 
-    o.__parent = parent; 
-    if(o.children){ 
-      o.children.forEach(c => indexParents(c, o)); 
-    } 
-  }
-  indexParents(objRoot, null);
-  
-  // Find object node matching selected by clade key
-  function objLeafKey(o){ 
-    const names = []; 
-    (function collect(x){ 
-      if(x.children && x.children.length){ 
-        x.children.forEach(collect); 
-      } else if(x.name){ 
-        names.push(String(x.name)); 
-      } 
-    })(o); 
-    names.sort(); 
-    return names.join('|'); 
-  }
-  
-  const targetKey = (function(){ 
-    const names = []; 
-    selected.descendants().forEach(x => { 
-      if(!(x.children || x._children) && x.data && x.data.name) 
-        names.push(String(x.data.name)); 
-    }); 
-    names.sort(); 
-    return names.join('|'); 
-  })();
-  
-  let objSelected = null;
-  (function dfs(o){ 
-    if(objSelected) return; 
-    if(objLeafKey(o) === targetKey){ 
-      objSelected = o; 
-      return; 
-    } 
-    if(o.children){ 
-      o.children.forEach(dfs); 
-    } 
-  })(objRoot);
-  
-  if(!objSelected) return;
-  
-  // Ensure wrapper if leaf
-  function ensureWrapperForLeaf(o){ 
-    const isLeaf = !o.children || o.children.length === 0; 
-    if(!isLeaf) return o; 
-    const parent = o.__parent; 
-    const wrapper = { name: '', children: [o] }; 
-    if(parent && parent.children){ 
-      const idx = parent.children.indexOf(o); 
-      if(idx >= 0) parent.children.splice(idx, 1, wrapper); 
-    } 
-    wrapper.__parent = parent; 
-    o.__parent = wrapper; 
-    return wrapper; 
-  }
-  
-  const start = ensureWrapperForLeaf(objSelected);
-  
-  // Reverse parent links along path
-  function rerootObjectTree(newRoot){ 
-    let cur = newRoot; 
-    let parent = cur.__parent; 
-    while(parent){ 
-      if(parent.children){ 
-        const i = parent.children.indexOf(cur); 
-        if(i >= 0) parent.children.splice(i, 1); 
-      }
-      if(!cur.children) cur.children = []; 
-      cur.children.push(parent);
-      const grand = parent.__parent; 
-      parent.__parent = cur; 
-      cur = parent; 
-      parent = grand; 
-    }
-    cur.__parent = null; 
-    return newRoot; 
-  }
-  
-  const newObjRoot = rerootObjectTree(start);
-  
-  // Cleanup helpers
-  (function cleanup(o){ 
-    delete o.__parent; 
-    if(o.children){ 
-      o.children.forEach(cleanup); 
-    } 
-  })(newObjRoot);
+  // The whole tree as plain objects (collapsed, dropped and cartooned parts were
+  // put back above), re-rooted: branch lengths and support values move with their
+  // branches (js/tree-core.js)
+  const newObjRoot = rerootObject(fullTreeObject(root), spec);
+  if (!newObjRoot) { console.error('re-root failed after the check'); return; }
   
   // Rebuild hierarchy
   root = toHierarchy(newObjRoot);
@@ -14074,22 +13934,16 @@ function getCladeKey(node) {
   return names.join('|');
 }
 
+// Newick of the tree as shown (dropped tips left out), with support labels,
+// clade names and annotations, so reading it back gives the same tree.
+function hierarchyToObject(n) {
+  const o = treeDataCopy(n.data);
+  if (n.children && n.children.length) o.children = n.children.map(hierarchyToObject);
+  return o;
+}
 function toNewickFromHierarchy(node) {
   if(!node) return '';
-  
-  function nodeToNewick(n) {
-    if(n.children && n.children.length > 0) {
-      const childrenNewick = n.children.map(nodeToNewick).join(',');
-      const length = n.data && n.data.length ? ':' + n.data.length : '';
-      return '(' + childrenNewick + ')' + length;
-    } else {
-      const name = n.data && n.data.name ? n.data.name : '';
-      const length = n.data && n.data.length ? ':' + n.data.length : '';
-      return name + length;
-    }
-  }
-  
-  return nodeToNewick(node) + ';';
+  return TreeCore.write(hierarchyToObject(node));
 }
 
 function restoreDroppedNodes() {
@@ -15193,7 +15047,7 @@ function updateMetadataLegend() {
             <svg width="${maxContainerSize}" height="${maxContainerSize}" viewBox="0 0 ${maxContainerSize} ${maxContainerSize}">
               ${symbolHtml}
             </svg>
-            <div style="font-size: 9px; color: var(--muted);">${value}</div>
+            <div style="font-size: 9px; color: var(--muted);">${supportUnitLabel(value)}</div>
           </div>
         `;
       }).join('');
@@ -15230,9 +15084,9 @@ function updateMetadataLegend() {
       
       const colorLegendHTML = `
         <div class="legend-item" style="display: flex; align-items: center; gap: 8px; width: fit-content;">
-          <div style="font-size: 10px; color: var(--muted);">0</div>
+          <div style="font-size: 10px; color: var(--muted);">${supportUnitLabel(0)}</div>
           <div style="width: 120px; height: 20px; border-radius: 3px; border: 1px solid var(--ring); background: ${gradient};"></div>
-          <div style="font-size: 10px; color: var(--muted);">100</div>
+          <div style="font-size: 10px; color: var(--muted);">${supportUnitLabel(100)}</div>
         </div>
       `;
       
@@ -15703,7 +15557,7 @@ async function handleTreeFile(f){
     }
     
     // Time parsing
-    const newickStr = txt.split(/;\s*/).filter(s=>s.trim().length)[0] + ';';
+    const newickStr = txt;   // the parser reads the first tree (up to its ';')
     
     // Declare timing variables outside try block so they're accessible in final summary
     let parseTime = 0;
@@ -22144,68 +21998,14 @@ let lastKnownUserRoot = null;
 let originalRoot = null;
 let wasMidpointActive = false;
 
-function findMidpointRoot(root) {
-  if(!root) return null;
-  
-  // Find the longest path in the tree
-  let longestPath = [];
-  let maxLength = 0;
-  
-  // Function to find all paths from root to leaves
-  function findAllPaths(node, currentPath = [], currentLength = 0) {
-    if(!node) return;
-    
-    const newPath = [...currentPath, node];
-    const newLength = currentLength + (node.data && node.data.length ? node.data.length : 0);
-    
-    // If this is a leaf node
-    if(!node.children || node.children.length === 0) {
-      if(newLength > maxLength) {
-        maxLength = newLength;
-        longestPath = newPath;
-      }
-      return;
-    }
-    
-    // Continue to children
-    node.children.forEach(child => {
-      findAllPaths(child, newPath, newLength);
-    });
-  }
-  
-  findAllPaths(root);
-  
-  if(longestPath.length === 0) return null;
-  
-  // Find the midpoint of the longest path
-  const targetLength = maxLength / 2;
-  let currentLength = 0;
-  
-  for(let i = 0; i < longestPath.length - 1; i++) {
-    const node = longestPath[i];
-    const nextNode = longestPath[i + 1];
-    const edgeLength = nextNode.data && nextNode.data.length ? nextNode.data.length : 0;
-    
-    if(currentLength + edgeLength >= targetLength) {
-      // The midpoint is on the edge between node and nextNode
-      return nextNode; // Root at the next node
-    }
-    
-    currentLength += edgeLength;
-  }
-  
-  // If we reach here, root at the last node in the path
-  return longestPath[longestPath.length - 1];
-}
+// Midpoint rooting (js/tree-core.js): the root goes halfway along the longest path
+// between two tips, on the branch where that point falls. It does not depend on the
+// current root, so applying it again changes nothing.
 
 function handleRootingState() {
   if(rootEnableEl && rootEnableEl.checked && rootModeEl && rootModeEl.value === 'midpoint') {
     
-    // Calculate midpoint rooting and apply rerootAtNode
-    const midpointNode = findMidpointRoot(root);
-    if(midpointNode) {
-      rerootAtNode(midpointNode);
-    }
+    rerootAtNode({ midpoint: true });
     
     wasMidpointActive = true;
   } else {
@@ -23282,7 +23082,8 @@ if(showBootstrapEl){
 if(bootstrapDataSourceEl){
   bootstrapDataSourceEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapDataSourceEL');
+    updateSupportNote();
+    updateMetadataLegend();   // the scale (and so the legend numbers) can differ per source
   });
 }
 
@@ -23556,12 +23357,130 @@ function getDataMargin() {
 }
 
 // Bootstrap helper functions
+// ---- support values
+// A support value belongs to the branch above its node. Trees store them on
+// different scales: proportions (0-1: FastTree SH-like, MrBayes posteriors),
+// percentages (0-100: most bootstrap programs) or replicate counts (e.g. 0-1000).
+// The scale is detected per tree; the range, sizes, colours and the percent text
+// all work in percent of that scale, so 0.95, 95 and 950/1000 are treated alike.
+function supportSourceOf() {
+  return (bootstrapDataSourceEl && bootstrapDataSourceEl.value) || 'bootstrap';
+}
+// the support value of the branch above node d, from the chosen source (null: none)
+function getSupportValue(d, source) {
+  const data = d && d.data; if (!data || !d.parent) return null;   // the root has no branch
+  const src = source || supportSourceOf();
+  let v;
+  if (src.indexOf('value:') === 0) v = data.supports ? data.supports[+src.slice(6)] : undefined;
+  else if (src.indexOf('annot:') === 0) v = data.annot ? data.annot[src.slice(6)] : undefined;
+  else v = data.bootstrap !== undefined ? data.bootstrap : data.bs;
+  return Number.isFinite(v) ? v : null;
+}
+let supportScaleCache = { root: null, source: null, scale: 100, count: 0, min: null, max: null };
+function getSupportScale() {
+  const src = supportSourceOf();
+  if (supportScaleCache.root === root && supportScaleCache.source === src) return supportScaleCache;
+  // the whole tree (collapsed, cartooned and dropped parts too): the scale belongs to
+  // the tree, not to what is shown
+  let max = -Infinity, min = Infinity, count = 0;
+  if (root) {
+    const seen = new Set(), stack = [root];
+    droppedNodes.forEach(d => stack.push(d));
+    while (stack.length) {
+      const n = stack.pop(); if (seen.has(n)) continue; seen.add(n);
+      const v = getSupportValue(n, src);
+      if (v !== null) { count++; if (v > max) max = v; if (v < min) min = v; }
+      [n.children, n._children, n._originalChildren, n._dedupOriginalChildren].forEach(l => { if (l) l.forEach(c => stack.push(c)); });
+    }
+  }
+  const scale = !count ? 100 : (max <= 1 ? 1 : (max <= 100 ? 100 : max));
+  supportScaleCache = { root, source: src, scale, count, min: count ? min : null, max: count ? max : null };
+  return supportScaleCache;
+}
+// support value as percent of the tree's scale (values already in percent are unchanged)
+function supportPercent(v) {
+  if (v === null) return null;
+  const sc = getSupportScale().scale;
+  return sc === 100 ? v : v * 100 / sc;
+}
+// numbers shown on legends, in the tree's own unit
+function supportUnitLabel(pct) {
+  const sc = getSupportScale().scale, v = pct / 100 * sc;
+  return String(+v.toFixed(sc === 1 ? 2 : 0));
+}
+
+// Data source choices for this tree: a single support value, each value of labels
+// like 95/88 (IQ-TREE SH-aLRT/UFBoot), and numeric [&...] annotations (posteriors).
+function refreshSupportSources() {
+  if (!bootstrapDataSourceEl) return;
+  let maxParts = 0, single = false; const annot = new Map();
+  if (root) {
+    const all = fullTreeObject(root);
+    (function walk(o, isRoot) {
+      if (!isRoot) {
+        if (o.supports) { maxParts = Math.max(maxParts, o.supports.length); if (o.supports.length === 1) single = true; }
+        else if (Number.isFinite(o.bs)) single = true;
+        if (o.annot) for (const k in o.annot) if (Number.isFinite(o.annot[k])) annot.set(k, (annot.get(k) || 0) + 1);
+      }
+      if (o.children) o.children.forEach(c => walk(c, false));
+    })(all, true);
+  }
+  const opts = [];
+  if (maxParts >= 2) {
+    const names = maxParts === 2 ? ['1st value (e.g. SH-aLRT)', '2nd value (e.g. UFBoot)'] : null;
+    for (let i = 0; i < maxParts; i++) opts.push(['value:' + i, names ? names[i] : 'Value ' + (i + 1) + ' of ' + maxParts]);
+  } else if (maxParts === 1 || single) opts.push(['bootstrap', 'Support values']);
+  annot.forEach((n, k) => opts.push(['annot:' + k, k + ' (annotation)']));
+  if (!opts.length) opts.push(['bootstrap', 'None in this tree']);
+  const prev = bootstrapDataSourceEl.value;
+  bootstrapDataSourceEl.innerHTML = '';
+  opts.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; bootstrapDataSourceEl.appendChild(o); });
+  bootstrapDataSourceEl.value = opts.some(o => o[0] === prev) ? prev : opts[0][0];
+  bootstrapDataSourceEl.disabled = opts.length < 2;
+  supportScaleCache.root = null;
+  updateSupportNote();
+  updateMetadataLegend();   // legend numbers are in the tree's unit
+}
+function updateSupportNote() {
+  const el = document.getElementById('bootstrapScaleNote'); if (!el) return;
+  const sc = getSupportScale();
+  if (!root) { el.textContent = ''; return; }
+  if (!sc.count) { el.textContent = 'This tree has no support values.'; return; }
+  const scaleText = sc.scale === 1 ? '0–1 (shown as 0–100%)' : (sc.scale === 100 ? '0–100' : '0–' + sc.max + ' (shown as 0–100%)');
+  let text = sc.count.toLocaleString() + ' support values, scale ' + scaleText + '. Range is in percent.';
+  // the file's root has two branches with different values: re-rooting keeps one of them
+  const c = window.originalParsedTree ? TreeCore.rootBranchConflict(window.originalParsedTree) : null;
+  if (c) text += ' The two branches at the file\'s root have different values (' + c.values.join(' and ') + '); they are one branch once the tree is re-rooted, and it keeps the lower value, ' + c.kept + '.';
+  el.textContent = text;
+}
+
+// colours of support-coloured branches; cached for one redraw
+let supportPaintCache = null;
+function supportBranchColor(node) {
+  if (!supportPaintCache) {
+    const st = getBootstrapSettings();
+    const tab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab') || 'symbol';
+    supportPaintCache = { on: st.show && tab === 'color', st,
+      scale: createBootstrapColorScale(st.colorMin, st.colorMax, st.colorMid, st.colorMidEnabled) };
+  }
+  if (!supportPaintCache.on) return null;
+  const pct = supportPercent(getSupportValue(node));
+  if (pct === null || pct < supportPaintCache.st.minRange || pct > supportPaintCache.st.maxRange) return null;
+  return supportPaintCache.scale(pct / 100);
+}
+
+function rangeValue(el, def) {
+  if (!el || el.value === '') return def;
+  const v = +el.value;
+  return Number.isFinite(v) ? v : def;
+}
 function getBootstrapSettings() {
   return {
     show: showBootstrapEl ? showBootstrapEl.checked : false,
     dataSource: bootstrapDataSourceEl ? bootstrapDataSourceEl.value || 'bootstrap' : 'bootstrap',
-    minRange: bootstrapMinRangeEl ? +bootstrapMinRangeEl.value || 23 : 23,
-    maxRange: bootstrapMaxRangeEl ? +bootstrapMaxRangeEl.value || 100 : 100,
+    // percent of the tree's support scale; an empty box means the default (0 is a real minimum)
+    minRange: rangeValue(bootstrapMinRangeEl, 23),
+    maxRange: rangeValue(bootstrapMaxRangeEl, 100),
     
     // Symbol tab settings
     symbolType: bootstrapSymbolTypeEl ? +bootstrapSymbolTypeEl.value || 1 : 1,
@@ -23667,28 +23586,21 @@ function drawBootstrapValues() {
   container.selectAll('.bootstrap-symbol').remove();
   container.selectAll('.bootstrap-text').remove();
   
-  // Get bootstrap values from tree data
+  // Support value of each shown branch (the root has none), from the chosen source
   const bootstrapValues = new Map();
   root.eachAfter(node => {
-    // Check if node has bootstrap value in data
-    if (node.data && node.data.bootstrap !== undefined) {
-      bootstrapValues.set(node, node.data.bootstrap);
-    }
-    // Also check for 'bs' property (alternative naming)
-    else if (node.data && node.data.bs !== undefined) {
-      bootstrapValues.set(node, node.data.bs);
-    }
+    const v = getSupportValue(node);
+    if (v !== null) bootstrapValues.set(node, v);
   });
+  updateSupportNote();
   
   if (bootstrapValues.size === 0) return;
   
-  // Filter bootstrap values by range (unless show all is enabled and text tab is active)
+  // Range filter in percent of the tree's scale (Text > Show all ignores it)
   const filteredValues = new Map();
   bootstrapValues.forEach((value, node) => {
-    // If show all is enabled and text tab is active, show all values
-    if (settings.showAll && activeTab === 'text') {
-      filteredValues.set(node, value);
-    } else if (value >= settings.minRange && value <= settings.maxRange) {
+    const pct = supportPercent(value);
+    if ((settings.showAll && activeTab === 'text') || (pct >= settings.minRange && pct <= settings.maxRange)) {
       filteredValues.set(node, value);
     }
   });
@@ -23698,11 +23610,8 @@ function drawBootstrapValues() {
   // Create bootstrap group (for both symbols and text)
   const bootstrapGroup = container.append('g').attr('class', 'bootstrap-elements');
   
-  // Calculate size scaling
-  const minVal = Math.min(...filteredValues.values());
-  const maxVal = Math.max(...filteredValues.values());
+  // Symbol size follows the value: 0% = minimum size, 100% = maximum size (as the legend shows)
   const sizeRange = settings.maxSize - settings.minSize;
-  const valueRange = maxVal - minVal;
   
   filteredValues.forEach((value, node) => {
     // Calculate position on branch
@@ -23742,8 +23651,8 @@ function drawBootstrapValues() {
     }
     
     if (activeTab === 'symbol') {
-      // Calculate symbol size based on bootstrap value
-      const normalizedValue = valueRange > 0 ? (value - minVal) / valueRange : 0.5;
+      // Calculate symbol size based on the support value
+      const normalizedValue = Math.max(0, Math.min(1, supportPercent(value) / 100));
       const size = settings.minSize + normalizedValue * sizeRange;
       
       // Create symbol based on type
@@ -23782,13 +23691,10 @@ function drawBootstrapValues() {
             .attr('data-bootstrap-value', value)
             .attr('data-node', node.data ? node.data.name : 'internal');
     } else if (activeTab === 'text') {
-      // Format text value
-      let displayValue = value;
-      
-      // If percent checkbox is not enabled, convert percentage to decimal
-      if (!settings.percent) {
-        displayValue = value / 100;
-      }
+      // Format text value: Percent on shows percent of the scale (95%), off a proportion (0.95)
+      const pctValue = supportPercent(value);
+      let displayValue = settings.percent ? pctValue : pctValue / 100;
+      displayValue = +displayValue.toPrecision(12);   // no floating point noise such as 56.99999999999999
       
       if (settings.scientific) {
         displayValue = displayValue.toExponential(settings.rounding);
