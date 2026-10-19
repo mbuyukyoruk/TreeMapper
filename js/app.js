@@ -308,7 +308,11 @@ function panTreeBy(dx, dy){
   let drag = null, suppressClick = false;
   const pinch = { factor: 1, at: [0, 0], frame: 0 };
   node.addEventListener('pointerdown', (e) => {
-    if (!allowPan || e.button !== 0) return;
+    // left button pans with the Pan tool or while Space is held (Select tool: the
+    // drag draws a selection rectangle, js/select-tool.js); the middle button always pans
+    const leftPans = e.button === 0 && (window.tmCanvasTool !== 'select' || window.tmSpacePan || e.pointerType === 'touch');
+    if (!allowPan || !(leftPans || e.button === 1)) return;
+    if (e.button === 1) e.preventDefault();   // no auto-scroll
     if (e.target.closest && e.target.closest('.svg-splitter-hit-area, .radial-splitter-hit-area, .radial-splitter-handle, .splitter')) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
   });
@@ -4461,6 +4465,49 @@ function performSearch(searchTerm, options) {
   } else {
     setStatus('');
   }
+}
+
+// Select tips (a drag-selection rectangle, js/select-tool.js): shown and used like
+// search results, so Copy, Drop, Isolate, Colour and Re-root work on them.
+// names: the tip names to select (the caller has already added to / taken from
+// the current selection).
+function applyTipSelection(names) {
+  if (!root) return;
+  if (searchInput && searchInput.value) {
+    searchInput.value = '';
+    if (searchContainer) searchContainer.classList.remove('has-text');
+  }
+  currentSearchTerm = '';
+  highlightedAccessions.clear();
+  names.forEach(n => highlightedAccessions.add(n));
+  highlightedClade = null;
+  highlightedClades.clear();
+  const matching = root.leaves().filter(l => highlightedAccessions.has(l.data.name));
+  const cladeToolbar = document.getElementById('cladeToolbar');
+  const clearBtn = document.getElementById('clearCladeSelection');
+  const cladeStatus = document.getElementById('cladeStatus');
+  if (highlightedAccessions.size > 0) {
+    matching.forEach(n => highlightedClades.add(n));
+    selectionFromSearch = true;   // orange paths and labels, no red node markers
+    let lca = matching[0] || null;
+    for (let i = 1; i < matching.length; i++) lca = findLowestCommonAncestor(lca, matching[i]);
+    if (lca) highlightedClade = lca;
+    if (cladeToolbar) cladeToolbar.classList.add('visible');
+    if (clearBtn) clearBtn.style.display = 'flex';
+    const n = highlightedAccessions.size;
+    if (cladeStatus) cladeStatus.textContent = n + ' tip' + (n === 1 ? '' : 's') + ' selected';
+    updateCladeButtonStates(null);
+  } else {
+    if (cladeToolbar) cladeToolbar.classList.remove('visible');
+    if (clearBtn) clearBtn.style.display = 'none';
+    const dropBtn = document.getElementById('dropNode');
+    if (dropBtn) dropBtn.style.display = 'none';
+    if (cladeStatus) cladeStatus.textContent = 'No clade selected';
+  }
+  updateHighlightVisuals();
+  updateColorPathCardVisibility();
+  const n = highlightedAccessions.size;
+  setStatus(n ? n + ' tip' + (n === 1 ? '' : 's') + ' selected' : 'Selection cleared');
 }
 
 function updateSearchHighlights() {

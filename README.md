@@ -38,6 +38,13 @@ The earlier classic-layout interface is kept in git history under the tag
   version (`ACC123` finds `ACC123.1`). Both choices are remembered and saved
   in sessions (a single-layer choice is kept in sessions only, and goes back
   to *All* if that layer is removed).
+- **Canvas tools** (toolbar, as in Illustrator): **Select** (`V`, default) —
+  drag on an empty part of the canvas to draw a rectangle; the tips inside it
+  (their node or label) are selected, shown and used like search results
+  (Copy, Drop, Isolate, Colour, Re-root). `⇧` adds, `⌥` removes, `Esc`
+  cancels; a collapsed or cartooned clade counts as all its tips. **Pan**
+  (`H`) — drag to move an expanded tree; with Select, hold `Space` or use the
+  middle mouse button to pan. The wheel and trackpad scroll as before.
 - **Selecting a clade** shows a floating toolbar at the bottom of the canvas
   with Rotate, Collapse, Cartoon, Colour, Highlight, Re-root and more.
 - **Legend panel** on the right (can be hidden), **status bar** at the bottom.
@@ -101,6 +108,7 @@ js/
   vendor/d3.v7.9.0.min.js  D3 library, bundled locally (pinned version)
   tree-core.js             tree model: Newick parsing/writing, re-rooting, midpoint (no page code)
   app.js                   the application
+  select-tool.js           Select / Pan tools and the drag-selection rectangle
   pro-ui.js                layout logic (panels, Reset/Export menus, colour pop-up, shortcuts, ...)
   undo.js                  undo / redo history
   session.js               save / open sessions (.treemapper files)
