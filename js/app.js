@@ -2301,6 +2301,9 @@ function handleRadialSplitterMouseDown(event, ringIndex) {
   // Store start widths for delta calculation
   window.radialStartWidths = getAllRingWidths();
 
+  // large drawings: frames while dragging are shown from the existing drawing (js/drag-live.js)
+  if (root && lastDrawMs > LIVE_DRAG_MIN_MS && window.tmDragLive && tmDragLive.captureRadial) tmDragLive.captureRadial();
+
   // Highlight ALL splitter lines and symbols during drag (like rect layout)
   radialSvg.selectAll('.radial-splitter-line')
     .attr('opacity', '1');
@@ -2564,6 +2567,8 @@ function handleRadialMouseMove(event) {
     radialTreeUpdatePending = true;
     requestAnimationFrame(() => {
       radialTreeUpdatePending = false;
+      if (!radialIsDragging) return;   // released meanwhile: the release draws
+      if (root && window.tmDragLive && tmDragLive.radialReady && tmDragLive.radialReady() && tmDragLive.frameRadial()) return;
       if (typeof drawTree === 'function' && root) {
         // Reset font cache to force recalculation with new circumference
         if (typeof resetFontTruncationCache === 'function') {
@@ -2886,18 +2891,23 @@ function renderAxisTitle(g, key, widthPx) {
   g.selectAll(':scope > .axis-title, :scope > .axis-title-add').remove();
   const title = getAxisTitle(key);
   const below = axisRow.below;
-  const y = below ? 38 : -32;   // beyond the tick numbers, away from the tree
-  const cx = widthPx / 2;
+  // beyond the tick numbers, away from the tree (circular layout: beside the axis, see radialAxisTitle)
+  const yAttr = g.attr('data-axis-title-y');
+  const y = yAttr !== null && yAttr !== '' ? +yAttr : (below ? 38 : -32);
+  // (a short bar in a corner: the title starts where the bar starts)
+  const atStart = g.attr('data-axis-title-align') === 'start';
+  const cxAttr = g.attr('data-axis-title-cx');
+  const cx = atStart ? 0 : (cxAttr !== null && cxAttr !== '' ? +cxAttr : widthPx / 2);
   if (title) {
     const tg = g.append('g').attr('class', 'axis-title').attr('data-axis-key', key);
     // invisible area around the title and its - button, so the button stays while the pointer moves to it
     const hit = tg.append('rect').attr('class', 'axis-title-hit axis-ui');
     const box = tg.append('rect').attr('class', 'axis-title-box axis-ui').attr('rx', 4).attr('ry', 4);
     const tx = tg.append('text').attr('class', 'axis-title-text')
-      .attr('x', cx).attr('y', y).attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+      .attr('x', cx).attr('y', y).attr('text-anchor', atStart ? 'start' : 'middle').attr('dominant-baseline', 'middle')
       .attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', '600').text(title);
     let bb = null; try { bb = tx.node().getBBox(); } catch (e) {}
-    if (!bb || !bb.width) bb = { x: cx - title.length * 3.5, y: y - 7, width: title.length * 7, height: 14 };
+    if (!bb || !bb.width) bb = { x: atStart ? cx : cx - title.length * 3.5, y: y - 7, width: title.length * 7, height: 14 };
     box.attr('x', bb.x - 6).attr('y', bb.y - 3).attr('width', bb.width + 12).attr('height', bb.height + 6);
     hit.attr('x', bb.x - 10).attr('y', Math.min(bb.y, y - 8) - 6).attr('width', bb.width + 10 + 16 + 8 + 8).attr('height', Math.max(bb.height, 16) + 12);
     const rm = tg.append('g').attr('class', 'axis-title-remove axis-ui').attr('transform', `translate(${bb.x + bb.width + 16},${y})`);
@@ -2905,7 +2915,7 @@ function renderAxisTitle(g, key, widthPx) {
     rm.append('circle').attr('r', 8);
     rm.append('path').attr('d', 'M-3.5 0H3.5');
   } else if (axisTitleButtonsOn()) {
-    const add = g.append('g').attr('class', 'axis-title-add axis-ui').attr('data-axis-key', key).attr('transform', `translate(${cx},${y})`);
+    const add = g.append('g').attr('class', 'axis-title-add axis-ui').attr('data-axis-key', key).attr('transform', `translate(${atStart ? cx + 8 : cx},${y})`);
     add.append('title').text('Add an axis title (unit)');
     add.append('circle').attr('r', 8);
     add.append('path').attr('d', 'M-3.5 0H3.5M0 -3.5V3.5');
@@ -2915,10 +2925,60 @@ function renderAxisTitle(g, key, widthPx) {
 // or redraw when the room for titles appears or goes
 function refreshAxisTitle(key, bandBefore) {
   if (axisTitleBand() !== bandBefore) { drawTree(); return; }
-  document.querySelectorAll('#zoomable [data-axis-key="' + key + '"][data-axis-width]').forEach(node => {
+  document.querySelectorAll('#svg [data-axis-key="' + key + '"][data-axis-width]').forEach(node => {
     renderAxisTitle(d3.select(node), key, +node.getAttribute('data-axis-width'));
   });
 }
+// Circular layout: an axis runs out from the centre at 12 o'clock, along the edge of the
+// opening gap (the gap opens clockwise from there), with its numbers on its right, in the
+// gap. Its title (or the + button) is written along the axis beyond the numbers, reading
+// outwards, centred on the axis - only when the gap is wide enough there (the title stays
+// with its layer and comes back when there is room).
+// The titles of all axes are placed together once the drawing is done (flushRadialAxisTitles),
+// at the same distance from their axes - past the widest numbers - so that they line up.
+let radialTitleQueue = [];
+function radialAxisTitle(parent, key, r0, r1, openingDeg, numbersPx) {
+  if (!parent || parent.empty() || !(r1 > r0)) return;
+  radialTitleQueue.push({ parent, key, r0, r1, openingDeg, numbersPx: numbersPx || 0 });
+}
+function flushRadialAxisTitles() {
+  const q = radialTitleQueue; radialTitleQueue = [];
+  const live = q.filter(it => it.parent.node() && it.parent.node().isConnected);
+  const widest = live.reduce((m, it) => Math.max(m, it.numbersPx), 0);
+  live.forEach(it => placeRadialAxisTitle(it.parent, it.key, it.r0, it.r1, it.openingDeg, widest));
+}
+function placeRadialAxisTitle(parent, key, r0, r1, openingDeg, numbersPx) {
+  const title = getAxisTitle(key);
+  if (!title && !axisTitleButtonsOn()) return;
+  const gap = Math.max(0, openingDeg) * Math.PI / 180;
+  // across the gap from the axis to its other edge, at distance r out along the axis
+  const room = (r) => r * Math.tan(Math.min(gap, 80 * Math.PI / 180));
+  const side = 5 + 5 + (numbersPx || 0) + 8 + 7;   // tick, gap, numbers, gap, half the title
+  const mid = (r0 + r1) / 2, need = side + 9;
+  let at = mid;   // where along the axis (distance from the centre) the title is centred
+  if (title) {
+    // the title (and its - button beyond it) must fit in the gap where it is nearest the
+    // centre: centred on the axis, or else moved out along it (the gap widens outwards)
+    if (!titleMeasureCtx) titleMeasureCtx = document.createElement('canvas').getContext('2d');
+    const svgEl = document.getElementById('svg');
+    titleMeasureCtx.font = '600 12px ' + ((svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif');
+    const w = titleMeasureCtx.measureText(title).width;
+    // kept off the ring edges (the edges are dragged to resize the rings): the title
+    // from 12 px after the inner edge, its - button (26 px beyond it) 10 px before the outer
+    const lo = r0 + 12 + w / 2, hi = r1 - 10 - 26 - w / 2;
+    at = lo <= hi ? Math.min(Math.max(mid, lo), hi) : (lo + hi) / 2;
+    if (room(Math.max(1, at - w / 2 - 8)) < need) {
+      at = Math.max(at, hi);   // further out, where the gap is wider
+      if (room(Math.max(1, at - w / 2 - 8)) < need) return;
+    }
+  } else if (room(mid - 30) < need) return;   // the + only where a short title would fit
+  // a group whose x runs out along the axis and whose y points into the gap
+  const ag = parent.append('g').attr('class', 'radial-axis-title')
+    .attr('transform', `translate(0,${-r0}) rotate(-90)`)
+    .attr('data-axis-title-y', side).attr('data-axis-title-cx', at - r0);
+  renderAxisTitle(ag, key, r1 - r0);
+}
+
 // editing: + or a title opens a text box at that place; Enter / leaving the box saves, Esc cancels
 let axisTitleEditor = null;
 function editAxisTitle(key, anchorEl) {
@@ -2943,7 +3003,10 @@ function editAxisTitle(key, anchorEl) {
     const band = axisTitleBand();
     setAxisTitle(key, v);
     refreshAxisTitle(key, band);
-    setStatus(v.trim() ? 'Axis title set' : 'Axis title removed');
+    // circular layout: shown only where the opening gap leaves room for it
+    if (v.trim() && geometry === 'radial') drawTree();
+    const shown = !!document.querySelector('#svg .axis-title[data-axis-key="' + key + '"]');
+    setStatus(!v.trim() ? 'Axis title removed' : shown ? 'Axis title set' : 'Axis title saved - widen the opening angle to show it');
   };
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); finish(true); }
@@ -5980,7 +6043,11 @@ function updateLabelGuideEnds() {
 }
 
 let drawTreeDepth = 0;
-let lastDrawMs = 0;   // how long the last full redraw took (decides how a splitter drag is shown)
+// how long a redraw takes (decides how a splitter drag is shown): the quickest of the
+// last three, so that one slow redraw (the first one after loading, a busy moment) does
+// not count a small drawing as a large one
+let lastDrawMs = 0;
+const recentDrawMs = [];
 function drawTree(){
   if (drawTreeDepth === 0) supportPaintCache = null;   // settings may have changed since the last redraw
   const outer = drawTreeDepth === 0 ? null : layerReuseSaveState();
@@ -5988,7 +6055,7 @@ function drawTree(){
   let done = false, out;
   const t0 = outer ? 0 : performance.now();
   if (!outer && window.tmDragLive && tmDragLive.active()) tmDragLive.reset();   // the drawing back as drawn before it is redrawn
-  try { out = drawTreeBody.apply(this, arguments); done = true; if (!outer) { lastTreeKeepKey = pendingTreeKeepKey; lastDrawMs = performance.now() - t0; } }
+  try { out = drawTreeBody.apply(this, arguments); done = true; if (!outer) { lastTreeKeepKey = pendingTreeKeepKey; recentDrawMs.push(performance.now() - t0); if (recentDrawMs.length > 3) recentDrawMs.shift(); lastDrawMs = Math.min(...recentDrawMs); } }
   finally {
     drawTreeDepth--;
     if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
@@ -6003,6 +6070,7 @@ function drawTree(){
 // clade, tip labels) to the new elements.
 let supportSourcesRoot = null;
 function drawTreeFinish(){
+  flushRadialAxisTitles();   // circular layout: the axis titles, lined up
   const axesBelowEl = document.getElementById('axesBelow');
   if (axesBelowEl) {
     axesBelowEl.disabled = (geometry === 'radial');
@@ -7743,6 +7811,7 @@ function drawTreeBody(){
                 .attr('font-weight', 'normal')
                 .text(tickValue.toFixed(2));
             }
+            radialAxisTitle(scaleBarGroup, 'tree', 0, treeOuterRadius, openingAngleDeg, maxTickWidth);
           }
         } else if (!coverScaleBar && !hideScaleBar && treeOuterRadius > 0) {
           // Custom scale bar mode - show at left bottom corner of canvas
@@ -7804,6 +7873,9 @@ function drawTreeBody(){
             .attr('font-size', '12px')
             .attr('font-weight', 'bold')
             .text(scaleRange.toFixed(2));
+          // its title below the bar
+          scaleBarGroup.attr('data-axis-title-y', 20).attr('data-axis-title-align', 'start');
+          renderAxisTitle(scaleBarGroup, 'tree', scaleBarLength);
         }
       }
       
@@ -8187,6 +8259,7 @@ function drawTreeBody(){
                   .text(tickValue.toFixed(0));
               }
             });
+            radialAxisTitle(scaleBarG, 'dataframe:' + dataframeId, ring.innerRadius, ring.outerRadius, openingAngleDeg, maxLabelWidth);
           }
           
           // Draw dataframe bars as radial segments for each leaf
@@ -8811,6 +8884,7 @@ function drawTreeBody(){
                     .text(tickValue.toFixed(0));
                 }
               });
+              radialAxisTitle(scaleBarG, 'chart:' + chartId, ring.innerRadius, ring.outerRadius, openingAngleDeg, maxLabelWidth);
             }
           }
           
@@ -14345,6 +14419,7 @@ function updateRestoreDroppedButtonVisibility() {
       restoreBtn.textContent = `Restore Dropped (${droppedNodes.size})`;
     } else {
       restoreBtn.style.display = 'none';
+      restoreBtn.textContent = 'Restore Dropped';   // (no number left over)
     }
   }
 }
