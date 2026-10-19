@@ -233,16 +233,31 @@
 
   // SVG path data -> absolute M / L / C / Q / Z with the points mapped by m
   // (arcs become cubic curves, so any affine map keeps them exact)
-  var CM = 0, CL = 1, CC = 2, CQ = 3, CZ = 4;
+  var CM = 0, CL = 1, CC = 2, CQ = 3, CZ = 4, CA = 5;
+  // circular layout: shapes are mapped by their distance from the centre, so arcs
+  // around the centre are kept as arcs (their radius is mapped), and rectangles become
+  // four-cornered paths
+  var planRadial = false;
+  function arcCenter(x1, y1, rx, ry, phiDeg, fa, fs, x2, y2) {
+    var phi = phiDeg * Math.PI / 180, cs = Math.cos(phi), sn = Math.sin(phi);
+    var dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
+    var x1p = cs * dx + sn * dy, y1p = -sn * dx + cs * dy;
+    var lam = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
+    if (lam > 1) { var sl = Math.sqrt(lam); rx *= sl; ry *= sl; }
+    var num0 = rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p, den = rx * rx * y1p * y1p + ry * ry * x1p * x1p;
+    var co = den ? Math.sqrt(Math.max(0, num0 / den)) * (fa == fs ? -1 : 1) : 0;
+    var cxp = co * rx * y1p / ry, cyp = -co * ry * x1p / rx;
+    return [cs * cxp - sn * cyp + (x1 + x2) / 2, sn * cxp + cs * cyp + (y1 + y2) / 2, rx, ry];
+  }
   function parsePath(d, m, out) {
     var toks = String(d).match(/[MmLlHhVvCcSsQqTtAaZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g);
     if (!toks) return true;
     var i = 0, cmd = '', x = 0, y = 0, sx = 0, sy = 0, cx = 0, cy = 0, qx = 0, qy = 0, prev = '';
     function n() { return parseFloat(toks[i++]); }
-    function isNum() { return i < toks.length && !/[A-Za-z]/.test(toks[i]); }
+    function isNum() { return i < toks.length && !/^[A-Za-z]$/.test(toks[i]); }
     function P(px, py) { out.pts.push(m[0] * px + m[2] * py + m[4], m[1] * px + m[3] * py + m[5]); }
     while (i < toks.length) {
-      if (/[A-Za-z]/.test(toks[i])) cmd = toks[i++];
+      if (/^[A-Za-z]$/.test(toks[i])) cmd = toks[i++];
       else if (!cmd) return false;
       var rel = cmd === cmd.toLowerCase(), C = cmd.toUpperCase();
       if (C === 'Z') { out.cmd.push(CZ); x = sx; y = sy; prev = 'Z'; continue; }
@@ -275,6 +290,17 @@
         var rx = Math.abs(n()), ry = Math.abs(n()), phi = n(), fa = n(), fs = n(), ax = n(), ay = n();
         if (rel) { ax += x; ay += y; }
         if (!Number.isFinite(ax) || !Number.isFinite(ay)) return false;
+        if (planRadial && out.arc) {
+          if (!rx || !ry || (x === ax && y === ay)) { if (x !== ax || y !== ay) { out.cmd.push(CL); P(ax, ay); } x = ax; y = ay; prev = 'A'; continue; }
+          var ac = arcCenter(x, y, rx, ry, phi, fa, fs, ax, ay), sim = Math.abs(m[0] - m[3]) < 1e-9 && Math.abs(m[1] + m[2]) < 1e-9;
+          var mcx = m[0] * ac[0] + m[2] * ac[1] + m[4], mcy = m[1] * ac[0] + m[3] * ac[1] + m[5];
+          if (sim && Math.abs(ac[2] - ac[3]) < 1e-6 * (1 + ac[2]) && Math.hypot(mcx, mcy) < 1e-3 * (1 + ac[2])) {
+            // around the centre: kept as an arc
+            out.cmd.push(CA); P(ax, ay);
+            out.arc.push(ac[2] * uniformScale(m), (+fs ? 1 : 0) ^ ((m[0] * m[3] - m[1] * m[2]) < 0 ? 1 : 0), +fa ? 1 : 0);
+            x = ax; y = ay; prev = 'A'; continue;
+          }
+        }
         arcToCurves(x, y, rx, ry, phi, fa, fs, ax, ay, function (c1x, c1y, c2x, c2y, e2x, e2y) { out.cmd.push(CC); P(c1x, c1y); P(c2x, c2y); P(e2x, e2y); });
         x = ax; y = ay;
       } else return false;
@@ -364,7 +390,7 @@
       var x = num(el.getAttribute('x'), 0), y = num(el.getAttribute('y'), 0), w = num(el.getAttribute('width'), 0), h = num(el.getAttribute('height'), 0);
       if (!(w > 0) || !(h > 0)) return null;
       if (num(el.getAttribute('rx'), 0) || num(el.getAttribute('ry'), 0)) return false;
-      if (!p.s && Math.abs(m[1]) < 1e-12 && Math.abs(m[2]) < 1e-12) {
+      if (!planRadial && !p.s && Math.abs(m[1]) < 1e-12 && Math.abs(m[2]) < 1e-12) {
         p.t = 'box'; p.x = m[0] * x + m[4]; p.y = m[3] * y + m[5]; p.w = m[0] * w; p.h = m[3] * h;
         return p;
       }
@@ -372,7 +398,7 @@
       [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].forEach(function (q) { p.pts.push(m[0] * q[0] + m[2] * q[1] + m[4], m[1] * q[0] + m[3] * q[1] + m[5]); });
       return p;
     }
-    var out = { cmd: [], pts: [] };
+    var out = { cmd: [], pts: [], arc: planRadial ? [] : null };
     if (tag === 'line') {
       var lp = [num(el.getAttribute('x1'), 0), num(el.getAttribute('y1'), 0), num(el.getAttribute('x2'), 0), num(el.getAttribute('y2'), 0)];
       out.cmd.push(CM, CL);
@@ -388,7 +414,7 @@
       if (!parsePath(d, m, out)) return false;
       if (!out.cmd.length) return null;
     }
-    p.t = 'path'; p.cmd = out.cmd; p.pts = out.pts;
+    p.t = 'path'; p.cmd = out.cmd; p.pts = out.pts; if (out.arc && out.arc.length) p.arc = out.arc;
     return p;
   }
 
@@ -436,16 +462,19 @@
       } else ok = collect(c, I, rootId, cache, prims, null);
       if (cache.bad) return null;
       var kind = ok ? 'flat' : 'svg', last = runs[runs.length - 1];
-      if (last && last.kind === kind) { last.els.push(c); if (ok) Array.prototype.push.apply(last.prims, prims); }
-      else runs.push({ kind: kind, els: [c], prims: ok ? prims : null });
+      // circular layout: each large part (a data ring) gets a canvas of its own, so that
+      // the rings that do not change while another one is resized are not painted again
+      var own = planRadial && ok && prims.length >= 1000;
+      if (last && last.kind === kind && !own && !last.own) { last.els.push(c); if (ok) Array.prototype.push.apply(last.prims, prims); }
+      else runs.push({ kind: kind, els: [c], prims: ok ? prims : null, own: own });
     }
     var flat = 0;
     runs.forEach(function (r) { if (r.kind === 'flat') flat += r.prims.length; });
-    if (flat < MIN_FLAT || runs.length > MAX_RUNS) return null;
+    if (flat < MIN_FLAT || runs.length > (planRadial ? 24 : MAX_RUNS)) return null;
     // a few plain shapes between SVG pieces are not worth a canvas of their own
     runs.forEach(function (r) { if (r.kind === 'flat' && r.prims.length < 50 && runs.length > 1) r.kind = 'svg'; });
     var merged = [];
-    runs.forEach(function (r) { var last = merged[merged.length - 1]; if (last && last.kind === r.kind) { Array.prototype.push.apply(last.els, r.els); if (r.prims) Array.prototype.push.apply(last.prims, r.prims); } else merged.push(r); });
+    runs.forEach(function (r) { var last = merged[merged.length - 1]; if (last && last.kind === r.kind && !r.own && !last.own) { Array.prototype.push.apply(last.els, r.els); if (r.prims) Array.prototype.push.apply(last.prims, r.prims); } else merged.push(r); });
     merged.forEach(function (r) { r.unitMatrix = u; });
     return merged;
   }
@@ -602,7 +631,7 @@
     return out;
   }
   function worthIt() {
-    return typeof root !== 'undefined' && root && geometry !== 'radial' && typeof lastDrawMs !== 'undefined' && lastDrawMs > LIVE_DRAG_MIN_MS;
+    return typeof root !== 'undefined' && root && typeof lastDrawMs !== 'undefined' && lastDrawMs > LIVE_DRAG_MIN_MS;
   }
   function dropPre() { if (pre) { pre.obs.disconnect(); pre = null; } }
   function relevant(recs) {
@@ -619,29 +648,39 @@
     if (pre && !pre.stale && !relevant(pre.obs.takeRecords())) return;   // still good
     dropPre();
     var svg = document.getElementById('svg'); if (!svg) return;
-    var cache = new StyleCache(), plans = new Map(), t0 = performance.now();
-    // with the canvas: the shapes of each part; without: the outlined shapes of each
-    // part (the parts stay SVG as a whole)
-    heavyUnits().forEach(function (u) { plans.set(u.el, canvasSame ? planPart(u.el, cache, u.nodes) : { outlined: outlined(u.el) }); });
+    var cache = new StyleCache(), plans = new Map(), t0 = performance.now(), radial = geometry === 'radial';
+    if (radial) {
+      // circular layout: the tree and the data rings, read for the canvas
+      if (canvasSame !== true) return;
+      planRadial = true;
+      try {
+        var z = document.getElementById('zoomable'), spin = z && z.querySelector(':scope > g.spin'), rg = svg.querySelector(':scope > g.radial-labels');
+        [spin, rg].forEach(function (C) { if (C) plans.set(C, radialRuns(C, cache)); });
+      } finally { planRadial = false; }
+    } else {
+      // with the canvas: the shapes of each part; without: the outlined shapes of each
+      // part (the parts stay SVG as a whole)
+      heavyUnits().forEach(function (u) { plans.set(u.el, canvasSame ? planPart(u.el, cache, u.nodes) : { outlined: outlined(u.el) }); });
+    }
     if (cache.bad) return;
     // any change to the drawing or its styles: the prepared shapes are dropped (the
     // observer is let go then, so that nothing is kept for long)
     var obs = new MutationObserver(function (recs) { if (pre && pre.obs === obs && relevant(recs)) dropPre(); });
     obs.observe(svg, { subtree: true, attributes: true, childList: true, characterData: true });
     obs.observe(document.documentElement, { attributes: true });   // the theme
-    pre = { plans: plans, obs: obs, ms: performance.now() - t0 };
+    pre = { plans: plans, obs: obs, ms: performance.now() - t0, radial: radial };
   }
   // the prepared shapes, when nothing changed since (they are used once)
-  function takePrepared() {
+  function takePrepared(radial) {
     if (!pre) return null;
-    var ok = !relevant(pre.obs.takeRecords()) && !pre.stale, plans = pre.plans;
+    var ok = !relevant(pre.obs.takeRecords()) && !pre.stale && !!pre.radial === !!radial, plans = pre.plans;
     dropPre();
     return ok ? plans : null;
   }
   // while the drag starts, the app changes things that the shapes do not depend on
   function notePrepared() { if (pre && relevant(pre.obs.takeRecords())) pre.stale = true; }
   function ignoreOwnChanges() { if (pre) pre.obs.takeRecords(); }
-  var hoverTimer = 0, SPLITTERS = '.svg-splitter-hit-area, #panelsContainer .splitter';   // (the page's own splitter is over the drawing's in some browsers)
+  var hoverTimer = 0, SPLITTERS = '.svg-splitter-hit-area, #panelsContainer .splitter, .radial-splitter-hit-area';   // (the page's own splitter is over the drawing's in some browsers)
   document.addEventListener('pointerover', function (e) {
     var t = e.target;
     if (!t || !t.closest || !t.closest(SPLITTERS) || lift || base) return;
@@ -777,6 +816,7 @@
   function dropParts() {
     if (!lift) return;
     var L = lift; lift = null;
+    if (L.radial) undoSvgItems(L);
     // back to the same spots, last first
     for (var i = L.moved.length - 1; i >= 0; i--) {
       var mv = L.moved[i];
@@ -800,7 +840,7 @@
   // underneath (partly hidden, partly in layers) is not hovered, and the browser does
   // not have to find what is under the pointer among thousands of shapes at every move.
   var shield = null;
-  function shieldUp() {
+  function shieldUp(cursor) {
     var svg = document.getElementById('svg');
     if (shield || !svg || !svg.parentNode) return;
     var host = svg.parentNode, hr = host.getBoundingClientRect(), sr = svg.getBoundingClientRect();
@@ -808,7 +848,7 @@
     shield.className = 'tm-live-shield';
     shield.setAttribute('aria-hidden', 'true');
     shield.style.cssText = 'position:absolute;left:' + (sr.left - hr.left - host.clientLeft + host.scrollLeft) + 'px;top:' + (sr.top - hr.top - host.clientTop + host.scrollTop) +
-      'px;width:' + svg.clientWidth + 'px;height:' + svg.clientHeight + 'px;cursor:col-resize;background:transparent;';
+      'px;width:' + svg.clientWidth + 'px;height:' + svg.clientHeight + 'px;cursor:' + (cursor || 'col-resize') + ';background:transparent;';
     var after = lift && lift.layers.length ? lift.layers[lift.layers.length - 1].nextSibling : svg.nextSibling;
     host.insertBefore(shield, after);
   }
@@ -953,7 +993,7 @@
   }
 
   function frame() {
-    if (!base) return false;
+    if (!base || base.radial) return false;
     if (!lift && !base.noLift) {
       // the shapes read in advance (when nothing changed since)
       var prepared = takePrepared();
@@ -1082,7 +1122,7 @@
     touched = [];
     for (var s2 = 0; s2 < stroked.length; s2++) stroked[s2].removeAttribute('vector-effect');
     stroked = [];
-    if (base) {
+    if (base && !base.radial) {
       if (base.nodesOff) base.nodesOff.el.style.display = base.nodesOff.was;
       base.layers.forEach(function (L) { if (L.wasT === null) L.el.removeAttribute('transform'); else L.el.setAttribute('transform', L.wasT); });
       base.nodes.forEach(function (nd) { nd.d.y = nd.y0; if (nd.shown) nd.el.setAttribute('transform', 'translate(' + nd.y0 + ',' + nd.d.x + ')'); });
@@ -1097,7 +1137,348 @@
     base = null;
   }
 
-  window.tmDragLive = { capture: capture, frame: frame, reset: reset, ready: function () { return !!base; },
+  // ======================================================== circular layout
+  // While a ring is resized, every point keeps its angle and its distance from the
+  // centre is mapped from the rings as they were drawn to the rings as they are now
+  // (the tree is scaled about the centre, each data ring stretched across its width,
+  // the gaps between rings keep their width). Dots and text keep their size.
+  // The tree (#zoomable > .spin) and the data rings (.radial-labels) are each read
+  // into canvases (with the arcs around the centre kept as arcs); what cannot be
+  // painted there stays SVG: its path data is mapped, other elements are moved to
+  // their new distance. Releasing draws everything for real.
+  function ringsNow() {
+    var rs = (window.radialPanelSystem && radialPanelSystem.getRings) ? radialPanelSystem.getRings() : null;
+    return rs ? rs.map(function (r) { return { type: r.type, inner: +r.innerRadius || 0, outer: +r.outerRadius || 0 }; }) : null;
+  }
+  // distance from the centre: drawn -> now (piecewise linear through the ring edges;
+  // the tree is drawn up to 4 px inside its ring)
+  function radialMap(r0, r1) {
+    var X = [0], Y = [0];
+    function add(a, b) { if (!Number.isFinite(a) || !Number.isFinite(b)) return; if (a <= X[X.length - 1]) { if (a === X[X.length - 1]) Y[Y.length - 1] = b; return; } X.push(a); Y.push(b); }
+    for (var i = 0; i < r0.length && i < r1.length; i++) {
+      if (r0[i].type === 'tree') { add(Math.max(0, r0[i].outer - 4), Math.max(0, r1[i].outer - 4)); add(r0[i].outer, r1[i].outer); }
+      else { add(r0[i].inner, r1[i].inner); add(r0[i].outer, r1[i].outer); }
+    }
+    var n = X.length;
+    var fn = function (r) {
+      if (r <= 0) return r;
+      if (n < 2) return r;
+      if (r >= X[n - 1]) return Y[n - 1] + (r - X[n - 1]);
+      var lo = 0, hi = n - 1;
+      while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (X[mid] <= r) lo = mid; else hi = mid; }
+      return Y[lo] + (r - X[lo]) * (Y[hi] - Y[lo]) / (X[hi] - X[lo]);
+    };
+    fn.xs = X;
+    return fn;
+  }
+  // the distances from the centre a canvas's shapes cover
+  function radialRange(prims) {
+    var lo = Infinity, hi = 0;
+    prims.forEach(function (p) {
+      if (p.t === 'dot') { var r = Math.sqrt(p.cx * p.cx + p.cy * p.cy); lo = Math.min(lo, r - p.rx); hi = Math.max(hi, r + p.rx); return; }
+      for (var j = 0; j < p.pts.length; j += 2) { var q = Math.sqrt(p.pts[j] * p.pts[j] + p.pts[j + 1] * p.pts[j + 1]); if (q < lo) lo = q; if (q > hi) hi = q; }
+      if (p.arc) for (var a = 0; a < p.arc.length; a += 3) { if (p.arc[a] < lo) lo = p.arc[a]; if (p.arc[a] > hi) hi = p.arc[a]; }
+    });
+    return [Math.max(0, lo === Infinity ? 0 : lo), hi];
+  }
+  // the mapping over [lo, hi] (piecewise linear: its values at the ends and at the
+  // ring edges between them say all of it)
+  function mapKey(f, xs, range) {
+    var k = f(range[0]).toFixed(4) + ',' + f(range[1]).toFixed(4);
+    for (var i = 0; i < xs.length; i++) if (xs[i] > range[0] && xs[i] < range[1]) k += ',' + f(xs[i]).toFixed(4);
+    return k;
+  }
+  function mapPoint(f, x, y) {
+    var r = Math.sqrt(x * x + y * y);
+    if (!(r > 1e-9)) return [x, y];
+    var q = f(r) / r; return [x * q, y * q];
+  }
+  // a path in canvas pixels, every point mapped by its distance from the centre
+  function replayRadial(ctx, p, T, f) {
+    var c = p.cmd, q = p.pts, j = 0, ai = 0, a = T[0], b = T[1], cc = T[2], d = T[3], e = T[4], g = T[5];
+    var cx = e, cy = g, sc = Math.sqrt(Math.abs(a * d - b * cc)), flip = (a * d - b * cc) < 0, lx = 0, ly = 0;
+    function pt(k) { var m = mapPoint(f, q[k], q[k + 1]); return [a * m[0] + cc * m[1] + e, b * m[0] + d * m[1] + g]; }
+    for (var i = 0; i < c.length; i++) {
+      var P1, P2, P3;
+      switch (c[i]) {
+        case CM: P1 = pt(j); ctx.moveTo(P1[0], P1[1]); lx = P1[0]; ly = P1[1]; j += 2; break;
+        case CL: P1 = pt(j); ctx.lineTo(P1[0], P1[1]); lx = P1[0]; ly = P1[1]; j += 2; break;
+        case CC: P1 = pt(j); P2 = pt(j + 2); P3 = pt(j + 4); ctx.bezierCurveTo(P1[0], P1[1], P2[0], P2[1], P3[0], P3[1]); lx = P3[0]; ly = P3[1]; j += 6; break;
+        case CQ: P1 = pt(j); P2 = pt(j + 2); ctx.quadraticCurveTo(P1[0], P1[1], P2[0], P2[1]); lx = P2[0]; ly = P2[1]; j += 4; break;
+        case CA: {
+          var R = f(p.arc[ai]) * sc, sweep = p.arc[ai + 1] ^ (flip ? 1 : 0); ai += 3;
+          P1 = pt(j); j += 2;
+          var chx = P1[0] - lx, chy = P1[1] - ly, ch2 = chx * chx + chy * chy;
+          if (R > 0 && ch2 / (8 * R) < 0.02 && ch2 < R * R) ctx.lineTo(P1[0], P1[1]);   // so flat that a straight line looks the same (bulge under 1/50 px)
+          else {
+            var a1 = Math.atan2(ly - cy, lx - cx), a2 = Math.atan2(P1[1] - cy, P1[0] - cx);
+            ctx.arc(cx, cy, Math.max(0, R), a1, a2, !sweep);
+          }
+          lx = P1[0]; ly = P1[1];
+          break;
+        }
+        case CZ: ctx.closePath(); break;
+      }
+    }
+  }
+  function paintRadial(r, T, f, rs) {
+    var cv = r.cv, ctx = r.ctx, P = new Painter(ctx);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    P.setT(DEVICE);
+    var prims = r.prims;
+    for (var i = 0; i < prims.length; i++) {
+      var p = prims[i];
+      if (p.t === 'dot') {
+        var m = mapPoint(f, p.cx, p.cy), X = T[0] * m[0] + T[2] * m[1] + T[4], Y = T[1] * m[0] + T[3] * m[1] + T[5];
+        ctx.beginPath();
+        if (p.rx === p.ry) ctx.arc(X, Y, p.rx * rs, 0, 2 * Math.PI); else ctx.ellipse(X, Y, p.rx * rs, p.ry * rs, 0, 0, 2 * Math.PI);
+        if (p.f) { P.fill(p); ctx.fill(); }
+        if (p.s) { P.stroke(p, rs); ctx.stroke(); }
+      } else if (p.t === 'path') {
+        ctx.beginPath(); replayRadial(ctx, p, T, f);
+        if (p.f) { P.fill(p); ctx.fill(p.rule); }
+        if (p.s) { P.stroke(p, rs); ctx.stroke(); }
+      }
+    }
+  }
+  // SVG pieces of a mapped part: path data mapped, other elements moved as a whole
+  // (M: from the element's parent to the part's coordinates, centre at 0,0)
+  function svgMappedList(els, M) {
+    var out = [];
+    els.forEach(function (c) {
+      if (c.tagName === 'title' || c.tagName === 'desc' || c.tagName === 'defs') return;
+      if (c.style.display === 'none' || c.getAttribute('display') === 'none') return;
+      var Mc = mul(M, ownMatrix(c));
+      if (c.tagName === 'g') { Array.prototype.push.apply(out, svgMappedList(Array.prototype.slice.call(c.children), Mc)); return; }
+      if (c.tagName === 'path' && c.getAttribute('d')) {
+        var o = { cmd: [], pts: [], arc: [] }, was = planRadial;
+        planRadial = true;
+        var okp = parsePath(c.getAttribute('d'), I, o);
+        planRadial = was;
+        // label guides run from 8 px beyond their tip to 2 px before the ring after it
+        if (okp) { out.push({ el: c, kind: 'path', M: Mc, Minv: invert(Mc), o: o, d0: c.getAttribute('d'), guide: c.classList.contains('label-guides') }); return; }
+      }
+      // anything else is moved as a whole to its new distance from the centre: text by
+      // the point it is written from (labels start at the inner edge of their ring),
+      // other elements by their middle
+      var ax, ay;
+      if (c.tagName === 'text' && c.hasAttribute('x')) { ax = num(c.getAttribute('x'), 0); ay = num(c.getAttribute('y'), 0); }
+      else {
+        var bb = null; try { bb = c.getBBox(); } catch (e) {}
+        if (!bb) return;
+        ax = bb.x + bb.width / 2; ay = bb.y + bb.height / 2;
+      }
+      out.push({ el: c, kind: 'move', Pinv: invert(M), ax: Mc[0] * ax + Mc[2] * ay + Mc[4], ay: Mc[1] * ax + Mc[3] * ay + Mc[5], t0: c.getAttribute('transform') });
+    });
+    return out;
+  }
+  function invert(m) {
+    var det = m[0] * m[3] - m[1] * m[2];
+    if (!det) return I;
+    return [m[3] / det, -m[1] / det, -m[2] / det, m[0] / det, (m[2] * m[5] - m[3] * m[4]) / det, (m[1] * m[4] - m[0] * m[5]) / det];
+  }
+  function apply(m, x, y) { return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]; }
+  function fmt(v) { return Math.round(v * 1000) / 1000; }
+  function mappedD(item, f) {
+    var o = item.o, c = o.cmd, q = o.pts, j = 0, ai = 0, s2 = '';
+    var fs = item.guide ? function (r) { return f(r - 8) + 8; } : f, fe = item.guide ? function (r) { return f(r + 2) - 2; } : f;
+    function pt(k, start) { var g = apply(item.M, q[k], q[k + 1]), m = mapPoint(start ? fs : fe, g[0], g[1]), b = apply(item.Minv, m[0], m[1]); return fmt(b[0]) + ',' + fmt(b[1]); }
+    var sc = uniformScale(item.M) || 1;
+    for (var i = 0; i < c.length; i++) {
+      switch (c[i]) {
+        case CM: s2 += 'M' + pt(j, true); j += 2; break;
+        case CL: s2 += 'L' + pt(j); j += 2; break;
+        case CC: s2 += 'C' + pt(j) + ' ' + pt(j + 2) + ' ' + pt(j + 4); j += 6; break;
+        case CQ: s2 += 'Q' + pt(j) + ' ' + pt(j + 2); j += 4; break;
+        case CA: {
+          // (path coordinates: the arc's radius in the drawing's units, mapped, and back)
+          var R = f(o.arc[ai] * sc) / sc, sw = o.arc[ai + 1], la = o.arc[ai + 2]; ai += 3;
+          s2 += 'A' + fmt(R) + ',' + fmt(R) + ' 0 ' + la + ',' + sw + ' ' + pt(j); j += 2;
+          break;
+        }
+        case CZ: s2 += 'Z'; break;
+      }
+    }
+    return s2;
+  }
+
+  // The pieces of a circular part, in drawing order: runs of plain shapes (canvases)
+  // and of other elements (SVG). A group that is not plain as a whole (a data ring with
+  // its axis numbers) is looked into, so that its cells are still painted in a canvas.
+  // A run's shapes are in the part's coordinates; an SVG run lists its elements, the
+  // groups between the part and them (copied for the layer) and their matrix.
+  function radialRuns(C, cache) {
+    var rootSt = rootStyleId(cache, C);
+    if (rootSt.s.display === 'none' || !plainEffects(rootSt.s) || num(rootSt.s.opacity, 1) !== 1) return null;
+    var runs = [], boundary = false;   // (each ring looked into starts canvases of its own)
+    function flat(prims, own) {
+      var last = runs[runs.length - 1];
+      if (last && last.kind === 'flat' && !own && !last.own && !boundary) Array.prototype.push.apply(last.prims, prims);
+      else runs.push({ kind: 'flat', prims: prims.slice(), own: own });
+      boundary = false;
+    }
+    function svgRun(el, extra, M) {
+      var last = runs[runs.length - 1];
+      if (last && last.kind === 'svg' && last.extra.length === extra.length && last.extra.every(function (a, i) { return a === extra[i]; })) last.els.push(el);
+      else runs.push({ kind: 'svg', els: [el], extra: extra, M: M });
+    }
+    (function walk(P, pid, extra, M, depth) {
+      for (var c = P.firstElementChild; c; c = c.nextElementSibling) {
+        var prims = [];
+        planRadial = true;
+        var ok = collect(c, M, pid, cache, prims, null);
+        planRadial = false;
+        if (ok) { if (prims.length) flat(prims, prims.length >= 1000); continue; }
+        var st = cache.get(c, pid);
+        if (c.tagName === 'g' && depth < 2 && plainEffects(st.s) && num(st.s.opacity, 1) === 1 && st.s.display !== 'none') {
+          boundary = true;
+          walk(c, st.id, extra.concat([c]), mul(M, ownMatrix(c)), depth + 1);
+          boundary = true;
+        }
+        else svgRun(c, extra, M);
+      }
+    })(C, rootSt.id, [], I, 0);
+    if (cache.bad || runs.length > 40) return null;
+    return runs;
+  }
+
+  function captureRadial() {
+    if (base || touched.length || lifted.length || lift) reset();
+    if (typeof root === 'undefined' || !root || geometry !== 'radial') return;
+    // (the circular layout is only shown live with the canvas: where the browser paints
+    // canvases differently, ring drags redraw as before)
+    if (canvasSame !== true) return;
+    var r0 = ringsNow(); if (!r0) return;
+    notePrepared();
+    base = { radial: true, rings0: r0 };
+    shieldUp('ew-resize');
+  }
+  function liftRadial(b, prepared) {
+    var svg = document.getElementById('svg'), z = document.getElementById('zoomable');
+    if (!svg || !z || !svg.parentNode) return;
+    var host = svg.parentNode, W = svg.clientWidth, H = svg.clientHeight;
+    if (!W || !H) return;
+    var hr = host.getBoundingClientRect(), sr = svg.getBoundingClientRect();
+    var left = sr.left - hr.left - host.clientLeft + host.scrollLeft, top = sr.top - hr.top - host.clientTop + host.scrollTop;
+    var dpr = window.devicePixelRatio || 1;
+    var spin = z.querySelector(':scope > g.spin'), rings = svg.querySelector(':scope > g.radial-labels');
+    var Lf = { svg: svg, z: z, zt: '', Z: I, dpr: dpr, W: W, H: H, layers: [], moved: [], clones: [], twins: new Map(), runs: [], units: [],
+      cursor: svg.style.cursor, opacity: svg.style.opacity, hidMain: false, radial: true, svgItems: [], clonePairs: [] };
+    Lf.prepared = !!prepared;
+    var next = svg.nextSibling;
+    function place(elm) {
+      elm.style.cssText = 'position:absolute;left:' + left + 'px;top:' + top + 'px;width:' + W + 'px;height:' + H + 'px;pointer-events:none;will-change:transform;';
+      host.insertBefore(elm, next);
+      Lf.layers.push(elm);
+    }
+    function overlayFor(chain) {
+      var o = document.createElementNS(SVGNS, 'svg');
+      o.setAttribute('class', 'tm-live-layer'); o.setAttribute('width', W); o.setAttribute('height', H); o.setAttribute('aria-hidden', 'true');
+      var parent = o;
+      chain.forEach(function (a) { var cl = a.cloneNode(false); cl.removeAttribute('id'); parent.appendChild(cl); parent = cl; Lf.clonePairs.push([a, cl]); });
+      place(o);
+      return parent;
+    }
+    function moveInto(elm, parent) {
+      var ph = document.createComment('tm-live');
+      ownNodes.add(ph); ownNodes.add(elm);
+      elm.parentNode.insertBefore(ph, elm);
+      parent.appendChild(elm);
+      Lf.moved.push({ el: elm, ph: ph });
+    }
+    function chainMatrix(chain) { var m = I; chain.forEach(function (a) { m = mul(m, ownMatrix(a)); }); return m; }
+    var cache = new StyleCache(), ok = true, sharedParent = null, sharedChainKey = null;
+    function staticUnit(el, chain) {
+      var key = chain.map(function (a) { return a.getAttribute('class') || a.id || a.tagName; }).join('>');
+      if (!sharedParent || sharedChainKey !== key) { sharedParent = overlayFor(chain); sharedChainKey = key; }
+      moveInto(el, sharedParent);
+    }
+    // a part whose children are mapped: canvases for plain runs, SVG for the rest
+    function splitPart(C, chain) {
+      sharedParent = null;
+      var plan = canvasSame !== true ? null : prepared && prepared.has(C) ? prepared.get(C) : radialRuns(C, cache);
+      var M = mul(chainMatrix(chain), ownMatrix(C));
+      var runs = plan || [{ kind: 'svg', els: Array.prototype.slice.call(C.children), extra: [], M: I }];
+      runs.forEach(function (r) {
+        if (r.kind === 'flat') {
+          var cv = document.createElement('canvas');
+          cv.className = 'tm-live-layer'; cv.setAttribute('aria-hidden', 'true');
+          cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr));
+          place(cv);
+          Lf.runs.push({ kind: 'flat', cv: cv, ctx: cv.getContext('2d'), prims: r.prims, M: M, chain: chain.concat([C]), range: radialRange(r.prims), key: null });
+          Lf.hidMain = true;
+        } else {
+          var parent = overlayFor(chain.concat([C]).concat(r.extra || []));
+          var els = r.els.filter(function (e) { return e.isConnected; });
+          els.forEach(function (e) { moveInto(e, parent); });
+          // what has to be mapped in SVG (in the part's own coordinates: the centre is 0,0)
+          Array.prototype.push.apply(Lf.svgItems, svgMappedList(els, r.M || I));
+          if (Lf.svgItems.length > 8000) { ok = false; b.whyNot = Lf.svgItems.length + ' SVG elements to move'; }   // too many to move one by one
+        }
+      });
+      if (cache.bad) { ok = false; b.whyNot = 'styles'; }
+    }
+    var t0 = performance.now();
+    // in drawing order: the children of the drawing
+    var tops = Array.prototype.slice.call(svg.children);
+    tops.forEach(function (T) {
+      if (T.tagName === 'defs' || T.tagName === 'style') return;
+      if (T === z) {
+        Array.prototype.slice.call(z.children).forEach(function (Zc) {
+          if (Zc === spin) splitPart(spin, [z]); else staticUnit(Zc, [z]);
+        });
+        sharedParent = null;
+      } else if (T === rings) splitPart(rings, []);
+      else staticUnit(T, []);
+    });
+    Lf.prepMs = performance.now() - t0;
+    if (Lf.hidMain) svg.style.opacity = '0';
+    svg.style.cursor = 'ew-resize';
+    lift = Lf;
+    if (!ok) { b.noLive = true; }
+  }
+  function frameRadial() {
+    if (!base || !base.radial || base.noLive) return false;
+    if (!lift) { liftRadial(base, takePrepared(true)); if (!lift || base.noLive) { base.noLive = true; return false; } }
+    var r1 = ringsNow(); if (!r1) return false;
+    var f = radialMap(base.rings0, r1), dpr = lift.dpr;
+    base.xs = f.xs;
+    // zoomed or panned meanwhile: the copies follow, the canvases are placed again
+    lift.clonePairs.forEach(function (pc) { var t = pc[0].getAttribute('transform'); if (t !== pc[1].getAttribute('transform')) { if (t === null) pc[1].removeAttribute('transform'); else pc[1].setAttribute('transform', t); } });
+    lift.runs.forEach(function (r) {
+      if (r.kind !== 'flat') return;
+      var M = I; r.chain.forEach(function (a) { M = mul(M, ownMatrix(a)); });
+      var mk = M.join(',');
+      if (mk !== r.mk) { r.mk = mk; r.M = M; r.key = null; }
+      // painted again only when the mapping changed where its shapes are
+      var key = mapKey(f, base.xs, r.range);
+      if (key === r.key) return;
+      r.key = key;
+      var T = mul([dpr, 0, 0, dpr, 0, 0], r.M), rs = uniformScale(T);
+      paintRadial(r, T, f, rs);
+    });
+    lift.svgItems.forEach(function (it) {
+      if (it.kind === 'path') it.el.setAttribute('d', mappedD(it, f));
+      else {
+        var m = mapPoint(f, it.ax, it.ay), dx = m[0] - it.ax, dy = m[1] - it.ay;
+        // the move in the element's parent coordinates
+        var lx = it.Pinv[0] * dx + it.Pinv[2] * dy, ly = it.Pinv[1] * dx + it.Pinv[3] * dy;
+        var t = 'translate(' + fmt(lx) + ',' + fmt(ly) + ')' + (it.t0 ? ' ' + it.t0 : '');
+        it.el.setAttribute('transform', t);
+      }
+    });
+    return true;
+  }
+  function undoSvgItems(L) {
+    (L.svgItems || []).forEach(function (it) {
+      if (it.kind === 'path') it.el.setAttribute('d', it.d0);
+      else if (it.t0 === null) it.el.removeAttribute('transform'); else it.el.setAttribute('transform', it.t0);
+    });
+  }
+
+  window.tmDragLive = { capture: capture, frame: frame, reset: reset, ready: function () { return !!base && !base.radial; },
+    captureRadial: captureRadial, frameRadial: frameRadial, radialReady: function () { return !!base && base.radial && !base.noLive; },
     active: function () { return !!base || !!lift || !!shield || touched.length > 0 || lifted.length > 0; },
     // a change made by moving the parts out and back (not a redraw)
     ownMutation: function (m) {
@@ -1109,8 +1490,9 @@
     canvasSame: function () { return canvasSame; },
     // for tests: what the drag is shown with
     info: function () {
+      if (base && base.radial && base.whyNot) return { radialNotLive: base.whyNot };
       if (!lift) return null;
-      return { layers: lift.layers.length, canvases: lift.runs.filter(function (r) { return r.kind === 'flat'; }).length,
+      return { svgItems: lift.svgItems ? lift.svgItems.length : 0, layers: lift.layers.length, canvases: lift.runs.filter(function (r) { return r.kind === 'flat'; }).length,
         flatShapes: lift.runs.reduce(function (s, r) { return s + (r.kind === 'flat' ? r.prims.length : 0); }, 0), prepMs: lift.prepMs, svgPrepMs: base && base.svgPrepMs, prepared: lift.prepared, canvasSame: canvasSame };
     } };
 })();
