@@ -4738,6 +4738,7 @@ function updateSearchHighlights() {
       
       return (hasCladeColor || hasPermanentColor || isInSearchPath) ? getBranchStrokeWidth() : null;
     });
+  updateLabelGuideEnds();   // bold labels are wider: the guides end before them
   updateColorPathCardVisibility();
 }
 
@@ -5875,6 +5876,43 @@ let labelsAutoHideDone = false;
 
 // drawTree = the drawing (drawTreeBody) plus the layer-reuse bookkeeping, which
 // must run on every exit and survive a redraw started from inside a redraw.
+// ---- guide lines to labels (Style > Tree > Guide lines to labels)
+// A light dotted line from each tip to its label, so a tip can be followed to its
+// name and data row. Rectangular: it ends just before the label's first letter
+// (labels are right-aligned, so each ends at a different place), or at the data
+// columns when labels are hidden. All guides are one path (one element, however
+// many tips). The ends are measured from the labels as drawn (font size, shortened
+// text, bold search matches), so they are set once the labels are final.
+let labelGuideCtx = null;   // { path, items: [[leaf, x1, labelEl]], end, labelRight }
+let guideMeasureCtx = null;
+function guideStyle(sel) {
+  return sel.attr('fill', 'none').attr('stroke', 'var(--tree)')
+    .attr('stroke-width', Math.max(0.6, Math.min(1, getBranchStrokeWidth())))
+    .attr('stroke-dasharray', '2,3').attr('stroke-linecap', 'round').attr('opacity', 0.55);
+}
+function labelTextWidth(el, font) {
+  if (!guideMeasureCtx) guideMeasureCtx = document.createElement('canvas').getContext('2d');
+  const w = (el.style && el.style.fontWeight) || 'normal';
+  guideMeasureCtx.font = (w === 'bold' || +w >= 600 ? 'bold ' : '') + font;
+  return guideMeasureCtx.measureText(el.textContent || '').width;
+}
+function updateLabelGuideEnds() {
+  const c = labelGuideCtx;
+  if (!c || !c.path || !c.path.isConnected) return;
+  let font = null;
+  const parts = [];
+  for (let i = 0; i < c.items.length; i++) {
+    const [leaf, x1, el] = c.items[i];
+    let x2 = c.end;
+    if (el && el.isConnected && el.textContent) {
+      if (!font) { const cs = getComputedStyle(el); font = cs.fontSize + ' ' + cs.fontFamily; }
+      x2 = Math.min(x2, c.labelRight - labelTextWidth(el, font) - 4);   // just before the first letter
+    }
+    if (Number.isFinite(x2) && x2 > x1 + 1) parts.push('M' + x1.toFixed(2) + ' ' + leaf.x.toFixed(2) + 'H' + x2.toFixed(2));
+  }
+  c.path.setAttribute('d', parts.join(''));
+}
+
 let drawTreeDepth = 0;
 function drawTree(){
   if (drawTreeDepth === 0) supportPaintCache = null;   // settings may have changed since the last redraw
@@ -6259,6 +6297,7 @@ function drawTreeBody(){
   }
 
   // Draw label guide dashes FIRST (at the back of z-stack)
+  labelGuideCtx = null;
   if(labelGuidesEl && labelGuidesEl.checked){
     const padToLetter = 0; // no padding – touch the first character exactly
     
@@ -6267,73 +6306,33 @@ function drawTreeBody(){
       const extG = gSpin.append('g').attr('class','radial-tip-extensions');
       extG.attr('shape-rendering','crispEdges');
       
-      // Get label ring inner radius from radial panel system
-      let labelInnerRadius = 0;
+      // Guides end at the label ring, or (labels hidden) at the first data ring
+      let labelInnerRadius = 0, firstDataRadius = 0;
       if (window.radialPanelSystem) {
         const rings = window.radialPanelSystem.getRings();
         for (let i = 0; i < rings.length; i++) {
-          if (rings[i].type === 'labels') {
-            labelInnerRadius = rings[i].innerRadius;
-            break;
-          }
+          if (rings[i].type === 'labels') labelInnerRadius = rings[i].innerRadius;
+          else if (rings[i].type !== 'tree' && rings[i].innerRadius > 0 && (!firstDataRadius || rings[i].innerRadius < firstDataRadius)) firstDataRadius = rings[i].innerRadius;
         }
       }
-      
-      // Only draw if there's a label panel
-      if (labelInnerRadius > 0) {
-        leaves.forEach((leaf, i) => {
-          const angle = leaf.a || 0;
-          const leafR = leaf.r || 0; // Radial distance where leaf tip is
-          
-          // Only draw if there's a gap between leaf tip and label panel
-          if (labelInnerRadius > leafR) {
-            // Start: 8px beyond leaf tip (same as rectangular +8)
-            const startR = leafR + 8;
-            const x1 = startR * Math.cos(angle - Math.PI / 2);
-            const y1 = startR * Math.sin(angle - Math.PI / 2);
-            
-            // End: label panel inner edge
-            const x2 = labelInnerRadius * Math.cos(angle - Math.PI / 2);
-            const y2 = labelInnerRadius * Math.sin(angle - Math.PI / 2);
-            
-            // Draw dashed extension from leaf tip to label start
-            extG.append('line')
-              .attr('x1', x1)
-              .attr('y1', y1)
-              .attr('x2', x2)
-              .attr('y2', y2)
-              .attr('stroke', ringCol)
-              .attr('stroke-width', getBranchStrokeWidth())
-              .attr('stroke-dasharray', '4,3')
-              .attr('stroke-linecap', 'butt');
+      const _hl = document.getElementById('hideLabels');
+      const endR = (_hl && _hl.checked) ? firstDataRadius : labelInnerRadius;
+      if (endR > 0) {
+        const parts = [];
+        leaves.forEach(leaf => {
+          const angle = (leaf.a || 0) - Math.PI / 2, leafR = leaf.r || 0;
+          if (endR > leafR + 9) {
+            const c = Math.cos(angle), s = Math.sin(angle), r1 = leafR + 8, r2 = endR - 2;
+            parts.push('M' + (r1 * c).toFixed(2) + ' ' + (r1 * s).toFixed(2) + 'L' + (r2 * c).toFixed(2) + ' ' + (r2 * s).toFixed(2));
           }
         });
+        guideStyle(extG.append('path').attr('class', 'label-guides')).attr('d', parts.join(''));
       }
     } else {
-      // RECTANGULAR MODE: Draw horizontal guide dashes
-    const extG = g.append('g').attr('class','tip-extensions');
-    extG.attr('shape-rendering','crispEdges');
-    
-    // Use new panel system for label positioning
-    const labelsPanel = getLabelsPanelDimensions();
-    const globalRight = treeImageX + treeImageWidth; // Use tree image right edge
-    // Labels should extend from tree right edge to labels panel right edge with margin
-    const labelRightConst = labelsPanel.rightEdge - 8; // 8px margin from right splitter
-    
-    leaves.forEach((leaf, i) => {
-      const x2 = (labelRightConst - 0 - padToLetter); // approximate width
-      const x1 = leaf.y + 8; // start 8px from leaf tip (left margin from tree)
-      if(Number.isFinite(x2) && x2 > x1){
-        // draw a dashed extension from current tip x to the label start
-        extG.append('line')
-          .attr('x1', x1).attr('y1', leaf.x)
-          .attr('x2', x2).attr('y2', leaf.x)
-          .attr('stroke', ringCol)
-          .attr('stroke-width', getBranchStrokeWidth())
-          .attr('stroke-dasharray', '4,3')
-          .attr('stroke-linecap', 'butt');
-      }
-    });
+      // RECTANGULAR MODE: the group is made here (at the back of the drawing);
+      // the guides are drawn once the labels are final (after the labels below)
+      const extG = g.append('g').attr('class','tip-extensions');
+      labelGuideCtx = { group: extG.node() };
     }
   }
 
@@ -7273,8 +7272,22 @@ function drawTreeBody(){
       // cachedTruncationLength = applyTruncation(leavesSel, cachedOptimalFontSize);
     }
 
-       // Label guide dashes are now drawn at the beginning of the function (at the back of z-stack)
-if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
+    // guide lines to labels: now that the labels are final, each guide can end just
+    // before its label (or at the data columns when labels are hidden)
+    if (labelGuideCtx && labelGuideCtx.group) {
+      const textOf = new Map();
+      if (!hideLabels) leavesSel.each(function(d) { const t = this.querySelector('text.label'); if (t) textOf.set(d, t); });
+      // labels hidden: to where the first data column starts (or the tree panel's edge)
+      let end = labelRight - 4;
+      if (hideLabels) {
+        const ps = getPanelPositions(), tp = ps.find(x => x.type === 'tree');
+        const firstData = ps.filter(x => x.type !== 'tree' && x.type !== 'labels' && x.width > 0).sort((a, b) => a.x - b.x)[0];
+        end = firstData ? firstData.x - 4 : (tp ? tp.x + tp.width - 8 : labelRight);
+      }
+      const path = guideStyle(d3.select(labelGuideCtx.group).append('path').attr('class', 'label-guides')).node();
+      labelGuideCtx = { path, end, labelRight, items: leaves.map(leaf => [leaf, leaf.y + 8, textOf.get(leaf) || null]) };
+      updateLabelGuideEnds();
+    }
   } else {
     // --- RADIAL MODE (labels, highlights, heatmaps) ---
     if (gSpin) {
@@ -23394,6 +23407,8 @@ if(coverScaleBarEl){
     else { drawTree(); updateZoomBounds(); adjustSvgHeightForExpansion(); }
   });
 }
+
+if(labelGuidesEl){ labelGuidesEl.addEventListener('change', () => drawTree()); }
 
 if(hideScaleBarEl){
   hideScaleBarEl.addEventListener('change', ()=>{
