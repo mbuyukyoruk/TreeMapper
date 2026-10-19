@@ -32,7 +32,7 @@
     'bootstrapPosition', 'bootstrapFontSize', 'bootstrapFontColor', 'bootstrapBold', 'bootstrapItalic',
     'bootstrapTextPosition', 'bootstrapVerticalShift', 'bootstrapScaleFactor', 'bootstrapRounding', 'bootstrapScientific',
     'bootstrapPercent', 'bootstrapShowAll', 'bootstrapColorMin', 'bootstrapColorMidToggle', 'bootstrapColorMid',
-    'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin', 'axesBelow', 'trackWidth', 'metaColumn'];
+    'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin', 'axesBelow', 'axisTitleButtons', 'trackWidth', 'metaColumn'];
   var ROOT_IDS = ['rootEnable', 'rootMode'];
 
   function $(id) { return document.getElementById(id); }
@@ -200,6 +200,8 @@
     var settings = {};
     SETTING_IDS.concat(ROOT_IDS).forEach(function (id) { var el = $(id); if (el) settings[id] = readCtl(el); });
     var tab = document.querySelector('.bootstrap-tab.active'); if (tab) settings.__supportTab = tab.getAttribute('data-tab');
+    var treeTitle = call(function () { return treeAxisTitle; }); if (treeTitle) settings.__treeAxisTitle = treeTitle;
+    if (window.tmLegendOrder && tmLegendOrder.get()) settings.__legendByLayer = true;
     settings.__theme = document.documentElement.getAttribute('data-theme') || 'light';
     settings.__legendHidden = document.body.classList.contains('pro-legend-hidden');
     settings.__layout = (typeof geometry !== 'undefined' && geometry === 'radial') ? 'radial' : 'rect';
@@ -217,6 +219,7 @@
           controls: describe(card).map(function (c) { return [c.d, readCtl(c.el)]; }) };
         var obj = layerObject(L, card);
         if (obj && Array.isArray(obj.geneOrder) && obj.geneOrder.length) entry.geneOrder = obj.geneOrder.slice();
+        if (obj && obj.axisTitle) entry.axisTitle = obj.axisTitle;   // the axis title (unit) of this layer
         s.layers.push(entry);
       });
     });
@@ -366,6 +369,8 @@
       if (st.__layout === 'rect' && $('btnRect') && geometry === 'radial') $('btnRect').click();
       SETTING_IDS.forEach(function (id) { var el = $(id); if (el && id in st) call(function () { writeCtl(el, st[id], true); }); });
       if (st.__supportTab) { var t = document.querySelector('.bootstrap-tab[data-tab="' + st.__supportTab + '"]'); if (t && !t.classList.contains('active')) t.click(); }
+      call(function () { treeAxisTitle = st.__treeAxisTitle || ''; });
+      if (window.tmLegendOrder) tmLegendOrder.set(!!st.__legendByLayer);
       if (st.__theme) {
         var dark = st.__theme === 'dark', tg = $('themeToggle');
         if (tg && tg.checked !== dark) tg.click();
@@ -424,6 +429,7 @@
             if (row) list.appendChild(row);
           });
         }
+        if (obj && typeof lay.axisTitle === 'string') obj.axisTitle = lay.axisTitle;
         if (typeof lay.open === 'boolean') card.open = lay.open;
         realDraw();
         call(function () { updateMetadataLegend(); });

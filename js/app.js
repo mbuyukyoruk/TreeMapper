@@ -269,7 +269,17 @@ svg.on("wheel.zoom", null);
 let panBoundsCache = null;   // content bounds in tree coordinates; cleared on every redraw
 function panBounds(){
   if (!panBoundsCache) {
-    try { const b = g.node().getBBox(); panBoundsCache = { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height }; }
+    try {
+      const b = g.node().getBBox();
+      const c = { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
+      // a pinned header / footer (expanded view) counts at its own place, not where it is
+      // pinned now: otherwise the end of the drawing could never be scrolled to
+      g.node().querySelectorAll(':scope > .pro-sticky-header').forEach(h => {
+        const r = h.getBBox();   // in the group's own coordinates: without the pinning shift
+        if (r.width || r.height) { c.x0 = Math.min(c.x0, r.x); c.y0 = Math.min(c.y0, r.y); c.x1 = Math.max(c.x1, r.x + r.width); c.y1 = Math.max(c.y1, r.y + r.height); }
+      });
+      panBoundsCache = c;
+    }
     catch(e) { panBoundsCache = null; }
   }
   return panBoundsCache;
@@ -2783,6 +2793,131 @@ function axesBelowWanted() {
 // an axis whose ticks and numbers point away from the tree
 function axisForRow(scale) { return axisRow.below ? d3.axisBottom(scale) : d3.axisTop(scale); }
 
+// ---- axis titles (units): a title centred on an axis, beyond its numbers.
+// Keys: 'tree' (the scale bar), 'dataframe:<id>', 'chart:<id>'. A layer's title is
+// stored on the layer itself, so it follows the layer when layers are reordered.
+// The + / - buttons and the hover box are interface only (class axis-ui): exports
+// drop them. Style > Appearance > "Axis title buttons" hides the + buttons.
+let treeAxisTitle = '';
+const AXIS_TITLE_BAND = 18;   // room for a title beyond the axis numbers
+function axisTitleLayer(key) {
+  const m = /^(dataframe|chart):(\d+)$/.exec(key || '');
+  if (!m) return null;
+  return (m[1] === 'dataframe' ? dataframes : charts).get(+m[2]) || null;
+}
+function getAxisTitle(key) {
+  if (key === 'tree') return treeAxisTitle || '';
+  const o = axisTitleLayer(key);
+  return (o && o.axisTitle) || '';
+}
+function setAxisTitle(key, text) {
+  const t = String(text || '').trim();
+  if (key === 'tree') { treeAxisTitle = t; return; }
+  const o = axisTitleLayer(key);
+  if (o) { if (t) o.axisTitle = t; else delete o.axisTitle; }
+}
+function axisTitleButtonsOn() {
+  const el = document.getElementById('axisTitleButtons');
+  return !el || el.checked;
+}
+function anyAxisTitle() {
+  if (treeAxisTitle) return true;
+  for (const o of dataframes.values()) if (o && o.axisTitle) return true;
+  for (const o of charts.values()) if (o && o.axisTitle) return true;
+  return false;
+}
+// room reserved for titles (rectangular layout): when the + buttons show, or a title exists
+function axisTitleBand() {
+  return (geometry !== 'radial' && (axisTitleButtonsOn() || anyAxisTitle())) ? AXIS_TITLE_BAND : 0;
+}
+// draws the title (or the + button) of one axis into its axis group
+function renderAxisTitle(g, key, widthPx) {
+  if (!g || g.empty() || !key) return;
+  g.attr('data-axis-key', key).attr('data-axis-width', widthPx);
+  g.selectAll(':scope > .axis-title, :scope > .axis-title-add').remove();
+  const title = getAxisTitle(key);
+  const below = axisRow.below;
+  const y = below ? 38 : -32;   // beyond the tick numbers, away from the tree
+  const cx = widthPx / 2;
+  if (title) {
+    const tg = g.append('g').attr('class', 'axis-title').attr('data-axis-key', key);
+    // invisible area around the title and its - button, so the button stays while the pointer moves to it
+    const hit = tg.append('rect').attr('class', 'axis-title-hit axis-ui');
+    const box = tg.append('rect').attr('class', 'axis-title-box axis-ui').attr('rx', 4).attr('ry', 4);
+    const tx = tg.append('text').attr('class', 'axis-title-text')
+      .attr('x', cx).attr('y', y).attr('text-anchor', 'middle').attr('dominant-baseline', 'middle')
+      .attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', '600').text(title);
+    let bb = null; try { bb = tx.node().getBBox(); } catch (e) {}
+    if (!bb || !bb.width) bb = { x: cx - title.length * 3.5, y: y - 7, width: title.length * 7, height: 14 };
+    box.attr('x', bb.x - 6).attr('y', bb.y - 3).attr('width', bb.width + 12).attr('height', bb.height + 6);
+    hit.attr('x', bb.x - 10).attr('y', Math.min(bb.y, y - 8) - 6).attr('width', bb.width + 10 + 16 + 8 + 8).attr('height', Math.max(bb.height, 16) + 12);
+    const rm = tg.append('g').attr('class', 'axis-title-remove axis-ui').attr('transform', `translate(${bb.x + bb.width + 16},${y})`);
+    rm.append('title').text('Remove this axis title');
+    rm.append('circle').attr('r', 8);
+    rm.append('path').attr('d', 'M-3.5 0H3.5');
+  } else if (axisTitleButtonsOn()) {
+    const add = g.append('g').attr('class', 'axis-title-add axis-ui').attr('data-axis-key', key).attr('transform', `translate(${cx},${y})`);
+    add.append('title').text('Add an axis title (unit)');
+    add.append('circle').attr('r', 8);
+    add.append('path').attr('d', 'M-3.5 0H3.5M0 -3.5V3.5');
+  }
+}
+// after a title changed: draw it again where the axis is (no redraw needed),
+// or redraw when the room for titles appears or goes
+function refreshAxisTitle(key, bandBefore) {
+  if (axisTitleBand() !== bandBefore) { drawTree(); return; }
+  document.querySelectorAll('#zoomable [data-axis-key="' + key + '"][data-axis-width]').forEach(node => {
+    renderAxisTitle(d3.select(node), key, +node.getAttribute('data-axis-width'));
+  });
+}
+// editing: + or a title opens a text box at that place; Enter / leaving the box saves, Esc cancels
+let axisTitleEditor = null;
+function editAxisTitle(key, anchorEl) {
+  if (axisTitleEditor) axisTitleEditor.remove();
+  const r = anchorEl.getBoundingClientRect();
+  const axisG = anchorEl.closest('[data-axis-width]');
+  const aw = axisG ? axisG.getBoundingClientRect().width : 160;
+  const w = Math.max(140, Math.min(320, aw * 0.8));
+  const input = document.createElement('input');
+  input.type = 'text'; input.className = 'axis-title-input'; input.autocomplete = 'off';
+  input.placeholder = 'Axis title (unit)'; input.value = getAxisTitle(key);
+  input.setAttribute('aria-label', 'Axis title');
+  input.style.left = (r.left + r.width / 2 - w / 2) + 'px'; input.style.top = (r.top + r.height / 2 - 14) + 'px'; input.style.width = w + 'px';
+  document.body.appendChild(input);
+  axisTitleEditor = input;
+  let done = false;
+  const finish = (save) => {
+    if (done) return; done = true;
+    const v = input.value;
+    input.remove(); if (axisTitleEditor === input) axisTitleEditor = null;
+    if (!save || v.trim() === getAxisTitle(key)) return;
+    const band = axisTitleBand();
+    setAxisTitle(key, v);
+    refreshAxisTitle(key, band);
+    setStatus(v.trim() ? 'Axis title set' : 'Axis title removed');
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.focus(); input.select();
+}
+(function setupAxisTitleClicks() {
+  const svgNode = document.getElementById('svg');
+  if (!svgNode) return;
+  svgNode.addEventListener('click', (e) => {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const add = t.closest('.axis-title-add'), rm = t.closest('.axis-title-remove'), title = t.closest('.axis-title');
+    if (!add && !rm && !title) return;
+    e.stopPropagation(); e.preventDefault();
+    const key = (add || title).getAttribute('data-axis-key') || (title && title.getAttribute('data-axis-key'));
+    if (rm) { const band = axisTitleBand(); setAxisTitle(title.getAttribute('data-axis-key'), ''); refreshAxisTitle(title.getAttribute('data-axis-key'), band); setStatus('Axis title removed'); return; }
+    editAxisTitle(key, add || title.querySelector('.axis-title-text') || title);
+  }, true);
+})();
+
 // How far the slanted (45°) heatmap titles reach beyond the axis line, from the
 // width of the longest title. A title starts at its column and slants away from
 // the tree (up above it, down below it), so the reach is the same on both sides.
@@ -2809,12 +2944,13 @@ function axisRowGap(leafSep) { return Math.max(18, Math.min((leafSep || 0) * 0.4
 // top / bottom: what the tips, bars and (top) axis row need without long titles.
 function fitClearances(top, bottom, labelPx, below, leafSep) {
   const gap = axisRowGap(leafSep);   // the row's distance from the first / last tip
-  if (!below) return { top: Math.max(top + (gap - 18), gap + heatmapTitleReach(false) + 4), bottom };
-  const rowNeed = gap + Math.max(24, heatmapTitleReach(true)) + 4;       // ticks and numbers, or the titles
+  const band = axisTitleBand();      // axis titles (units) beyond the numbers
+  if (!below) return { top: Math.max(top + (gap - 18) + band, gap + heatmapTitleReach(false) + 4), bottom };
+  const rowNeed = gap + Math.max(24 + band, heatmapTitleReach(true)) + 4;       // ticks and numbers (+ titles), or the heatmap titles
   return { top: calcLegendTopPad(labelPx, false, false), bottom: Math.max(bottom, top + (gap - 18), rowNeed) };
 }
 
-function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain) {
+function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain, titleKey) {
     
     d3.selectAll('.scale-title-1, .scale-title-2, .axis-line-1, .axis-line-2, .tick-line-1, .tick-line-2, .tick-text-1, .tick-text-2').remove();
     
@@ -2836,11 +2972,12 @@ function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain) {
     const ringCol = cssVar('--tree') || '#e5e7eb';
     
     // Use .attr() instead of .style() for SVG export compatibility
-    g.selectAll('text').attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', 'bold');
-    g.selectAll('path, line').attr('stroke', 'var(--tree)').attr('stroke-width', '2px').attr('opacity', '1.0');
+    g.selectAll(':scope > .tick text').attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', 'bold');
+    g.selectAll(':scope > path, :scope > .tick line').attr('stroke', 'var(--tree)').attr('stroke-width', '2px').attr('opacity', '1.0');
+    renderAxisTitle(g, titleKey, widthPx);
 }
 
-function upsertChartScaleBar(panelIndex, x0, axisY, widthPx, domain) {
+function upsertChartScaleBar(panelIndex, x0, axisY, widthPx, domain, titleKey) {
   d3.selectAll('.chart-scale-title-1, .chart-scale-title-2, .chart-axis-line-1, .chart-axis-line-2, .chart-tick-line-1, .chart-tick-line-2, .chart-tick-text-1, .chart-tick-text-2').remove();
   
   const gId = `chart-scale-${panelIndex}`;
@@ -2861,8 +2998,9 @@ function upsertChartScaleBar(panelIndex, x0, axisY, widthPx, domain) {
   const ringCol = cssVar('--tree') || '#e5e7eb';
   
   // Use .attr() instead of .style() for SVG export compatibility
-  g.selectAll('text').attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', 'bold');
-  g.selectAll('path, line').attr('stroke', 'var(--tree)').attr('stroke-width', '2px').attr('opacity', '1.0');
+  g.selectAll(':scope > .tick text').attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', 'bold');
+  g.selectAll(':scope > path, :scope > .tick line').attr('stroke', 'var(--tree)').attr('stroke-width', '2px').attr('opacity', '1.0');
+  renderAxisTitle(g, titleKey, widthPx);
 }
 
 function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
@@ -2891,8 +3029,8 @@ function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
     g.call(axis);
     
     // Use .attr() instead of .style() for SVG export compatibility
-    g.selectAll('text').attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', 'bold');
-    g.selectAll('path, line').attr('stroke', 'var(--tree)').attr('stroke-width', scaleStrokeWidth + 'px').attr('opacity', '1.0');
+    g.selectAll(':scope > .tick text').attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', 'bold');
+    g.selectAll(':scope > path, :scope > .tick line').attr('stroke', 'var(--tree)').attr('stroke-width', scaleStrokeWidth + 'px').attr('opacity', '1.0');
   } else if (!hideScaleBar) {
     // Custom scale range mode - show user-defined scale
     const scaleRange = parseFloat(document.getElementById('scaleRange')?.value ?? '0.5');
@@ -2938,6 +3076,7 @@ function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
         .text(actualScaleValue.toFixed(2));
     }
   }
+  if (!hideScaleBar) renderAxisTitle(g, 'tree', widthPx);
 }
 
 function setupOneTabAtATime() {
@@ -5969,7 +6108,7 @@ function drawTreeBody(){
     // expanded view with the axes on top: room above the first tip for the axis row
     // and its titles, the same as below the last tip when the axes are below
     if (!axesBelow && geometry !== 'radial') {
-      vTop = Math.max(margin.top, axisRowGap(leafSep) + Math.max(24, heatmapTitleReach(false)) + 4);
+      vTop = Math.max(margin.top, axisRowGap(leafSep) + Math.max(24 + axisTitleBand(), heatmapTitleReach(false)) + 4);
       window.currentVTop = vTop;
     }
   }
@@ -10209,7 +10348,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
                 domain = [expandedMinVal, expandedMaxVal];
               }
             }            
-            upsertDfScaleBar(index + 2, left, axisY, width, domain); // Panel index starts at 2 for dataframes
+            upsertDfScaleBar(index + 2, left, axisY, width, domain, 'dataframe:' + dataframeId); // Panel index starts at 2 for dataframes
         } else {
         
         // Calculate the actual tree height based on leaf positions (accounts for expansion)
@@ -11757,7 +11896,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
         }
       }
       
-      upsertChartScaleBar(index + 2, left, axisY, width, domain); // Panel index starts at 2 for charts
+      upsertChartScaleBar(index + 2, left, axisY, width, domain, 'chart:' + chartId); // Panel index starts at 2 for charts
     } else {
       // No matching accessions - draw placeholder with delete button (EXACT same as dataframe)
       // Calculate the actual tree height based on leaf positions (accounts for expansion)
@@ -14446,6 +14585,12 @@ function isContentFullyVisible(){
   return (w <= vw + eps) && (h <= vh + eps);
 }
 
+// Legend order: false = one A-Z list per layer type (default), true = grouped by layer
+let legendOrderByLayer = false;
+function setLegendOrderByLayer(on) {
+  legendOrderByLayer = !!on;
+  updateMetadataLegend();
+}
 function updateMetadataLegend() {
   if (!metadataLegend || !legendItems || !heatmapLegendItems) return;
   
@@ -15224,6 +15369,73 @@ function updateMetadataLegend() {
     }
   }
   
+  // Legend order "By layer": instead of one A-Z list per layer type (values of all
+  // layers of that type merged), each layer gets its own group, in the order of the
+  // layer cards, with its values in that layer's own order and colours.
+  if (legendOrderByLayer) {
+    const esc = (v) => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const item = (type, name, color, attrs) => attrs
+      ? `<div class="legend-item" data-legend-color="${esc(color)}" data-legend-type="${type}"><div class="legend-color" style="background-color: ${esc(color)};"></div><span>${esc(name)}</span></div>`
+      : `<div class="legend-item"><div class="legend-color" style="background-color: ${esc(color)};"></div><span>${esc(name)}</span></div>`;
+    const sub = (label) => `<div class="legend-subtitle">${esc(label)}</div>`;
+    // the layers of one type, in card order: [id, data, card title]
+    const inCardOrder = (containerId, prefix, map) => {
+      const box = document.getElementById(containerId), out = [];
+      if (box) Array.prototype.forEach.call(box.children, card => {
+        const m = new RegExp('^' + prefix + 'Card(\\d+)$').exec(card.id || ''); if (!m) return;
+        const data = map.get(+m[1]); if (!data) return;
+        const t = card.querySelector('.pro-card-title');
+        out.push([+m[1], data, t ? t.textContent.trim() : prefix + ' ' + m[1]]);
+      });
+      map.forEach((data, id) => { if (!out.some(x => x[0] === id)) out.push([id, data, prefix + ' ' + id]); });
+      return out;
+    };
+    // values of a layer: its own order first, then any others (A-Z)
+    const ordered = (order, all) => { const seen = new Set(), out = []; (order || []).forEach(v => { if (all.has(v) && !seen.has(v)) { seen.add(v); out.push(v); } }); Array.from(all).filter(v => !seen.has(v)).sort((a, b) => String(a).localeCompare(String(b))).forEach(v => out.push(v)); return out; };
+    // genes
+    let geneHTML = '';
+    inCardOrder('dataframeContainer', 'dataframe', dataframes).forEach(([id, df, label]) => {
+      if (df.hasMatchingData === false) return;
+      const present = getGenesInVisibleAccessions(df);
+      let part = '';
+      if (isGeneGradientActive(df)) {
+        const shown = new Set();
+        present.forEach(gene => { if (String(gene).toLowerCase() !== 'length' && parseGenePercentValue(gene) !== null && df.geneVisibility.get(gene)) shown.add(df.geneColors.get(gene)); });
+        const gp = gradientLegendParts.find(h => h.indexOf('data-gradient-label="' + label + '"') >= 0);
+        if (shown.size && gp) part += gp;
+      }
+      const genes = new Set();
+      if (df.geneVisibility) df.geneVisibility.forEach((vis, gene) => { if (vis && present.has(gene) && !gradientGenes.has(gene)) genes.add(gene); });
+      ordered(df.geneOrder, genes).forEach(gene => { part += item('gene', gene, (df.geneColors && df.geneColors.get(gene)) || '#ccc', true); });
+      if (part) geneHTML += sub(label) + part;
+    });
+    legendItems.innerHTML = geneHTML;
+    if (geneLegendTitle) geneLegendTitle.style.display = geneHTML ? 'block' : 'none';
+    // heatmaps, highlights, clade groups: values in each layer's own order
+    const valueLayers = (containerId, prefix, map, type, attrs, presentFn) => {
+      let html = '';
+      inCardOrder(containerId, prefix, map).forEach(([id, d, label]) => {
+        if (d.hasMatchingData === false || !d.uniqueValues || !d.valueVisibility || !d.valueColors) return;
+        const present = presentFn(d);
+        const vals = d.uniqueValues.filter(v => d.valueVisibility.get(v) && present.has(String(v)));
+        if (vals.length) html += sub(label) + vals.map(v => item(type, v, d.valueColors.get(v) || '#ccc', attrs)).join('');
+      });
+      return html;
+    };
+    heatmapLegendItems.innerHTML = valueLayers('heatmapContainer', 'heatmap', heatmaps, 'heatmap', true, getHeatmapValuesInVisibleAccessions);
+    highlightLegendItems.innerHTML = valueLayers('highlightContainer', 'highlight', highlights, 'highlight', false, getHighlightValuesInVisibleAccessions);
+    cladeLegendItems.innerHTML = valueLayers('cladeContainer', 'clade', clades, 'clade', false, getCladeValuesInVisibleAccessions);
+    // charts: their columns in the chart's own order
+    let chartHTML = '';
+    inCardOrder('chartContainer', 'chart', charts).forEach(([id, c, label]) => {
+      if (c.hasMatchingData === false || !hasChartDataForVisibleAccessions(c) || !c.dataColumns || !c.valueVisibility || !c.valueColors) return;
+      const cols = c.dataColumns.filter(col => c.valueVisibility.get(col));
+      if (cols.length) chartHTML += sub(label) + cols.map(col => item('chart', col, c.valueColors.get(col) || '#ccc', true)).join('');
+    });
+    chartLegendItems.innerHTML = chartHTML;
+    setTimeout(() => setupLegendInteractivity(), 0);
+  }
+
   // Trigger layout recalculation after legend updates to fix positioning issues
   // This ensures canvas and panel containers are properly repositioned when legend changes
   const canvas = document.getElementById('canvas');
@@ -15643,6 +15855,7 @@ async function handleTreeFile(f){
   try{
     // Reset ALL features for new tree
     resetAllFeaturesForNewTree();
+    treeAxisTitle = '';   // the scale bar's title belongs to the tree
     
     // Reset font/truncation cache for new tree
     resetFontTruncationCache();
@@ -23161,6 +23374,16 @@ if(coverScaleBarEl){
   });
 }
 
+// Axis title buttons: show / hide the + buttons (and the room kept for titles)
+{
+  const el = document.getElementById('axisTitleButtons');
+  if (el) el.addEventListener('change', () => {
+    const expanded = tipSpacingSel && +tipSpacingSel.value > 0;
+    if (!expanded && geometry === 'rect') onFitToViewRect();
+    else { drawTree(); updateZoomBounds(); adjustSvgHeightForExpansion(); }
+  });
+}
+
 // Axes below the tree: every data layer's axis moves, so this is a full redraw;
 // in the fit view the tip spacing is worked out again for the new margins
 {
@@ -24123,6 +24346,8 @@ function buildExportSvgSource(){
   // the pinned header of the expanded view goes back to its normal place
   svgClone.querySelectorAll('.pro-sticky-header').forEach(n => n.removeAttribute('transform'));
   svgClone.querySelectorAll('.pro-sticky-header-bg').forEach(n => n.remove());
+  // axis title buttons and hover boxes are not part of the drawing
+  svgClone.querySelectorAll('.axis-ui').forEach(n => n.remove());
   // the data-layer grouping used for incremental redraws is not part of the
   // exported drawing: unwrap it so exports keep their usual structure
   svgClone.querySelectorAll('.data-layer, .layers-container').forEach(wrap => {
@@ -24467,6 +24692,21 @@ function buildExportSvgSource(){
       
       // Add legend items
       Array.from(itemsContainer.children).forEach(item => {
+        // "By layer" order: the layer's name above its values
+        if (item.classList && item.classList.contains('legend-subtitle')) {
+          checkColumnBreak(1);
+          const st = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          st.setAttribute('x', currentX);
+          st.setAttribute('y', currentY);
+          st.setAttribute('fill', '#555555');
+          st.setAttribute('font-size', '12px');
+          st.setAttribute('font-weight', 'bold');
+          st.setAttribute('font-family', 'Arial, sans-serif');
+          st.textContent = item.textContent;
+          legendGroup.appendChild(st);
+          currentY += lineHeight;
+          return;
+        }
         // Look for SVG element (for bootstrap symbols)
         let svgElement = item.querySelector('svg');
         

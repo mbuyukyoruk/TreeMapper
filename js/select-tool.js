@@ -46,7 +46,7 @@
   // ---------------------------------------------------------------- marquee
   // things that already react to a press: nodes, labels, buttons, splitters, handles
   var NO_START = '.node, text.label, .label, .meta-add, .meta-click, .handles, .svg-splitters, .svg-splitter-hit-area,' +
-    ' .radial-splitter-hit-area, .radial-splitter-handle, .splitter, .pro-sticky-header-bg, [data-no-marquee]';
+    ' .radial-splitter-hit-area, .radial-splitter-handle, .splitter, .pro-sticky-header-bg, .axis-title, .axis-title-add, [data-no-marquee]';
   var drag = null, box = null, badge = null;
   function displayed(d) { return !d._removedAsDuplicate && !(typeof droppedNodes !== 'undefined' && droppedNodes.has(d)); }
   function hiddenTips(d, out) {
