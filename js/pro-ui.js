@@ -105,6 +105,62 @@
   if (legendToggle) legendToggle.addEventListener('click', function () { setLegend(body.classList.contains('pro-legend-hidden')); });
   if ($('proLegendClose')) $('proLegendClose').addEventListener('click', function () { setLegend(false); });
 
+  // ------------------------------------------------ minimized side panel
+  // The side panel can shrink to an icon rail: the Layers/Style icons and one tile
+  // per data layer (the card itself, shown small, so dragging a tile reorders the
+  // layers exactly as dragging the card does). Clicking a tile or an icon opens the
+  // panel again. The canvas gets the width back (redrawn by the width watcher below).
+  var leftToggle = $('proLeftToggle');
+  var CARD_BOXES = ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer', 'textContainer'];
+  function leftMinimized() { return body.classList.contains('pro-left-minimized'); }
+  function railLabels() {
+    var mini = leftMinimized();
+    CARD_BOXES.forEach(function (id) {
+      var box = $(id); if (!box) return;
+      Array.prototype.forEach.call(box.children, function (card) {
+        var sum = card.tagName === 'DETAILS' && card.querySelector(':scope > summary'); if (!sum) return;
+        var t = card.querySelector('.pro-card-title'), name = t ? t.textContent.trim() : '';
+        var m = /(\d+)\s*$/.exec(name);
+        if (sum.getAttribute('data-rail-num') !== (m ? m[1] : '')) sum.setAttribute('data-rail-num', m ? m[1] : '');
+        // the card name as a tooltip while minimized (the full header shows it otherwise)
+        if (mini) { if (sum.title !== name) sum.title = name + ' — click to open, drag to reorder'; }
+        else if (sum.hasAttribute('title') && /click to open, drag to reorder$/.test(sum.title)) sum.removeAttribute('title');
+      });
+    });
+  }
+  function setLeftMinimized(on, quiet) {
+    on = !!on;
+    if (on === leftMinimized()) return;
+    body.classList.toggle('pro-left-minimized', on);
+    if (leftToggle) {
+      leftToggle.setAttribute('aria-pressed', String(on));
+      leftToggle.setAttribute('aria-label', on ? 'Expand the side panel' : 'Minimize the side panel');
+      leftToggle.title = (on ? 'Expand the side panel' : 'Minimize the side panel') + ' ([)';
+    }
+    railLabels();
+    if (!quiet) saveSettings();
+  }
+  if (leftToggle) leftToggle.addEventListener('click', function () { setLeftMinimized(!leftMinimized()); });
+  if (aside) {
+    // minimized: a tile or tab click opens the panel (the tile's card opened and shown)
+    aside.addEventListener('click', function (e) {
+      if (!leftMinimized()) return;
+      var tab = e.target.closest('.pro-tab');
+      if (tab) { setLeftMinimized(false); return; }   // the tab's own handler shows that tab
+      var sum = e.target.closest('.card-container > details > summary');
+      if (!sum) return;
+      e.preventDefault(); e.stopPropagation();
+      var card = sum.parentNode;
+      setLeftMinimized(false);
+      showTab('layers');
+      if (!card.open) card.open = true;
+      requestAnimationFrame(function () { if (card.scrollIntoView) card.scrollIntoView({ block: 'nearest' }); });
+    }, true);
+    // tile numbers and tooltips follow added, removed and renamed cards
+    new MutationObserver(function () { railLabels(); }).observe(aside, { childList: true, subtree: true, characterData: true });
+  }
+  railLabels();
+
   // ------------------------------------------------ canvas width changes
   // app.js re-lays out its columns (tree, labels, dataframes, heatmaps) only
   // on a browser-window resize. Here the canvas also changes width when the
@@ -905,6 +961,7 @@
     else if (k === '+' || k === '=') { if ($('zoomIn')) { e.preventDefault(); $('zoomIn').click(); } }
     else if (k === '-' || k === '_') { if ($('zoomOut')) { e.preventDefault(); $('zoomOut').click(); } }
     else if (k === 'l' || k === 'L') { e.preventDefault(); setLegend(body.classList.contains('pro-legend-hidden')); }
+    else if (k === '[') { e.preventDefault(); setLeftMinimized(!leftMinimized()); }
     else if (k === 'Delete' || k === 'Backspace') { if (shown2('dropNode')) { e.preventDefault(); $('dropNode').click(); } }
   });
 
@@ -955,6 +1012,7 @@
       var tab = document.querySelector('.bootstrap-tab.active');
       if (tab) out.__supportTab = tab.getAttribute('data-tab');
       if (body.classList.contains('pro-legend-hidden')) out.__legendHidden = true;
+      if (body.classList.contains('pro-left-minimized')) out.__leftMinimized = true;
       // search options; a single data layer is not remembered (it may not exist next time)
       if (searchOpts.exact) out.__searchExact = true;
       if (searchOpts.scope === 'accession' || searchOpts.scope === 'genes') out.__searchScope = searchOpts.scope;
@@ -969,6 +1027,7 @@
     });
     if (values.__supportTab) { var t = document.querySelector('.bootstrap-tab[data-tab="' + values.__supportTab + '"]'); if (t && !t.classList.contains('active')) t.click(); }
     setLegend(!values.__legendHidden);
+    setLeftMinimized(!!values.__leftMinimized, true);
     setExact(!!values.__searchExact, true);
     setScope(values.__searchScope || 'all', true);
     applying = false;
