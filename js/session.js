@@ -503,8 +503,134 @@
     }
   }
 
+  // ---------------------------------------------- replace a layer's data
+  // Used by the data editor (js/data-editor.js): the layer is rebuilt from the edited
+  // table through its own loader, put where it was, and given the card's settings
+  // (visibility, colours, options, gene order, axis title, open state) where they
+  // still apply. Columns keep their widths on the canvas.
+  // Nothing is lost when the table cannot be loaded: dataframes, heatmaps and charts
+  // are loaded next to the old card, which is only removed once the new one is there;
+  // a highlight or clade layer (only one of each) is loaded again from its old table.
+  // Returns { ok: true, card } or { ok: false, error }.
+  var VALIDATE = { dataframe: 'validateDataframeFormat', highlight: 'validateHighlightFormat', clade: 'validateCladeFormat', chart: 'validateChartFormat' };
+  var DELETE = { dataframe: 'deleteDataframeCard', heatmap: 'deleteHeatmapCard', chart: 'deleteChartCard' };
+  var REORDER = { dataframe: 'updateDataframeOrder', heatmap: 'updateHeatmapOrder', chart: 'updateChartOrder' };
+  function layerOfCard(card) {
+    for (var i = 0; i < LAYERS.length; i++) { var box = $(LAYERS[i].container); if (box && box.contains(card)) return LAYERS[i]; }
+    return null;
+  }
+  function cardNumber(card) { var m = /(\d+)$/.exec(card.id || ''); return m ? +m[1] : null; }
+  var replacing = false;
+  async function replaceLayerData(card, text) {
+    if (replacing || busy) return { ok: false, error: 'another change is still being made' };
+    var L = layerOfCard(card);
+    if (!L || !card.isConnected) return { ok: false, error: 'the layer was not found' };
+    var src = cardSource.get(card);
+    var name = (src && src.name) || (L.type + '.txt');
+    var vfn = VALIDATE[L.type];
+    if (vfn && typeof window[vfn] === 'function') {
+      var v = call(function () { return window[vfn](text); });
+      if (v && v.valid === false) return { ok: false, error: v.error || 'the table is not in the expected format' };
+    }
+    var box = $(L.container);
+    var saved = describe(card).map(function (c) { return [c.d, readCtl(c.el)]; });
+    var obj = layerObject(L, card);
+    var geneOrder = obj && Array.isArray(obj.geneOrder) ? obj.geneOrder.slice() : null;
+    var axisTitle = obj ? obj.axisTitle : null;
+    var wasOpen = card.open;
+    var widths = call(function () { return panelWidths.slice(); }), count = call(function () { return panelCount; });
+    replacing = true;
+    var origConfirm = window.confirm, origAlert = window.alert, origDraw = window.drawTree, needDraw = false, said = [];
+    var origLegend = window.updateMetadataLegend;
+    window.confirm = function () { return true; };   // "replace the existing highlight?", "proceed anyway?"
+    window.alert = function (m) { said.push(String(m)); };
+    // one redraw at the end (the loader and every restored control would redraw)
+    window.drawTree = function () { needDraw = true; };
+    if (origLegend) window.updateMetadataLegend = function () {};
+    if (window.tmUndo) tmUndo.suspend(true);
+    function finish() {
+      window.confirm = origConfirm; window.alert = origAlert; window.drawTree = origDraw;
+      if (origLegend) window.updateMetadataLegend = origLegend;
+      if (window.tmUndo) tmUndo.suspend(false);
+      replacing = false;
+    }
+    async function loadTable(t) {
+      var before = new Set(box.children), made = null;
+      await window[L.loader](new File([t], name, { type: 'text/plain' }));
+      Array.prototype.forEach.call(box.children, function (c) { if (!before.has(c) && c.tagName === 'DETAILS') made = c; });
+      return made;
+    }
+    function restoreSettings(card2) {
+      var dirty = true, idx = null;
+      var mo = new MutationObserver(function () { dirty = true; }); mo.observe(card2, { childList: true, subtree: true });
+      for (var k = 0; k < saved.length; k++) {
+        if (dirty) { idx = new Map(); describe(card2).forEach(function (c) { idx.set(c.d, c.el); }); dirty = false; }
+        var el = idx.get(saved[k][0]);
+        if (el && el.isConnected && !el.disabled) call(function () { writeCtl(el, saved[k][1]); });
+      }
+      mo.disconnect();
+      var obj2 = layerObject(L, card2);
+      if (obj2 && geneOrder && Array.isArray(obj2.geneOrder)) {
+        var have = new Set(obj2.geneOrder);
+        var order = geneOrder.filter(function (g) { return have.has(g); });
+        obj2.geneOrder.forEach(function (g) { if (order.indexOf(g) < 0) order.push(g); });
+        obj2.geneOrder = order;
+        var first = card2.querySelector('.gene-card'), list = first ? first.parentNode : null;
+        if (list) order.forEach(function (g) {
+          var row = list.querySelector(':scope > .gene-card[data-gene="' + (window.CSS && CSS.escape ? CSS.escape(g) : g) + '"]');
+          if (row) list.appendChild(row);
+        });
+      }
+      if (obj2 && axisTitle) obj2.axisTitle = axisTitle;
+      card2.open = wasOpen;
+    }
+    var card2 = null, error = null, restored = null;
+    try {
+      if (DELETE[L.type]) {
+        // next to the old one first; the old one goes once the new one is there
+        card2 = await loadTable(text);
+        if (!card2) error = 'the layer could not be built from the table' + (said.length ? ' (' + said[0] + ')' : '');
+        else {
+          box.insertBefore(card2, card);
+          var oldId = cardNumber(card);
+          if (oldId !== null) call(function () { window[DELETE[L.type]](oldId); });
+          if (card.isConnected) card.remove();
+          call(function () { window[REORDER[L.type]](); });
+        }
+      } else {
+        // only one layer of this kind: its loader replaces it
+        var original = src && typeof src.text === 'string' ? src.text : null;
+        card2 = await loadTable(text);
+        if (!card2) {
+          error = 'the layer could not be built from the table' + (said.length ? ' (' + said[0] + ')' : '');
+          if (!card.isConnected && original !== null) {
+            var back = await loadTable(original);   // the old table again
+            if (back) { cardSource.set(back, src); restoreSettings(back); restored = back; error += '; the layer was loaded again as it was'; }
+          }
+        }
+      }
+      if (card2) {
+        cardSource.set(card2, { name: name, text: text });
+        restoreSettings(card2);
+        // the columns keep their widths
+        if (widths && count === call(function () { return panelCount; })) call(function () { panelWidths = widths; updatePanelPositions(); updateSplitterPositions(); });
+      }
+    } catch (e) {
+      error = (e && e.message) ? e.message : String(e);
+    } finally {
+      finish();
+    }
+    call(function () { origDraw(); });
+    if (origLegend) call(function () { origLegend(); });
+    if (card2 && L.type === 'clade' && window.tmUndo && tmUndo.clear) tmUndo.clear();   // its steps refer to the old card
+    return error ? { ok: false, error: error, card: restored || (card.isConnected ? card : null) } : { ok: true, card: card2 };
+  }
+
   window.tmSession = {
     save: save, load: load, collect: collect,
+    // the table a layer was loaded from (for the data editor)
+    layerSource: function (card) { var s = cardSource.get(card); return s ? { name: s.name, text: s.text } : null; },
+    replaceLayerData: replaceLayerData,
     isSessionFile: function (f) { return !!f && /\.treemapper$/i.test(f.name || ''); },
     canSave: function () { return !!(root && treeSource); }
   };
