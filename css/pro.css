@@ -1030,3 +1030,15 @@ html.pro:not(.pro-no-contain) .sidepanel { contain: strict; }
 html.pro:not(.pro-no-contain) .pro-legend-panel { contain: strict; }
 html.pro:not(.pro-no-contain) .pro-center { contain: layout style; }
 /* diagnostic: open index.html?nocontain to turn containment off (class set by pro-ui.js) */
+
+/* ---------- drag-selection rectangle (js/select-tool.js) ---------- */
+.pro-marquee {
+  position: fixed; z-index: 60; pointer-events: none; box-sizing: border-box;
+  border: 1px dashed var(--accent); background: rgba(var(--accent-rgb), .08); border-radius: 2px;
+}
+.pro-marquee[data-mode="remove"] { border-color: var(--destructive); background: rgba(217, 48, 54, .07); }
+.pro-marquee-count {
+  position: fixed; z-index: 61; pointer-events: none; padding: 2px 7px; border-radius: 6px;
+  background: var(--text); color: var(--panel); font: 600 11px var(--pro-mono); white-space: nowrap;
+}
+html.pro .pro-tools .seg { padding: 0 8px; }

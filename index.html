@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610190104" rel="stylesheet">
-<link href="css/styles.css?v=202610190104" rel="stylesheet">
-<link href="css/pro.css?v=202610190104" rel="stylesheet">
+<link href="css/tailwind.css?v=202610190120" rel="stylesheet">
+<link href="css/styles.css?v=202610190120" rel="stylesheet">
+<link href="css/pro.css?v=202610190120" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -331,6 +331,10 @@
           <span class="pro-zoom-value" id="proZoom">100%</span>
           <button type="button" id="zoomIn" class="pro-icon-btn pro-icon-btn-sm" aria-label="Zoom in"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
+        <div class="segbtn pro-seg pro-tools" role="group" aria-label="Canvas tool">
+          <button type="button" id="proToolSelect" class="seg active" aria-pressed="true" title="Select (V): drag on the canvas to select tips; hold Space to pan"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 8-6 1.5L10 19z"/></svg><span class="pro-sr-only">Select</span></button>
+          <button type="button" id="proToolPan" class="seg" aria-pressed="false" title="Pan (H): drag to move an expanded tree"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11V5.5a1.5 1.5 0 0 1 3 0V11M11 10V4.5a1.5 1.5 0 0 1 3 0V10M14 10.5V6a1.5 1.5 0 0 1 3 0v7a6 6 0 0 1-6 6h-.5a6 6 0 0 1-5-2.7L3.5 13a1.5 1.5 0 0 1 2.5-1.7L8 14V8.5a1.5 1.5 0 0 1 3 0"/></svg><span class="pro-sr-only">Pan</span></button>
+        </div>
         <label class="pro-toggle" title="Show internal nodes (needed to click and select a clade)">
           <input autocomplete="off" class="pro-sr-only" type="checkbox" id="hideInternalClade" title="Show internal node dots">
           <svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 12H12M12 6v12M12 6h3.5M12 18h3.5"/></svg><span>Nodes</span>
@@ -449,7 +453,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610190104"></script>
+      <script src="js/drag-fastpath.js?v=202610190120"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -539,6 +543,9 @@
         <dt><kbd>Esc</kbd></dt><dd>Close a menu, or clear the selection</dd>
         <dt><kbd>L</kbd></dt><dd>Show or hide the legend panel</dd>
         <dt><kbd>[</kbd></dt><dd>Minimize or expand the side panel</dd>
+        <dt><kbd>V</kbd></dt><dd>Select tool: drag on the canvas to select tips (<kbd>⇧</kbd> adds, <kbd>⌥</kbd> removes)</dd>
+        <dt><kbd>H</kbd></dt><dd>Pan tool: drag to move an expanded tree</dd>
+        <dt><kbd>Space</kbd></dt><dd>Hold to pan while the Select tool is on</dd>
         <dt><kbd>?</kbd></dt><dd>Show this list</dd>
       </dl>
       <p class="pro-keys-note">On Windows and Linux use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>. Scroll an expanded tree with the mouse wheel or trackpad; hold <kbd>⇧</kbd> to scroll sideways, pinch or <kbd>⌘</kbd>-scroll to zoom.</p>
@@ -704,12 +711,13 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610190104"></script>
-<script src="js/tree-core.js?v=202610190104"></script>
-<script src="js/app.js?v=202610190104"></script>
-<script src="js/session.js?v=202610190104"></script>
-<script src="js/undo.js?v=202610190104"></script>
-<script src="js/pro-ui.js?v=202610190104"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610190120"></script>
+<script src="js/tree-core.js?v=202610190120"></script>
+<script src="js/app.js?v=202610190120"></script>
+<script src="js/session.js?v=202610190120"></script>
+<script src="js/undo.js?v=202610190120"></script>
+<script src="js/pro-ui.js?v=202610190120"></script>
+<script src="js/select-tool.js?v=202610190120"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {
