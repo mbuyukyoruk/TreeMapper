@@ -602,7 +602,7 @@
     bg.setAttribute('visibility', 'hidden');
     g.appendChild(bg);
     var moved = foot.map(function (h) { return [h, h.parentNode, h.nextSibling]; });
-    foot.forEach(function (h) { g.appendChild(h); });
+    foot.forEach(function (h) { carryParentShift(h); g.appendChild(h); });
     zoomable.appendChild(g);
     stickyFoot = { g: g, bg: bg, bottom: rectBottom, dy: 0, moved: moved };
   }
@@ -617,9 +617,25 @@
     if (dy) stickyFoot.g.setAttribute('transform', 'translate(0,' + dy + ')'); else stickyFoot.g.removeAttribute('transform');
     stickyFoot.bg.setAttribute('visibility', dy ? 'visible' : 'hidden');
   }
+  // an element taken out of a column that is moved sideways (splitter drag preview)
+  // keeps that shift while it is pinned
+  function carryParentShift(el) {
+    var par = el.parentNode, t = par && par.getAttribute && par.getAttribute('transform');
+    if (!t || !/\bdata-layer\b/.test(par.getAttribute('class') || '')) return;
+    var own = el.getAttribute('transform');
+    el.setAttribute('data-own-transform', own === null ? '' : own);
+    el.setAttribute('transform', t + (own ? ' ' + own : ''));
+  }
+  function dropParentShift(el) {
+    if (!el.hasAttribute('data-own-transform')) return;
+    var own = el.getAttribute('data-own-transform');
+    if (own) el.setAttribute('transform', own); else el.removeAttribute('transform');
+    el.removeAttribute('data-own-transform');
+  }
   function restoreGroup(s) {
     for (var i = s.moved.length - 1; i >= 0; i--) {
       var m = s.moved[i], el = m[0], parent = m[1], next = m[2];
+      dropParentShift(el);
       if (!parent || !parent.isConnected) continue;
       parent.insertBefore(el, next && next.parentNode === parent ? next : null);
     }
@@ -662,7 +678,7 @@
     // remember where each header element came from: before every redraw they go
     // back, so data layers that are kept between redraws keep their axes
     var moved = header.map(function (h) { return [h, h.parentNode, h.nextSibling]; });
-    header.forEach(function (h) { g.appendChild(h); });
+    header.forEach(function (h) { carryParentShift(h); g.appendChild(h); });
     zoomable.appendChild(g);
     sticky = { g: g, bg: bg, top: rectTop, dy: 0, moved: moved };
     updateStickyHeader();

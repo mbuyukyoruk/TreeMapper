@@ -1130,9 +1130,36 @@ function createSplitters() {
   }
 }
 
+// true while a column splitter is dragged: unchanged columns are moved, not redrawn
+let panelDragPreview = false;
+// Keeping the tree while a splitter is dragged: the tree drawing depends on the tree
+// and label columns (and the tree, layout and canvas, which a drag cannot change).
+// When those are the same as in the previous drag frame, the tree drawn then is
+// exactly what would be drawn now.
+let lastTreeKeepKey = null, pendingTreeKeepKey = null;
+function treeKeepKey() {
+  if (!panelDragPreview || geometry === 'radial' || !root) return null;
+  const t = getTreePanelDimensions(), l = getLabelsPanelDimensions();
+  const hl = document.getElementById('hideLabels');
+  const rid = layerReuse.rootIds.get(root) || 0;
+  return [rid, t.x, t.width, l.x, l.width, l.rightEdge, !!(hl && hl.checked), dragGeom ? dragGeom.svgW + 'x' + dragGeom.svgH : ''].join('|');
+}
+// sizes that a column drag cannot change (canvas and SVG size), read once when the
+// drag starts: reading them in the middle of a redraw makes the browser lay out the
+// whole half-built drawing an extra time on every frame
+let dragGeom = null;
+function readDragGeom() {
+  const svgEl = document.getElementById('svg'), canvasEl = document.getElementById('canvas');
+  return {
+    svgW: svgEl ? svgEl.clientWidth : 0, svgH: svgEl ? svgEl.clientHeight : 0,
+    canvasRect: canvasEl ? { top: canvasEl.offsetTop, left: canvasEl.offsetLeft, width: canvasEl.offsetWidth, height: canvasEl.offsetHeight } : null
+  };
+}
 function startDrag(e) {
   e.preventDefault();
   isDragging = true;
+  panelDragPreview = true;
+  dragGeom = readDragGeom();
   currentSplitter = parseInt(e.target.dataset.index);
   startX = e.clientX;
   startWidths = [...panelWidths];
@@ -1242,6 +1269,8 @@ function drag(e) {
 
 function endDrag() {
   isDragging = false;
+  panelDragPreview = false;   // the redraw below draws every column for real
+  dragGeom = null;
   currentSplitter = null;
   document.removeEventListener('mousemove', drag);
   document.removeEventListener('mouseup', endDrag);
@@ -1556,6 +1585,9 @@ function refreshAllRAF() {
     updateSplitterPositions();
 
     if (root) {
+      // a column drag changes only the layout, not the data or settings of any column:
+      // columns whose size is unchanged can be kept (moved); the release redraws all
+      if (panelDragPreview) setDrawScope('tree');
       drawTree();
       console.log('drawTree in refreshAllRAF');
     }
@@ -1674,6 +1706,7 @@ function drawSplittersInSVG(g, contentHeight, canvasRect) {
 }
 
 function updatePanelHeights() {
+  if (dragGeom) return;   // a column drag does not change any height (the release redraw updates them)
   const svg = document.getElementById('svg');
   if (!svg) return;
   
@@ -5746,7 +5779,7 @@ function layerAppendMode(mode, target) {
   else if (mode === 'layer') z.appendChild = function (child) { return target.appendChild(child); };
   else delete z.appendChild;   // native appendChild
 }
-function layerReuseBegin() {
+function layerReuseBegin(keepTree) {
   // let the page interface put back anything it moved out of the drawing
   // (the pinned header of the expanded view) before the drawing is rebuilt
   if (typeof window.onBeforeRedraw === 'function') { try { window.onBeforeRedraw(); } catch (e) { console.warn(e); } }
@@ -5759,7 +5792,8 @@ function layerReuseBegin() {
   }
   // remove everything but the layer container (direct children only: removing
   // a parent removes its contents, no need to visit every element)
-  for (let n = z.firstChild; n; ) { const next = n.nextSibling; if (n !== c && n.nodeType === 1) z.removeChild(n); n = next; }
+  // (keepTree: the tree drawing stays as well, see treeKeepKey)
+  for (let n = z.firstChild; n; ) { const next = n.nextSibling; if (n !== c && n.nodeType === 1 && !(keepTree && n.hasAttribute('data-tree-part'))) z.removeChild(n); n = next; }
   if (c.parentNode !== z) Element.prototype.appendChild.call(z, c);
   layerReuse.container = c;
   // what may have changed: unless the action declared a narrower scope, every layer
@@ -5777,6 +5811,10 @@ function layerReuseBlockBegin(leaves, values) {
   const parts = [rid, values.join(',')];
   for (let i = 0; i < leaves.length; i++) parts.push(leaves[i].data.name + '@' + Math.round(leaves[i].x * 100));
   layerReuse.layoutSig = parts.join('|');
+  // the same without the column positions (values 6, 7, 9, 10: bar width, label space,
+  // label edge, first bar x), for moving unchanged columns during a splitter drag
+  parts[1] = values.filter((v, i) => i !== 6 && i !== 7 && i !== 9 && i !== 10).join(',');
+  layerReuse.layoutSigMoved = parts.join('|');
   layerReuse.blockRan = true;
   layerReuse.visited = new Set();
   layerReuse.lastEl = null;
@@ -5785,13 +5823,25 @@ function layerIteration(type, panelFn, draw) {
   return function (id, index) {
     const key = type + ':' + id;
     const panel = panelFn(index);
-    const sig = layerReuse.layoutSig + '#' + index + '#' + layerReuse.epoch[type] + '.' + (layerReuse.keyEpoch.get(key) || 0) + '#' +
-      (panel ? [panel.x, panel.width, panel.height, panel.y].join(',') : 'none');
+    const ep = '#' + index + '#' + layerReuse.epoch[type] + '.' + (layerReuse.keyEpoch.get(key) || 0) + '#';
+    const sig = layerReuse.layoutSig + ep + (panel ? [panel.x, panel.width, panel.height, panel.y].join(',') : 'none');
+    const movedSig = layerReuse.layoutSigMoved + ep + (panel ? [panel.width, panel.height, panel.y].join(',') : 'none');
     layerReuse.visited.add(key);
     const c = layerReuse.container, cached = layerReuse.byKey.get(key);
     let after = layerReuse.lastEl ? layerReuse.lastEl.nextSibling : c.firstChild;
     if (cached && cached.sig === sig && cached.el.parentNode === c) {
       if (cached.el !== after) c.insertBefore(cached.el, after);   // keep the drawing order
+      if (cached.el.hasAttribute('transform')) cached.el.removeAttribute('transform');
+      layerReuse.lastEl = cached.el;
+      return;
+    }
+    // while a column splitter is dragged, a column whose size did not change is only
+    // moved sideways (much faster than drawing it again); releasing the splitter draws
+    // every column for real, so the result is exactly a normal redraw
+    if (panelDragPreview && panel && cached && cached.movedSig === movedSig && cached.el.parentNode === c && Number.isFinite(cached.x)) {
+      if (cached.el !== after) c.insertBefore(cached.el, after);
+      const dx = panel.x - cached.x;
+      if (dx) cached.el.setAttribute('transform', 'translate(' + dx + ',0)'); else cached.el.removeAttribute('transform');
       layerReuse.lastEl = cached.el;
       return;
     }
@@ -5802,7 +5852,7 @@ function layerIteration(type, panelFn, draw) {
     const el = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     el.setAttribute('class', 'data-layer data-layer-' + type);
     c.insertBefore(el, after);
-    layerReuse.byKey.set(key, { el, sig });
+    layerReuse.byKey.set(key, { el, sig, movedSig, x: panel ? panel.x : NaN });
     layerReuse.lastEl = el;
     layerAppendMode('layer', el);
     try { draw(id, index); }
@@ -5919,7 +5969,7 @@ function drawTree(){
   const outer = drawTreeDepth === 0 ? null : layerReuseSaveState();
   drawTreeDepth++;
   let done = false, out;
-  try { out = drawTreeBody.apply(this, arguments); done = true; }
+  try { out = drawTreeBody.apply(this, arguments); done = true; if (!outer) lastTreeKeepKey = pendingTreeKeepKey; }
   finally {
     drawTreeDepth--;
     if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
@@ -5978,8 +6028,13 @@ function drawTreeBody(){
   // Update panel heights to match canvas whenever tree is redrawn
   updatePanelHeights();
 
+  // keep the tree drawing of the previous drag frame when it would be drawn the same
+  pendingTreeKeepKey = treeKeepKey();
+  const keepTree = !!pendingTreeKeepKey && pendingTreeKeepKey === lastTreeKeepKey && !!g.node().querySelector(':scope > g.nodes[data-tree-part]');
+  lastTreeKeepKey = null;   // set again when this draw completes
+
   // Clear SVG content, except data layers that can be reused (see layerReuseBegin)
-  layerReuseBegin();
+  layerReuseBegin(keepTree);
   gSpin = null;
   
   // Clear radial labels (they're in svg, not g, so need explicit removal)
@@ -6030,8 +6085,8 @@ function drawTreeBody(){
 
   // Layout constants needed for vertical fit calc
   const svgEl = document.getElementById('svg');
-  const canvasW = svgEl ? svgEl.clientWidth  : 0;
-  const svgH    = svgEl ? svgEl.clientHeight : 0;
+  const canvasW = dragGeom ? dragGeom.svgW : (svgEl ? svgEl.clientWidth  : 0);
+  const svgH    = dragGeom ? dragGeom.svgH : (svgEl ? svgEl.clientHeight : 0);
 
   // User-selected bar width and a fixed gap between labels and bars
   const barSelectW = +trackWidthSel.value; // desired metadata bar width (0 hides)
@@ -6296,6 +6351,16 @@ function drawTreeBody(){
     gSpin = g.append('g').attr('class','spin');
   }
 
+  // While a column splitter is dragged and the tree and label columns have not
+  // changed since the last frame, the tree drawing (branches, nodes, labels, support
+  // values, clade highlights, guides) is exactly what this code would draw again: it
+  // is kept, and only the splitter lines are redrawn here (see treeKeepKey).
+  if (keepTree) {
+    const canvasEl = document.getElementById('canvas');
+    const canvasRect = dragGeom ? dragGeom.canvasRect : (canvasEl ? { top: canvasEl.offsetTop, left: canvasEl.offsetLeft, width: canvasEl.offsetWidth, height: canvasEl.offsetHeight } : null);
+    drawSplittersInSVG(g, vTop + plotH, canvasRect);
+    updateSplitterLineHeights();
+  } else {
   // Draw label guide dashes FIRST (at the back of z-stack)
   labelGuideCtx = null;
   if(labelGuidesEl && labelGuidesEl.checked){
@@ -6331,14 +6396,14 @@ function drawTreeBody(){
     } else {
       // RECTANGULAR MODE: the group is made here (at the back of the drawing);
       // the guides are drawn once the labels are final (after the labels below)
-      const extG = g.append('g').attr('class','tip-extensions');
+      const extG = g.append('g').attr('class','tip-extensions').attr('data-tree-part', '');
       labelGuideCtx = { group: extG.node() };
     }
   }
 
   // Draw background highlights for clades (BEHIND the tree)
   if(cladeBackgroundColors.size > 0) {
-    const highlightGroup = isRadial ? gSpin.append('g').attr('class', 'clade-background-highlights') : g.append('g').attr('class', 'clade-background-highlights');
+    const highlightGroup = isRadial ? gSpin.append('g').attr('class', 'clade-background-highlights') : g.append('g').attr('class', 'clade-background-highlights').attr('data-tree-part', '');
     
     // Process each clade that has a background color
     cladeBackgroundColors.forEach((backgroundColor, rootNode) => {
@@ -6522,7 +6587,7 @@ function drawTreeBody(){
     
     // Draw cartoon triangles for cartooned nodes (before branches for proper z-stack order)
     if(cartoonedNodes.size > 0) {
-      const cartoonGroup = g.append('g').attr('class', 'cartoon-triangles');
+      const cartoonGroup = g.append('g').attr('class', 'cartoon-triangles').attr('data-tree-part', '');
       
       cartoonedNodes.forEach(node => {
         if(node._originalChildren && node._originalChildren.length > 0) {
@@ -6586,7 +6651,7 @@ function drawTreeBody(){
     
     // PERF: look the active Bootstrap tab up once per redraw, not once per branch
     const linksBootstrapTab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab') || 'symbol';
-    g.append('g').attr('class','links')
+    g.append('g').attr('class','links').attr('data-tree-part', '')
       .selectAll('path')
               .data(root.links().filter(d => {
           // Filter out links that belong to cartooned nodes
@@ -6873,7 +6938,7 @@ function drawTreeBody(){
         .attr('class','node')
         .attr('transform', d=> `translate(${d.rx||0},${d.ry||0})`);
   } else {
-    nodes = g.append('g').attr('class','nodes')
+    nodes = g.append('g').attr('class','nodes').attr('data-tree-part', '')
       .selectAll('g.node')
       .data(root.descendants().filter(d => !d._removedAsDuplicate && !droppedNodes.has(d)))
       .join('g')
@@ -6899,7 +6964,7 @@ function drawTreeBody(){
   // Draw SVG-based splitter lines (pass canvas rect to avoid layout-forcing reads inside drawSplittersInSVG)
   if (!isRadial) {
     const canvasEl = document.getElementById('canvas');
-    const canvasRect = canvasEl ? { top: canvasEl.offsetTop, left: canvasEl.offsetLeft, width: canvasEl.offsetWidth, height: canvasEl.offsetHeight } : null;
+    const canvasRect = dragGeom ? dragGeom.canvasRect : (canvasEl ? { top: canvasEl.offsetTop, left: canvasEl.offsetLeft, width: canvasEl.offsetWidth, height: canvasEl.offsetHeight } : null);
     drawSplittersInSVG(g, vTop + plotH, canvasRect);
       // Update splitter line heights to match the actual tree
       updateSplitterLineHeights();
@@ -9635,6 +9700,7 @@ function drawTreeBody(){
       }
     }
   }
+  }   // (tree drawing kept while a splitter is dragged)
 
   // Draw tree scale bar (only for phylogram mode with branch lengths)
   if (!isRadial && phylo && maxCum > 0) {
@@ -12120,8 +12186,9 @@ function drawTreeBody(){
       .attr('pointer-events', 'none');
   }
 
-  // Clamp zoom bounds to tree
-  updateZoomBounds();
+  // Clamp zoom bounds to tree (measures the whole drawing: not while a splitter is
+  // dragged; the redraw on release does it)
+  if (!panelDragPreview) updateZoomBounds();
   
   // Update search highlights after tree is drawn
   if (currentSearchTerm) {
@@ -14555,7 +14622,7 @@ function updateSplitterLineHeights() {
   
   const actualTreeHeight = d3.max(leaves, d => d.x) - d3.min(leaves, d => d.x);
   const svg = document.getElementById('svg');
-  const svgHeight = svg ? svg.clientHeight : 0;
+  const svgHeight = dragGeom ? dragGeom.svgH : (svg ? svg.clientHeight : 0);
   const targetHeight = Math.max(actualTreeHeight, svgHeight);
   
   const splitterLines = g.selectAll('.svg-splitter');
@@ -23992,6 +24059,7 @@ function drawBootstrapValues() {
   
   // Create bootstrap group (for both symbols and text)
   const bootstrapGroup = container.append('g').attr('class', 'bootstrap-elements');
+  if (!isRadial) bootstrapGroup.attr('data-tree-part', '');   // part of the tree drawing (kept during splitter drags)
   
   // Symbol size follows the value: 0% = minimum size, 100% = maximum size (as the legend shows)
   const sizeRange = settings.maxSize - settings.minSize;
