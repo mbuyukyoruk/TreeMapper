@@ -87,6 +87,15 @@ The earlier classic-layout interface is kept in git history under the tag
 - **Expanded view:** scroll with the mouse wheel or trackpad (Shift for
   sideways, pinch or ⌘-scroll to zoom); the scale bar and data axes stay
   pinned at the top (or at the bottom, see below).
+- **Axis titles (units):** a **+** centred on each axis (scale bar, dataframe
+  and chart axes) adds a title; type it and press Enter (Esc cancels). Hover a
+  title for its box and **−** to remove it; click it to edit. Titles stay with
+  their layer when layers are reordered or resized, are exported, and are saved
+  in sessions. Style → Appearance → *Axis title buttons* hides the + buttons.
+- **Legend order:** the button next to *Legend* switches between **A–Z** (one
+  sorted list per layer type, values of all layers merged) and **By layer**
+  (each layer separately, in the order of the layers, with its own values in
+  its own order and colours). Remembered, and saved in sessions.
 - **Axes below the tree** (Style → Appearance): the scale bar, the dataframe
   and chart axes and the heatmap titles move under the last tip, like an
   x-axis (rectangular layout). Fit and exports include them; in the expanded

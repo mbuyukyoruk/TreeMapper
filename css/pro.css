@@ -1042,3 +1042,35 @@ html.pro:not(.pro-no-contain) .pro-center { contain: layout style; }
   background: var(--text); color: var(--panel); font: 600 11px var(--pro-mono); white-space: nowrap;
 }
 html.pro .pro-tools .seg { padding: 0 8px; }
+
+/* ---------- axis titles (units) ---------- */
+#svg .axis-title-add { cursor: pointer; }
+#svg .axis-title-add circle { fill: rgba(var(--accent-rgb), .14); stroke: rgba(var(--accent-rgb), .55); stroke-width: 1; }
+#svg .axis-title-add path { stroke: var(--accent); stroke-width: 1.7; stroke-linecap: round; fill: none; }
+#svg .axis-title-add:hover circle { fill: rgba(var(--accent-rgb), .24); stroke: var(--accent); }
+#svg .axis-title { cursor: text; }
+#svg .axis-title-hit { fill: transparent; stroke: none; }
+#svg .axis-title-box { fill: transparent; stroke: transparent; stroke-width: 1; pointer-events: none; }
+#svg .axis-title:hover .axis-title-box { stroke: var(--accent); fill: rgba(var(--accent-rgb), .05); }
+#svg .axis-title-remove { cursor: pointer; visibility: hidden; }
+#svg .axis-title:hover .axis-title-remove { visibility: visible; }
+#svg .axis-title-remove circle { fill: var(--panel); stroke: var(--destructive); stroke-width: 1; }
+#svg .axis-title-remove path { stroke: var(--destructive); stroke-width: 1.6; stroke-linecap: round; fill: none; }
+.axis-title-input {
+  position: fixed; z-index: 70; height: 28px; box-sizing: border-box; padding: 0 8px; text-align: center;
+  border: 1px solid var(--accent); border-radius: 7px; background: var(--panel); color: var(--text);
+  font: 600 12px var(--pro-font); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .18), 0 6px 18px -8px rgba(16, 32, 40, .35); outline: none;
+}
+
+/* ---------- legend order (A–Z / By layer) ---------- */
+html.pro button.pro-legend-order {
+  margin: 0 4px 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--pro-panel2); color: var(--muted);
+  font: 500 11.5px var(--pro-font); cursor: pointer; white-space: nowrap;
+}
+html.pro button.pro-legend-order:hover { color: var(--text); border-color: var(--pro-border-strong); }
+html.pro button.pro-legend-order[aria-pressed="true"] { color: var(--accent); background: var(--pro-accent-soft); border-color: var(--pro-accent-border); }
+html.pro #metadataLegend .legend-subtitle {
+  margin: 8px 0 3px; font-size: 12px; font-weight: 600; color: var(--text);
+}
+html.pro #metadataLegend .legend-items > .legend-subtitle:first-child { margin-top: 2px; }

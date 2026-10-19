@@ -104,6 +104,17 @@
   }
   if (legendToggle) legendToggle.addEventListener('click', function () { setLegend(body.classList.contains('pro-legend-hidden')); });
   if ($('proLegendClose')) $('proLegendClose').addEventListener('click', function () { setLegend(false); });
+  // legend order: A–Z per layer type (default) or grouped by layer
+  var orderBtn = $('proLegendOrder'), orderLabel = $('proLegendOrderLabel');
+  function setLegendOrder(byLayer, quiet) {
+    byLayer = !!byLayer;
+    if (orderBtn) orderBtn.setAttribute('aria-pressed', String(byLayer));
+    if (orderLabel) orderLabel.textContent = byLayer ? 'By layer' : 'A–Z';
+    call(function () { if (legendOrderByLayer !== byLayer) setLegendOrderByLayer(byLayer); });
+    if (!quiet) saveSettings();
+  }
+  if (orderBtn) orderBtn.addEventListener('click', function () { setLegendOrder(orderBtn.getAttribute('aria-pressed') !== 'true'); });
+  window.tmLegendOrder = { get: function () { return !!call(function () { return legendOrderByLayer; }); }, set: function (v) { setLegendOrder(v, true); } };
 
   // ------------------------------------------------ minimized side panel
   // The side panel can shrink to an icon rail: the Layers/Style icons and one tile
@@ -976,7 +987,7 @@
     'bootstrapBorderWidth', 'bootstrapMinSize', 'bootstrapMaxSize', 'bootstrapPosition', 'bootstrapFontSize',
     'bootstrapFontColor', 'bootstrapBold', 'bootstrapItalic', 'bootstrapTextPosition', 'bootstrapVerticalShift',
     'bootstrapScaleFactor', 'bootstrapRounding', 'bootstrapScientific', 'bootstrapPercent', 'bootstrapShowAll',
-    'bootstrapColorMin', 'bootstrapColorMidToggle', 'bootstrapColorMid', 'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin', 'axesBelow'];
+    'bootstrapColorMin', 'bootstrapColorMidToggle', 'bootstrapColorMid', 'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin', 'axesBelow', 'axisTitleButtons'];
   function readCtl(el) {
     if (el.tagName === 'BUTTON') return el.getAttribute('aria-pressed') === 'true';
     if (el.type === 'checkbox' || el.type === 'radio') return el.checked;
@@ -1013,6 +1024,7 @@
       if (tab) out.__supportTab = tab.getAttribute('data-tab');
       if (body.classList.contains('pro-legend-hidden')) out.__legendHidden = true;
       if (body.classList.contains('pro-left-minimized')) out.__leftMinimized = true;
+      if (orderBtn && orderBtn.getAttribute('aria-pressed') === 'true') out.__legendByLayer = true;
       // search options; a single data layer is not remembered (it may not exist next time)
       if (searchOpts.exact) out.__searchExact = true;
       if (searchOpts.scope === 'accession' || searchOpts.scope === 'genes') out.__searchScope = searchOpts.scope;
@@ -1028,6 +1040,7 @@
     if (values.__supportTab) { var t = document.querySelector('.bootstrap-tab[data-tab="' + values.__supportTab + '"]'); if (t && !t.classList.contains('active')) t.click(); }
     setLegend(!values.__legendHidden);
     setLeftMinimized(!!values.__leftMinimized, true);
+    setLegendOrder(!!values.__legendByLayer, true);
     setExact(!!values.__searchExact, true);
     setScope(values.__searchScope || 'all', true);
     applying = false;
