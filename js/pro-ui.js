@@ -602,7 +602,7 @@
     bg.setAttribute('visibility', 'hidden');
     g.appendChild(bg);
     var moved = foot.map(function (h) { return [h, h.parentNode, h.nextSibling]; });
-    foot.forEach(function (h) { carryParentShift(h); g.appendChild(h); });
+    foot.forEach(function (h) { h.__liveHome = h.parentNode; carryParentShift(h); g.appendChild(h); });
     zoomable.appendChild(g);
     stickyFoot = { g: g, bg: bg, bottom: rectBottom, dy: 0, moved: moved };
   }
@@ -678,7 +678,7 @@
     // remember where each header element came from: before every redraw they go
     // back, so data layers that are kept between redraws keep their axes
     var moved = header.map(function (h) { return [h, h.parentNode, h.nextSibling]; });
-    header.forEach(function (h) { carryParentShift(h); g.appendChild(h); });
+    header.forEach(function (h) { h.__liveHome = h.parentNode; carryParentShift(h); g.appendChild(h); });
     zoomable.appendChild(g);
     sticky = { g: g, bg: bg, top: rectTop, dy: 0, moved: moved };
     updateStickyHeader();
@@ -717,6 +717,7 @@
       var redraw = false, zoom = false;
       for (var i = 0; i < muts.length; i++) {
         if (muts[i].type !== 'childList') { zoom = true; continue; }
+        if (window.tmDragLive && tmDragLive.ownMutation && tmDragLive.ownMutation(muts[i])) continue;   // parts lifted out for a column drag, or put back
         // our own pinned-header group being inserted is not a redraw
         var own = muts[i].addedNodes.length === 1 && muts[i].addedNodes[0].getAttribute && muts[i].addedNodes[0].getAttribute('class') === 'pro-sticky-header';
         if (!own && (muts[i].addedNodes.length || muts[i].removedNodes.length)) redraw = true;
