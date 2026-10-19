@@ -251,6 +251,40 @@ html.pro .pro-tab[aria-selected="true"] {
 }
 html.pro .pro-tab[aria-selected="true"] .pro-ico { color: var(--accent); }
 html.pro .pro-tab:hover { color: var(--text); }
+html.pro .pro-tabs .pro-left-toggle { flex: none; width: 32px; height: 32px; margin-left: 4px; }
+
+/* ---------- Left panel minimized to an icon rail (body.pro-left-minimized, pro-ui.js) ----------
+   The same cards are shown small: only their badge and number. They keep their
+   own drag-to-reorder (the card element is what is dragged); a click opens the
+   panel again with that card. */
+html.pro body.pro-left-minimized .sidepanel { width: 64px; padding: 0 8px 12px; scrollbar-width: none; }
+html.pro body.pro-left-minimized .sidepanel::-webkit-scrollbar { display: none; }
+html.pro body.pro-left-minimized .pro-tabs { flex-direction: column; gap: 4px; margin: 0 -8px 10px; padding: 10px 8px; }
+html.pro body.pro-left-minimized .pro-tab { flex: none; height: 36px; padding: 0; border-radius: 9px; }
+html.pro body.pro-left-minimized .pro-tab span { display: none; }
+html.pro body.pro-left-minimized .pro-tab[aria-selected="true"] { background: var(--pro-panel2); border-color: transparent; box-shadow: none; }
+html.pro body.pro-left-minimized .pro-tab[aria-selected="true"] .pro-ico { color: var(--muted); }
+html.pro body.pro-left-minimized .pro-tabs .pro-left-toggle { order: -1; width: 100%; height: 30px; margin: 0 0 4px; }
+html.pro body.pro-left-minimized .pro-left-toggle .pro-ico { transform: rotate(180deg); }
+/* only the cards: no style groups, headings or lists, whichever tab was open */
+html.pro body.pro-left-minimized .sidepanel > :not(.pro-tabs):not(.card-section) { display: none !important; }
+html.pro body.pro-left-minimized .sidepanel > .card-section { display: block !important; margin-bottom: 6px; }
+html.pro body.pro-left-minimized .card-container { gap: 6px; }
+html.pro body.pro-left-minimized .card-container > details { border-radius: 10px; box-shadow: none; }
+html.pro body.pro-left-minimized .card-container > details[open] { border-color: var(--border); box-shadow: none; }
+html.pro body.pro-left-minimized .card-container > details > :not(summary) { display: none !important; }
+html.pro body.pro-left-minimized .card-container > details > summary.df-summary,
+html.pro body.pro-left-minimized .sidepanel .card-container summary[id] {
+  flex-direction: column; justify-content: center; gap: 3px; min-height: 52px; padding: 6px 0; border-bottom: 0; background: none; cursor: grab;
+}
+html.pro body.pro-left-minimized .sidepanel .card-container summary[id]::before { display: none; }
+html.pro body.pro-left-minimized .card-container > details > summary > :not(.pro-card-badge):not(.drag-handle) { display: none !important; }
+html.pro body.pro-left-minimized .card-container > details > summary .drag-handle { position: absolute; inset: 0; width: auto; height: auto; margin: 0; opacity: 0; }
+html.pro body.pro-left-minimized .card-container > details > summary .drag-handle.disabled { cursor: pointer; }
+html.pro body.pro-left-minimized .card-container > details > summary::after {
+  content: attr(data-rail-num); font: 600 10px var(--pro-mono); line-height: 1; color: var(--muted);
+}
+html.pro body.pro-left-minimized .card-container > details:hover { border-color: rgba(var(--accent-rgb), .55); }
 
 /* tab contents: one DOM, sections shown per tab */
 html.pro aside[data-pro-tab="layers"] > details,

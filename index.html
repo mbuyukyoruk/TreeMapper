@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610182343" rel="stylesheet">
-<link href="css/styles.css?v=202610182343" rel="stylesheet">
-<link href="css/pro.css?v=202610182343" rel="stylesheet">
+<link href="css/tailwind.css?v=202610190104" rel="stylesheet">
+<link href="css/styles.css?v=202610190104" rel="stylesheet">
+<link href="css/pro.css?v=202610190104" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -49,6 +49,7 @@
       <div class="pro-tabs" role="tablist" aria-label="Sidebar">
         <button type="button" class="pro-tab" role="tab" data-pro-tab="layers" aria-selected="true"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><span>Layers</span></button>
         <button type="button" class="pro-tab" role="tab" data-pro-tab="style" aria-selected="false"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span>Style</span></button>
+              <button type="button" class="pro-icon-btn pro-left-toggle" id="proLeftToggle" aria-pressed="false" aria-label="Minimize the side panel" title="Minimize the side panel ([)"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg></button>
       </div>
 
       <div class="pro-layers-head"><span class="pro-section-title">Data layers</span></div>
@@ -448,7 +449,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610182343"></script>
+      <script src="js/drag-fastpath.js?v=202610190104"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -537,6 +538,7 @@
         <dt><kbd>Delete</kbd></dt><dd>Drop the selected node(s)</dd>
         <dt><kbd>Esc</kbd></dt><dd>Close a menu, or clear the selection</dd>
         <dt><kbd>L</kbd></dt><dd>Show or hide the legend panel</dd>
+        <dt><kbd>[</kbd></dt><dd>Minimize or expand the side panel</dd>
         <dt><kbd>?</kbd></dt><dd>Show this list</dd>
       </dl>
       <p class="pro-keys-note">On Windows and Linux use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>. Scroll an expanded tree with the mouse wheel or trackpad; hold <kbd>⇧</kbd> to scroll sideways, pinch or <kbd>⌘</kbd>-scroll to zoom.</p>
@@ -702,12 +704,12 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610182343"></script>
-<script src="js/tree-core.js?v=202610182343"></script>
-<script src="js/app.js?v=202610182343"></script>
-<script src="js/session.js?v=202610182343"></script>
-<script src="js/undo.js?v=202610182343"></script>
-<script src="js/pro-ui.js?v=202610182343"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610190104"></script>
+<script src="js/tree-core.js?v=202610190104"></script>
+<script src="js/app.js?v=202610190104"></script>
+<script src="js/session.js?v=202610190104"></script>
+<script src="js/undo.js?v=202610190104"></script>
+<script src="js/pro-ui.js?v=202610190104"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {

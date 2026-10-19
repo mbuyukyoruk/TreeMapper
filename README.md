@@ -22,6 +22,9 @@ The earlier classic-layout interface is kept in git history under the tag
 - **Left panel:** *Layers* (your data cards, plus a *Colours & highlights* list
   of every colour you applied, each recolourable and removable) and *Style*
   (all display settings).
+  The **«** button (or `[`) minimizes it to an icon rail: one tile per data
+  layer (drag tiles to reorder layers, as with the cards; click one to open the
+  panel with that card). The choice is remembered.
 - **Canvas toolbar:** Rectangular/Circular, Fit, zoom, **Nodes** (shows the
   internal nodes so you can click a clade), **Reset** menu (restore dropped
   tips, undo rotations/collapses/cartoons, original root, colours,
