@@ -2779,6 +2779,37 @@ function axesBelowWanted() {
 // an axis whose ticks and numbers point away from the tree
 function axisForRow(scale) { return axisRow.below ? d3.axisBottom(scale) : d3.axisTop(scale); }
 
+// How far the slanted (45°) heatmap titles reach beyond the axis line, from the
+// width of the longest title. A title starts at its column and slants away from
+// the tree (up above it, down below it), so the reach is the same on both sides.
+let titleMeasureCtx = null;
+function heatmapTitleReach(below) {
+  if (!heatmaps || !heatmaps.size) return 0;
+  if (!titleMeasureCtx) titleMeasureCtx = document.createElement('canvas').getContext('2d');
+  const svgEl = document.getElementById('svg');
+  titleMeasureCtx.font = 'bold 12px ' + ((svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif');
+  let w = 0;
+  heatmaps.forEach((h, id) => {
+    const cols = h && h.data && h.data.columns;
+    const t = cols && cols.length > 1 ? cols[1] : 'Heatmap ' + id;
+    w = Math.max(w, titleMeasureCtx.measureText(String(t)).width);
+  });
+  if (!w) return 0;
+  const s = Math.SQRT1_2, fh = 12;
+  return 6 + (w + fh) * s;
+}
+// the axis row's distance from the first / last tip: 18px, more when tall heatmap
+// boxes or bars reach further from the tip
+function axisRowGap(leafSep) { return Math.max(18, Math.min((leafSep || 0) * 0.4, 50) + 10); }
+// Space to keep free above the first tip and below the last one in the fit view.
+// top / bottom: what the tips, bars and (top) axis row need without long titles.
+function fitClearances(top, bottom, labelPx, below, leafSep) {
+  const gap = axisRowGap(leafSep);   // the row's distance from the first / last tip
+  if (!below) return { top: Math.max(top + (gap - 18), gap + heatmapTitleReach(false) + 4), bottom };
+  const rowNeed = gap + Math.max(24, heatmapTitleReach(true)) + 4;       // ticks and numbers, or the titles
+  return { top: calcLegendTopPad(labelPx, false, false), bottom: Math.max(bottom, top + (gap - 18), rowNeed) };
+}
+
 function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain) {
     
     d3.selectAll('.scale-title-1, .scale-title-2, .axis-line-1, .axis-line-2, .tick-line-1, .tick-line-2, .tick-text-1, .tick-text-2').remove();
@@ -5862,12 +5893,20 @@ function drawTreeBody(){
   // when fitting height, reserve top space for the metadata axis/title ("legend");
   // with the axes below the tree that space is reserved at the bottom instead
   const axesBelow = axesBelowWanted();
-  const vTop = fitHeightMode ? (axesBelow ? calcLegendTopPad(labelPx, false, false) : axisClear) : margin.top;
-  // Store tree dimensions for splitter lines
-  window.currentVTop = vTop;
   // also reserve bottom space for label descenders and half the bar height so the last row never clips
   const bottomClear0 = fitHeightMode ? (Math.ceil(labelPx * 0.6) + (meta && metaColumn && barW>0 ? Math.ceil(barH/2) + 6 : 6)) : margin.bottom;
-  const bottomClear = (fitHeightMode && axesBelow) ? Math.max(bottomClear0, axisClear) : bottomClear0;
+  let fitClear = null;
+  if (fitHeightMode) {
+    // the tip spacing decides how far below the last tip the row sits: estimate it, then reserve
+    const nL0 = Math.max(1, root.leaves().length);
+    const first = fitClearances(axisClear, bottomClear0, labelPx, axesBelow, 0);
+    const availH0 = Math.max(20, svgH - first.top - first.bottom);
+    fitClear = fitClearances(axisClear, bottomClear0, labelPx, axesBelow, nL0 > 1 ? availH0 / (nL0 - 1) : availH0 / 2);
+  }
+  let vTop = fitHeightMode ? fitClear.top : margin.top;
+  // Store tree dimensions for splitter lines
+  window.currentVTop = vTop;
+  const bottomClear = fitHeightMode ? fitClear.bottom : bottomClear0;
   const vBottom = bottomClear;
 
   // Compute leaf separation
@@ -5880,6 +5919,12 @@ function drawTreeBody(){
     leafSep = (nLeaves > 1) ? (availableH / (nLeaves - 1)) : (availableH / 2);
   } else {
     leafSep = Math.max(10, baseSep);
+    // expanded view with the axes on top: room above the first tip for the axis row
+    // and its titles, the same as below the last tip when the axes are below
+    if (!axesBelow && geometry !== 'radial') {
+      vTop = Math.max(margin.top, axisRowGap(leafSep) + Math.max(24, heatmapTitleReach(false)) + 4);
+      window.currentVTop = vTop;
+    }
   }
   // Set effective bar height to stay within the band when tightly packed
   currentBarH = fitHeightMode ? Math.max(2, Math.min(8, leafSep * 0.8)) : 8;
@@ -5972,9 +6017,10 @@ function drawTreeBody(){
     // (more when tall heatmap boxes or bars reach further below the last tip)
     if (axesBelow) {
       const lastY = d3.max(root.descendants(), d => d.x) || (vTop + plotH);
-      axisRow = { below: true, y: lastY + Math.max(18, Math.min(leafSep * 0.4, 50) + 10) };
+      axisRow = { below: true, y: lastY + axisRowGap(leafSep) };
     } else {
-      axisRow = { below: false, y: (fitHeightMode ? (vTop - 8) : (margin.top - 8)) - 10 };
+      const firstY = d3.min(root.descendants(), d => d.x);
+      axisRow = { below: false, y: (Number.isFinite(firstY) ? firstY : vTop) - axisRowGap(leafSep) };
     }
     window.currentAxisRow = axisRow;
   } else {
@@ -10314,7 +10360,7 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
       spanG.attr('clip-path', null);
       
       // Draw rotated title above the heatmap data (outside clipping path)
-      const titleY = axisRow.below ? axisRow.y + 6 : axisRow.y; // in the axis row (above: higher to avoid clipping)
+      const titleY = axisRow.below ? axisRow.y + 6 : axisRow.y - 6; // in the axis row, just past the axis line
       const titleX = panelX + (panelWidth / 2); // Center horizontally
       
       // Get the column title from the heatmap data (second column contains the values)
@@ -10326,11 +10372,11 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', drawTree); }
       const titleG = g.append('g')
         .attr('class', `heatmap-title-${heatmapId}`);
       
-      // above the tree it slants up; below it starts at the column and slants down, away from the tree
+      // it starts at the column and slants away from the tree: up above it, down below it
       titleG.append('text')
         .attr('x', titleX)
         .attr('y', titleY)
-        .attr('text-anchor', axisRow.below ? 'start' : 'middle')
+        .attr('text-anchor', 'start')
         .attr('transform', `rotate(${axisRow.below ? 45 : -45}, ${titleX}, ${titleY})`)
         .style('fill', 'var(--tree)')
         .style('font-size', '12px')
@@ -21898,8 +21944,11 @@ function onFitToViewRect(){
   const bottomClear0 = Math.ceil(labelPx * 0.6) + (hasBars ? Math.ceil(barH/2) + 6 : 6);
   // with the axes below the tree, their space is at the bottom (same as drawTree)
   const below = axesBelowWanted();
-  const axisClear = below ? calcLegendTopPad(labelPx, false, false) : axisClear0;
-  const bottomClear = below ? Math.max(bottomClear0, axisClear0) : bottomClear0;
+  const nTips = Math.max(1, root ? root.leaves().length : 1);
+  const c0 = fitClearances(axisClear0, bottomClear0, labelPx, below, 0);
+  const a0 = Math.max(20, canvasH - c0.top - c0.bottom);
+  const fc = fitClearances(axisClear0, bottomClear0, labelPx, below, nTips > 1 ? a0 / (nTips - 1) : a0 / 2);
+  const axisClear = fc.top, bottomClear = fc.bottom;
   const availableH = Math.max(20, canvasH - axisClear - bottomClear);
   if(tipSpacingSel){ tipSpacingSel.value = '0'; }
   if(tipSpacingNum){ tipSpacingNum.value = '0'; }
