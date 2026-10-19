@@ -767,6 +767,21 @@ function applyTruncation(leavesSel, fontSize) {
 
 // --- Panel related functions starts here ---
 
+// How many panels of each kind there are. Searching the page for them is slow on a
+// large drawing, and a splitter drag asks for every frame, so during a drag (when the
+// panels cannot change) the first answer is kept.
+let panelTypeCountsCache = null;
+function panelTypeCounts() {
+  if (panelTypeCountsCache && isDragging) return panelTypeCountsCache;
+  const c = {
+    dataframeCount: document.querySelectorAll('.dataframe-panel').length,
+    chartCount: document.querySelectorAll('.chart-panel').length,
+    heatmapCount: document.querySelectorAll('.heatmap-panel').length
+  };
+  panelTypeCountsCache = isDragging ? c : null;
+  return c;
+}
+
 function getMaxPanelWidth(panelIndex) {
   if (panelIndex === 1) {
     const hideLabelsEl = document.getElementById('hideLabels');
@@ -776,15 +791,8 @@ function getMaxPanelWidth(panelIndex) {
   if (panelIndex === 0) return Infinity; // Tree panel has no max width
   
   // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const dataframePanels = Array.from(document.querySelectorAll('.dataframe-panel'));
-  const chartPanels = Array.from(document.querySelectorAll('.chart-panel'));
-  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0;
-  
-  // Check if this is a heatmap panel
-  const heatmapPanels = Array.from(document.querySelectorAll('.heatmap-panel'));
-  const heatmapCount = heatmapPanels.length;
-  const dataframeCount = dataframePanels.length;
-  const chartCount = chartPanels.length;
+  const { dataframeCount, chartCount, heatmapCount } = panelTypeCounts();
+  const needsPlaceholder = dataframeCount === 0 && chartCount === 0;
   
   // Calculate heatmap start index (after labels, before placeholder)
   const heatmapStartIndex = 2;
@@ -819,15 +827,8 @@ function getMinPanelWidth(panelIndex) {
   if (panelIndex === 0) return MIN_TREE_PANEL_WIDTH;
   
   // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const dataframePanels = Array.from(document.querySelectorAll('.dataframe-panel'));
-  const chartPanels = Array.from(document.querySelectorAll('.chart-panel'));
-  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0;
-  
-  // Check if this is a heatmap panel
-  const heatmapPanels = Array.from(document.querySelectorAll('.heatmap-panel'));
-  const heatmapCount = heatmapPanels.length;
-  const dataframeCount = dataframePanels.length;
-  const chartCount = chartPanels.length;
+  const { dataframeCount, chartCount, heatmapCount } = panelTypeCounts();
+  const needsPlaceholder = dataframeCount === 0 && chartCount === 0;
   
   // Calculate heatmap start index (after labels, before placeholder)
   const heatmapStartIndex = 2;
@@ -1158,8 +1159,10 @@ function readDragGeom() {
 function startDrag(e) {
   e.preventDefault();
   isDragging = true;
+  panelTypeCountsCache = null;
   panelDragPreview = true;
   dragGeom = readDragGeom();
+  if (window.tmDragLive) tmDragLive.capture();   // the drawing as it is: what live frames start from
   currentSplitter = parseInt(e.target.dataset.index);
   startX = e.clientX;
   startWidths = [...panelWidths];
@@ -1269,8 +1272,10 @@ function drag(e) {
 
 function endDrag() {
   isDragging = false;
+  panelTypeCountsCache = null;
   panelDragPreview = false;   // the redraw below draws every column for real
   dragGeom = null;
+  if (window.tmDragLive) tmDragLive.reset();
   currentSplitter = null;
   document.removeEventListener('mousemove', drag);
   document.removeEventListener('mouseup', endDrag);
@@ -1422,12 +1427,13 @@ function getPanelPositions() {
   const dynamicPanelLabels = ['Tree', 'Labels'];
   
   // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const dataframePanels = Array.from(document.querySelectorAll('.dataframe-panel'));
-  const chartPanels = Array.from(document.querySelectorAll('.chart-panel'));
+  const panelCounts = panelTypeCounts();   // (only the numbers are needed)
+  const dataframePanels = { length: panelCounts.dataframeCount };
+  const chartPanels = { length: panelCounts.chartCount };
   const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0;
   
   // Add heatmap panels after labels (before placeholder)
-  const heatmapPanels = Array.from(document.querySelectorAll('.heatmap-panel'));
+  const heatmapPanels = { length: panelCounts.heatmapCount };
   for (let i = 0; i < heatmapPanels.length; i++) {
     dynamicPanelTypes.push(`heatmap${i + 1}`);
     dynamicPanelLabels.push(`Heatmap ${i + 1}`);
@@ -1576,6 +1582,12 @@ function updateSplitterPositions() {
   }
 }
 
+// Splitter drags on large drawings: when a full redraw takes longer than a frame
+// budget allows, each frame puts the existing drawing at the new geometry (see
+// js/drag-live.js) and the drawing is drawn for real when the splitter is released.
+// (Not when the pointer only rests: that redraw takes long on such a drawing, and
+// moving on during it would make the drawing stop and jump.)
+const LIVE_DRAG_MIN_MS = 40;
 function refreshAllRAF() {
   if (_rafPending) return;
   _rafPending = true;
@@ -1584,6 +1596,10 @@ function refreshAllRAF() {
     updatePanelPositions();
     updateSplitterPositions();
 
+    if (root && panelDragPreview && lastDrawMs > LIVE_DRAG_MIN_MS && geometry !== 'radial' && window.tmDragLive && tmDragLive.ready()) {
+      tmDragLive.frame();
+      return;
+    }
     if (root) {
       // a column drag changes only the layout, not the data or settings of any column:
       // columns whose size is unchanged can be kept (moved); the release redraws all
@@ -5852,7 +5868,7 @@ function layerIteration(type, panelFn, draw) {
     const el = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     el.setAttribute('class', 'data-layer data-layer-' + type);
     c.insertBefore(el, after);
-    layerReuse.byKey.set(key, { el, sig, movedSig, x: panel ? panel.x : NaN });
+    layerReuse.byKey.set(key, { el, sig, movedSig, x: panel ? panel.x : NaN, w: panel ? panel.width : NaN, index });
     layerReuse.lastEl = el;
     layerAppendMode('layer', el);
     try { draw(id, index); }
@@ -5964,17 +5980,23 @@ function updateLabelGuideEnds() {
 }
 
 let drawTreeDepth = 0;
+let lastDrawMs = 0;   // how long the last full redraw took (decides how a splitter drag is shown)
 function drawTree(){
   if (drawTreeDepth === 0) supportPaintCache = null;   // settings may have changed since the last redraw
   const outer = drawTreeDepth === 0 ? null : layerReuseSaveState();
   drawTreeDepth++;
   let done = false, out;
-  try { out = drawTreeBody.apply(this, arguments); done = true; if (!outer) lastTreeKeepKey = pendingTreeKeepKey; }
+  const t0 = outer ? 0 : performance.now();
+  if (!outer && window.tmDragLive && tmDragLive.active()) tmDragLive.reset();   // the drawing back as drawn before it is redrawn
+  try { out = drawTreeBody.apply(this, arguments); done = true; if (!outer) { lastTreeKeepKey = pendingTreeKeepKey; lastDrawMs = performance.now() - t0; } }
   finally {
     drawTreeDepth--;
     if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
   }
-  if (done && !outer) drawTreeFinish();
+  if (done && !outer) {
+    drawTreeFinish();
+    if (panelDragPreview && window.tmDragLive) tmDragLive.capture();
+  }
   return out;
 }
 // After every redraw: re-apply search / selection colours (path to the selected
