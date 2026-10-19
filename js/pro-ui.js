@@ -334,7 +334,13 @@
   function anyColour() {
     return call(function () { return cladeColors.size > 0 || cladeBackgroundColors.size > 0; }) || shown($('resetPathColors')) || shown($('resetHighlights'));
   }
-  function droppedCount() { var b = $('restoreDroppedNodes'); var m = b && /\((\d+)\)/.exec(b.textContent); return m ? +m[1] : 0; }
+  // how many tips are dropped now (from the app itself: the hidden button's text keeps
+  // an old number after the tips were brought back)
+  function droppedCount() {
+    var n = call(function () { return droppedNodes.size; });
+    if (typeof n === 'number') return n;
+    var b = $('restoreDroppedNodes'); var m = b && shown(b) && /\((\d+)\)/.exec(b.textContent); return m ? +m[1] : 0;
+  }
   function activeItems() {
     var out = [], lastSep = false;
     RESET_ITEMS.forEach(function (it) {
