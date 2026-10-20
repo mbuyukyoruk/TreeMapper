@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610191718" rel="stylesheet">
-<link href="css/styles.css?v=202610191718" rel="stylesheet">
-<link href="css/pro.css?v=202610191718" rel="stylesheet">
+<link href="css/tailwind.css?v=202610192200" rel="stylesheet">
+<link href="css/styles.css?v=202610192200" rel="stylesheet">
+<link href="css/pro.css?v=202610192200" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -455,7 +455,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610191718"></script>
+      <script src="js/drag-fastpath.js?v=202610192200"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -682,12 +682,12 @@
           <div style="margin-bottom: 12px; padding: 8px; background: var(--bg); border-left: 3px solid var(--accent); font-size: 11px; color: var(--muted);">
             Upload a gene/domain dataframe file (.csv/.tsv) to generate a phylogenetic tree based on Jaccard distance.
           </div>
-          <label>Gene/Domain data file (.csv/.tsv)
+          <label>Gene / domain table (.csv or .tsv)
             <input autocomplete="off" id="geneDataFile" type="file" accept=".csv,.tsv,.txt">
           </label>
 
           <div style="margin-top: 12px; margin-bottom: 12px;">
-            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 12px;">Tree Algorithm:</label>
+            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 12px;">Tree algorithm</label>
             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
               <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px;">
                 <input autocomplete="off" type="radio" name="treeAlgorithm" value="nj" id="algorithmNJ" checked style="margin-right: 6px;">
@@ -705,7 +705,7 @@
 
           <div class="button-section">
             <button id="generateTreeBtn" class="clade-toolbar-btn" style="width: 100%; padding: 10px; font-size: 13px;" disabled title="Upload a gene/domain data file to generate tree">
-              Generate Tree from Gene Content
+              Generate tree
             </button>
           </div>
         </div>
@@ -714,15 +714,15 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610191718"></script>
-<script src="js/tree-core.js?v=202610191718"></script>
-<script src="js/app.js?v=202610191718"></script>
-<script src="js/drag-live.js?v=202610191718"></script>
-<script src="js/session.js?v=202610191718"></script>
-<script src="js/undo.js?v=202610191718"></script>
-<script src="js/data-editor.js?v=202610191718"></script>
-<script src="js/pro-ui.js?v=202610191718"></script>
-<script src="js/select-tool.js?v=202610191718"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610192200"></script>
+<script src="js/tree-core.js?v=202610192200"></script>
+<script src="js/app.js?v=202610192200"></script>
+<script src="js/drag-live.js?v=202610192200"></script>
+<script src="js/session.js?v=202610192200"></script>
+<script src="js/undo.js?v=202610192200"></script>
+<script src="js/data-editor.js?v=202610192200"></script>
+<script src="js/pro-ui.js?v=202610192200"></script>
+<script src="js/select-tool.js?v=202610192200"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {

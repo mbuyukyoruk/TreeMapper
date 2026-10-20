@@ -243,8 +243,6 @@ html.pro .pro-tab {
   color: var(--muted); font: 500 13px var(--pro-font); cursor: pointer;
   transition: background-color .12s ease, color .12s ease;
 }
-html.pro .pro-tab:first-child { border-radius: 9px 4px 4px 9px; }
-html.pro .pro-tab:last-child { border-radius: 4px 9px 9px 4px; }
 html.pro .pro-tab[aria-selected="true"] {
   color: var(--text); font-weight: 600; background: var(--panel); border-color: var(--border);
   box-shadow: 0 1px 2px rgba(16, 32, 40, .08), 0 2px 8px -4px rgba(16, 32, 40, .12);
@@ -355,6 +353,11 @@ html.pro .pro-badge-clade { background: linear-gradient(135deg, #C084FC, #7C3AED
 html.pro .pro-badge-chart { background: linear-gradient(135deg, #22D3EE, #0E7490); }
 html.pro .pro-card-title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 html.pro summary.df-summary .df-spacer { flex: 1 1 auto; }
+/* the title takes the free room (it is shortened only when it really has to be);
+   the actions sit close together */
+html.pro summary.df-summary .pro-card-title { flex: 1 1 auto; }
+html.pro summary.df-summary .df-spacer { display: none; }
+html.pro summary.df-summary .df-delete, html.pro summary.df-summary .drag-handle { margin-left: -6px !important; }
 
 /* header actions: delete + drag grip (icons; the old emoji/text is gone) */
 html.pro summary.df-summary .df-delete,
@@ -607,6 +610,7 @@ html.pro .pro-canvas-toolbar {
   overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
 }
 html.pro .pro-canvas-toolbar::-webkit-scrollbar { display: none; }
+html.pro .pro-canvas-toolbar.is-wrapped { height: auto; flex-wrap: wrap; row-gap: 8px; padding-top: 9px; padding-bottom: 9px; overflow-x: hidden; }
 html.pro .pro-canvas-toolbar button { font-size: 12.5px; }
 html.pro .pro-canvas-toolbar .pro-btn { height: 30px; padding: 0 10px; box-shadow: none; }
 
@@ -631,7 +635,7 @@ html.pro .layout-toggle .seg.active { border: 0; }
 
 /* search field: [Look in ▾] [search text] [×] [ab]; the box is the container */
 html.pro .search-container {
-  flex: 0 1 340px; min-width: 190px; height: 32px; box-sizing: border-box; gap: 2px; padding: 0 3px;
+  flex: 0 1 340px; min-width: 150px; height: 32px; box-sizing: border-box; gap: 2px; padding: 0 3px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--pro-panel2);
   transition: border-color .12s ease, background-color .12s ease;
 }

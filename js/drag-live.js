@@ -631,7 +631,7 @@
     return out;
   }
   function worthIt() {
-    return typeof root !== 'undefined' && root && typeof lastDrawMs !== 'undefined' && lastDrawMs > LIVE_DRAG_MIN_MS;
+    return typeof root !== 'undefined' && root && typeof liveDragWorthIt === 'function' && liveDragWorthIt();
   }
   function dropPre() { if (pre) { pre.obs.disconnect(); pre = null; } }
   function relevant(recs) {
