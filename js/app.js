@@ -1587,7 +1587,10 @@ function updateSplitterPositions() {
 // js/drag-live.js) and the drawing is drawn for real when the splitter is released.
 // (Not when the pointer only rests: that redraw takes long on such a drawing, and
 // moving on during it would make the drawing stop and jump.)
-const LIVE_DRAG_MIN_MS = 40;
+const LIVE_DRAG_MIN_MS = 40, LIVE_DRAG_MIN_ELEMENTS = 8000;
+// worth showing a drag from the existing drawing: redraws are slow every time, and the
+// drawing is large (a small drawing that happened to redraw slowly is drawn as usual)
+function liveDragWorthIt() { return lastDrawMs > LIVE_DRAG_MIN_MS && lastDrawElements > LIVE_DRAG_MIN_ELEMENTS; }
 function refreshAllRAF() {
   if (_rafPending) return;
   _rafPending = true;
@@ -1596,7 +1599,7 @@ function refreshAllRAF() {
     updatePanelPositions();
     updateSplitterPositions();
 
-    if (root && panelDragPreview && lastDrawMs > LIVE_DRAG_MIN_MS && geometry !== 'radial' && window.tmDragLive && tmDragLive.ready()) {
+    if (root && panelDragPreview && liveDragWorthIt() && geometry !== 'radial' && window.tmDragLive && tmDragLive.ready()) {
       tmDragLive.frame();
       return;
     }
@@ -2302,7 +2305,7 @@ function handleRadialSplitterMouseDown(event, ringIndex) {
   window.radialStartWidths = getAllRingWidths();
 
   // large drawings: frames while dragging are shown from the existing drawing (js/drag-live.js)
-  if (root && lastDrawMs > LIVE_DRAG_MIN_MS && window.tmDragLive && tmDragLive.captureRadial) tmDragLive.captureRadial();
+  if (root && liveDragWorthIt() && window.tmDragLive && tmDragLive.captureRadial) tmDragLive.captureRadial();
 
   // Highlight ALL splitter lines and symbols during drag (like rect layout)
   radialSvg.selectAll('.radial-splitter-line')
@@ -2914,12 +2917,31 @@ function renderAxisTitle(g, key, widthPx) {
     rm.append('title').text('Remove this axis title');
     rm.append('circle').attr('r', 8);
     rm.append('path').attr('d', 'M-3.5 0H3.5');
+    keepUpright(rm);
   } else if (axisTitleButtonsOn()) {
     const add = g.append('g').attr('class', 'axis-title-add axis-ui').attr('data-axis-key', key).attr('transform', `translate(${atStart ? cx + 8 : cx},${y})`);
     add.append('title').text('Add an axis title (unit)');
     add.append('circle').attr('r', 8);
     add.append('path').attr('d', 'M-3.5 0H3.5M0 -3.5V3.5');
+    keepUpright(add);
   }
+}
+// a + / - button stays upright when its axis is turned (circular layout, rotated
+// drawing): otherwise a + would read as an x
+function keepUpright(sel) {
+  const n = sel.node();
+  if (!n || !n.getCTM) return;
+  if (!n.hasAttribute('data-upright-base')) n.setAttribute('data-upright-base', n.getAttribute('transform') || '');
+  const base = n.getAttribute('data-upright-base');
+  n.setAttribute('transform', base);
+  const m = n.getCTM();
+  if (!m) return;
+  const ang = Math.atan2(m.b, m.a) * 180 / Math.PI;
+  if (Math.abs(ang) > 0.01) n.setAttribute('transform', (base + ` rotate(${+(-ang).toFixed(3)})`).trim());
+}
+// after the drawing was turned (circular layout): the buttons upright again
+function keepAxisButtonsUpright() {
+  document.querySelectorAll('#svg [data-upright-base]').forEach(n => keepUpright(d3.select(n)));
 }
 // after a title changed: draw it again where the axis is (no redraw needed),
 // or redraw when the room for titles appears or goes
@@ -3062,6 +3084,21 @@ function fitClearances(top, bottom, labelPx, below, leafSep) {
   return { top: calcLegendTopPad(labelPx, false, false), bottom: Math.max(bottom, top + (gap - 18), rowNeed) };
 }
 
+// How many ticks an axis of this width can show without its numbers running into each
+// other: 4 as before when they fit, fewer on a narrow column.
+function axisTickCount(scale) {
+  if (!titleMeasureCtx) titleMeasureCtx = document.createElement('canvas').getContext('2d');
+  const svgEl = document.getElementById('svg');
+  titleMeasureCtx.font = 'bold 12px ' + ((svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif');
+  for (let n = 4; n > 1; n--) {
+    const ticks = scale.ticks(n), fmt = scale.tickFormat(n);
+    if (ticks.length < 2) return n;
+    let widest = 0;
+    ticks.forEach(t => { widest = Math.max(widest, titleMeasureCtx.measureText(fmt(t)).width); });
+    if (Math.abs(scale(ticks[1]) - scale(ticks[0])) >= widest + 6) return n;
+  }
+  return 1;
+}
 function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain, titleKey) {
     
     d3.selectAll('.scale-title-1, .scale-title-2, .axis-line-1, .axis-line-2, .tick-line-1, .tick-line-2, .tick-text-1, .tick-text-2').remove();
@@ -3077,7 +3114,7 @@ function upsertDfScaleBar(panelIndex, x0, axisY, widthPx, domain, titleKey) {
   g.attr('transform', `translate(${x0}, ${axisY})`);
 
   const x = d3.scaleLinear().domain(domain).range([0, widthPx]);
-    const axis = axisForRow(x).ticks(4).tickSizeOuter(0);
+    const axis = axisForRow(x).ticks(axisTickCount(x)).tickSizeOuter(0);
     g.call(axis);
     
     // Get ring color for scale bar
@@ -3103,7 +3140,7 @@ function upsertChartScaleBar(panelIndex, x0, axisY, widthPx, domain, titleKey) {
   g.attr('transform', `translate(${x0}, ${axisY})`);
 
   const x = d3.scaleLinear().domain(domain).range([0, widthPx]);
-  const axis = axisForRow(x).ticks(4).tickSizeOuter(0);
+  const axis = axisForRow(x).ticks(axisTickCount(x)).tickSizeOuter(0);
   g.call(axis);
   
   // Get ring color for scale bar
@@ -3137,7 +3174,7 @@ function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
   if (coverScaleBar && !hideScaleBar) {
     // Cover scale bar mode - show full scale (use exact tree positioning)
     const x = d3.scaleLinear().domain(domain).range([0, widthPx]);
-    const axis = axisForRow(x).ticks(4).tickSizeOuter(0);
+    const axis = axisForRow(x).ticks(axisTickCount(x)).tickSizeOuter(0);
     g.call(axis);
     
     // Use .attr() instead of .style() for SVG export compatibility
@@ -6046,7 +6083,7 @@ let drawTreeDepth = 0;
 // how long a redraw takes (decides how a splitter drag is shown): the quickest of the
 // last three, so that one slow redraw (the first one after loading, a busy moment) does
 // not count a small drawing as a large one
-let lastDrawMs = 0;
+let lastDrawMs = 0, lastDrawElements = 0;
 const recentDrawMs = [];
 function drawTree(){
   if (drawTreeDepth === 0) supportPaintCache = null;   // settings may have changed since the last redraw
@@ -6055,7 +6092,7 @@ function drawTree(){
   let done = false, out;
   const t0 = outer ? 0 : performance.now();
   if (!outer && window.tmDragLive && tmDragLive.active()) tmDragLive.reset();   // the drawing back as drawn before it is redrawn
-  try { out = drawTreeBody.apply(this, arguments); done = true; if (!outer) { lastTreeKeepKey = pendingTreeKeepKey; recentDrawMs.push(performance.now() - t0); if (recentDrawMs.length > 3) recentDrawMs.shift(); lastDrawMs = Math.min(...recentDrawMs); } }
+  try { out = drawTreeBody.apply(this, arguments); done = true; if (!outer) { lastTreeKeepKey = pendingTreeKeepKey; recentDrawMs.push(performance.now() - t0); if (recentDrawMs.length > 3) recentDrawMs.shift(); lastDrawMs = Math.min(...recentDrawMs); const svgEl = document.getElementById('svg'); lastDrawElements = svgEl ? svgEl.getElementsByTagName('*').length : 0; } }
   finally {
     drawTreeDepth--;
     if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
@@ -25217,10 +25254,11 @@ $('#exportSVG').addEventListener('click', ()=>{
   const src = buildExportSvgSource().src;
   
   // Ask user for filename
-  let filename = prompt('Enter filename for SVG export:', 'tree.svg');
+  let filename = prompt('File name:', 'tree.svg');
+  if (filename === null) return;   // cancelled: nothing is saved
   
-  // If user cancels or provides empty string, use default
-  if (!filename || filename.trim() === '') {
+  // An empty name: the default
+  if (filename.trim() === '') {
     filename = 'tree.svg';
   }
   
@@ -26125,6 +26163,7 @@ function applySpin(){
       radialLabelsGroup.attr('transform', `translate(${centerX}, ${centerY}) rotate(${spinDeg})`);
     }
   }
+  keepAxisButtonsUpright();
 }
 
 setStatus('Load a Newick tree to begin');

@@ -214,6 +214,27 @@
     }).observe(canvas);
   })();
 
+  // When the canvas is too narrow for all its toolbar controls, the toolbar takes a
+  // second row instead of hiding the last controls (search, legend) out of reach.
+  (function () {
+    var tb = document.querySelector('.pro-canvas-toolbar');
+    if (!tb || !window.ResizeObserver) return;
+    var busy = false;
+    function fit() {
+      if (busy) return; busy = true;
+      tb.classList.remove('is-wrapped');
+      var over = tb.scrollWidth > tb.clientWidth + 1;
+      tb.classList.toggle('is-wrapped', over);
+      busy = false;   // (the drawing follows the new height by itself: app.js watches the canvas size)
+    }
+    var pending = 0;
+    function later() { if (!pending) pending = requestAnimationFrame(function () { pending = 0; fit(); }); }   // (not inside the observer's own call)
+    new ResizeObserver(later).observe(tb);
+    // controls that come and go (Reset, Restore, Copy rows...)
+    new MutationObserver(later).observe(tb, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'style'] });
+    fit();
+  })();
+
   // ------------------------------------------------------- shared helpers
   var SVG = function (paths, size) {
     return '<svg class="pro-ico" width="' + (size || 15) + '" height="' + (size || 15) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + '</svg>';
@@ -967,6 +988,13 @@
   if ($('proKeysClose')) $('proKeysClose').addEventListener('click', closeKeys);
   if (keysModal) keysModal.addEventListener('mousedown', function (e) { if (e.target === keysModal) closeKeys(); });
   function typing(t) { var tag = t && t.tagName; return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable); }
+  // a field where text is being typed (Escape belongs to it)
+  function textEntry(t) {
+    if (!t) return false;
+    if (t.tagName === 'TEXTAREA' || t.isContentEditable) return true;
+    if (t.tagName !== 'INPUT') return false;
+    return !/^(checkbox|radio|range|button|submit|reset|color|file|image)$/i.test(t.type || 'text');
+  }
   function shown2(id) { var el = $(id); return !!el && el.offsetParent !== null && !el.disabled; }
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey, k = e.key;
@@ -982,12 +1010,17 @@
       if (redoKey ? tmUndo.redo() : tmUndo.undo()) e.preventDefault();
       return;
     }
-    if (mod || e.altKey || typing(e.target)) return;
-    if (k === 'Escape') {
+    // Escape clears the selection also when a checkbox, slider or button still has the
+    // focus (clicking the drawing does not take it away); not while text is typed
+    if (k === 'Escape' && !mod && !e.altKey && !textEntry(e.target)) {
       if (e.defaultPrevented || closeKeys() || openPop || (modal && !modal.hidden)) return;   // a menu or dialog took this Escape
+      if (document.querySelector('.pro-modal:not([hidden]), .axis-title-input')) return;
       if (shown2('clearCladeSelection')) { $('clearCladeSelection').click(); e.preventDefault(); }
+      else if (call(function () { return highlightedAccessions.size > 0 || !!highlightedClade; })) { call(function () { clearCladeSelection(); }); e.preventDefault(); }
       return;
     }
+    if (mod || e.altKey || typing(e.target)) return;
+    if (k === 'Escape') return;
     if (!keysModal || !keysModal.hidden) return;
     if (k === '/') { var s = $('accessionSearch'); if (s) { e.preventDefault(); s.focus(); s.select(); } }
     else if (k === '?') { e.preventDefault(); openKeys(); }
