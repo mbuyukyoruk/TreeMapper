@@ -156,3 +156,67 @@
   window.addEventListener('pointerup', finish);
   window.addEventListener('pointercancel', function () { cancel(); });
 })();
+
+// Keyboard ranges, as in Excel: with tips selected, Shift+Down / Shift+Up grow or shrink the
+// selection one tip at a time from the tip it started at (the anchor); Cmd/Ctrl+Shift goes to
+// the last / first tip. Down / Up alone move a single selected tip to the next one.
+// Tips are taken in the order they are drawn; a collapsed clade is one row (all its tips).
+(function () {
+  'use strict';
+  var anchor = null, cursor = null, made = '';   // made: the selection these keys last set
+  function typing(t) { var tag = t && t.tagName; return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable); }
+  function overlayOpen() { return !!document.querySelector('.pro-modal:not([hidden]), .pro-menu:not([hidden]), .pro-pop:not([hidden]), .ar-menu'); }
+  function hiddenTips(d, out) {
+    var k = (d.children && d.children.length) ? d.children : (d._children || []);
+    if (!k.length) { if (d.data && d.data.name != null) out.push(String(d.data.name)); return out; }
+    k.forEach(function (c) { hiddenTips(c, out); });
+    return out;
+  }
+  // the rows on screen, top to bottom: { node, names }
+  function rows() {
+    if (typeof root === 'undefined' || !root) return [];
+    var dropped = (typeof droppedNodes !== 'undefined') ? droppedNodes : new Set();
+    return root.leaves().filter(function (d) { return !d._removedAsDuplicate && !dropped.has(d) && Number.isFinite(d.x); })
+      .sort(function (a, b) { return a.x - b.x; })
+      .map(function (d) { return { node: d, names: (d._children && !d.children) ? hiddenTips(d, []) : [String(d.data.name)] }; });
+  }
+  function sig(set) { return Array.from(set).sort().join('\n'); }
+  function rowOf(list, name) { for (var i = 0; i < list.length; i++) if (list[i].names.indexOf(name) >= 0) return i; return -1; }
+
+  document.addEventListener('keydown', function (e) {
+    if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || e.altKey || typing(e.target) || overlayOpen()) return;
+    if (typeof highlightedAccessions === 'undefined' || !highlightedAccessions.size) return;
+    if (e.target && e.target.closest && e.target.closest('[role="menu"], [role="listbox"], [role="radiogroup"], .sidepanel')) return;
+    var list = rows();
+    if (!list.length) return;
+    var sel = highlightedAccessions, down = e.key === 'ArrowDown', jump = e.metaKey || e.ctrlKey;
+    if (jump && !e.shiftKey) return;
+    // where the selection starts: kept while these keys made it, else worked out again
+    var a = rowOf(list, anchor), c = rowOf(list, cursor);
+    if (made !== sig(sel) || a < 0 || c < 0) {
+      var on = [];
+      list.forEach(function (r, i) { if (r.names.some(function (n) { return sel.has(n); })) on.push(i); });
+      if (!on.length) return;
+      if (on.length === 1) { a = c = on[0]; }
+      else if (down) { a = on[0]; c = on[on.length - 1]; }
+      else { a = on[on.length - 1]; c = on[0]; }
+    }
+    e.preventDefault();
+    if (e.shiftKey) {
+      c = jump ? (down ? list.length - 1 : 0) : Math.max(0, Math.min(list.length - 1, c + (down ? 1 : -1)));
+    } else {
+      // move: one tip, the next one past the current end
+      var next = Math.max(0, Math.min(list.length - 1, c + (down ? 1 : -1)));
+      if (next === c && a === c) return;   // already at the first / last tip
+      a = c = next;
+    }
+    var names = [];
+    for (var i = Math.min(a, c); i <= Math.max(a, c); i++) list[i].names.forEach(function (n) { names.push(n); });
+    anchor = list[a].names[0]; cursor = list[c].names[0];
+    if (!e.shiftKey && list[a].names.length === 1 && typeof highlightClade === 'function') highlightClade(list[a].node, false);   // like a click
+    else if (typeof applyTipSelection === 'function') applyTipSelection(names);
+    made = sig(highlightedAccessions);
+    var n = highlightedAccessions.size;
+    if (typeof setStatus === 'function' && e.shiftKey) setStatus(n + ' tip' + (n === 1 ? '' : 's') + ' selected · ' + list[a].names[0] + (a === c ? '' : ' to ' + list[c].names[0]));
+  });
+})();
