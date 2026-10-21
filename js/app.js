@@ -235,6 +235,7 @@ const zoom = d3.zoom()
     try{ updateSplitterLineHeights(); }catch(e){}
   })
   .on('end', (ev)=>{
+    try { updatePanCursorClass(); } catch (e) {}
     if (!ev || !ev.sourceEvent) return;
     const svgNode = svg.node();
     if(svgNode) svgNode.style.cursor = '';
@@ -294,6 +295,22 @@ function panBounds(){
 // directly queued seconds of work and froze the page. Movements are therefore
 // added up and applied at most once per animation frame.
 let panPending = null, panFrame = 0;
+// Panning: always with an expanded tree (Expansion above 0); in the fitted view once the
+// view was zoomed in or out (or moved) - otherwise the part zoomed into could not be reached.
+// Fit brings the fitted view back (and panning off).
+function panAllowedNow(){
+  if (allowPan) return true;
+  const t = d3.zoomTransform(svg.node());
+  return Math.abs(t.k - 1) > 0.005 || Math.abs(t.x) > 2 || Math.abs(t.y) > 2;
+}
+// the hand cursor where the drawing can be dragged: in the fitted view (class no-pan, which
+// other parts read as "fitted view") once it is zoomed - set when that changes, at the end
+// of a zoom (not on every frame: restyling the drawing is costly)
+function updatePanCursorClass(){
+  const n = svg.node(); if (!n) return;
+  const on = !allowPan && panAllowedNow();
+  if (n.classList.contains('pan-zoomed') !== on) n.classList.toggle('pan-zoomed', on);
+}
 function applyPendingPan(){
   panFrame = 0;
   const p = panPending; panPending = null;
@@ -325,7 +342,7 @@ function panTreeBy(dx, dy){
     // left button pans with the Pan tool or while Space is held (Select tool: the
     // drag draws a selection rectangle, js/select-tool.js); the middle button always pans
     const leftPans = e.button === 0 && (window.tmCanvasTool !== 'select' || window.tmSpacePan || e.pointerType === 'touch');
-    if (!allowPan || !(leftPans || e.button === 1)) return;
+    if (!panAllowedNow() || !(leftPans || e.button === 1)) return;
     if (e.button === 1) e.preventDefault();   // no auto-scroll
     if (e.target.closest && e.target.closest('.svg-splitter-hit-area, .radial-splitter-hit-area, .radial-splitter-handle, .splitter')) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
@@ -352,7 +369,7 @@ function panTreeBy(dx, dy){
     if (suppressClick) { suppressClick = false; e.stopPropagation(); e.preventDefault(); }
   }, true);
   node.addEventListener('wheel', (e) => {
-    if (!allowPan) return;
+    if (!panAllowedNow()) return;
     e.preventDefault();
     const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? node.clientHeight : 1);
     if (e.ctrlKey || e.metaKey) {
@@ -619,71 +636,90 @@ function resetFontTruncationCache() {
 }
 
 // Font size calculation function - only handles sizing, no truncation
+// The label font size: the largest whole size (up to the size set in the Style tab) at
+// which neighbouring labels do not overlap. The labels of the rectangular layout share one
+// right edge and sit at their tips, so that is the smallest distance between two tips
+// divided by the height a line of text takes per pixel of font size (measured once).
+// (It used to shrink the font until a sample of labels stopped overlapping - but the
+// sample was every 4th to 50th label, far apart, so whether neighbours overlapped was
+// down to chance: after dropping tips the font could jump and the labels overlap.)
+let labelLineRatio = null;
+function labelLineHeightRatio() {
+  if (labelLineRatio) return labelLineRatio;
+  const svgEl = document.getElementById('svg');
+  if (!svgEl) return 1.2;
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  t.setAttribute('class', 'label'); t.style.fontSize = '100px'; t.style.visibility = 'hidden';
+  t.textContent = 'ÁgjpqyNZ_01.';
+  svgEl.appendChild(t);
+  let h = 0; try { h = t.getBBox().height; } catch (e) {}
+  svgEl.removeChild(t);
+  if (h > 0) labelLineRatio = h / 100;
+  return labelLineRatio || 1.2;
+}
+const labelBoxHeights = new Map();
+function labelBoxHeightAt(px) {
+  if (labelBoxHeights.has(px)) return labelBoxHeights.get(px);
+  const svgEl = document.getElementById('svg');
+  if (!svgEl) return px * 1.2;
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  t.setAttribute('class', 'label'); t.style.fontSize = px + 'px'; t.style.visibility = 'hidden'; t.textContent = 'NZ_0g';
+  svgEl.appendChild(t);
+  let h = 0; try { h = t.getBBox().height; } catch (e) {}
+  svgEl.removeChild(t);
+  h = h > 0 ? h : px * labelLineHeightRatio();
+  labelBoxHeights.set(px, h);
+  return h;
+}
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { labelLineRatio = null; labelBoxHeights.clear(); });
 function calculateOptimalFontSize(leavesSel) {
-  if (!leavesSel || leavesSel.size() === 0) return +labelSizeSel.value;
-  
-  const fontCalculationStartTime = performance.now();
-  
-  // leavesSel should be a D3 selection containing leaf nodes with text elements
-  // Filter to only visible/displayed accessions (not collapsed duplicates)
-  const visibleLeavesSel = leavesSel.filter(d => !d._collapsed);
-  const labelsSel = visibleLeavesSel.selectAll('text');
-  let fontSize = +labelSizeSel.value; // base from control
-  let overlap = true;
-  
-  // Sample-based font size calculation for performance - ONLY VISIBLE LEAF NODES
-  const sampleSize = Math.min(50, Math.max(30, Math.floor(visibleLeavesSel.size() / 10)));
-  const allNodes = labelsSel.nodes();
-  const step = Math.max(1, Math.floor(allNodes.length / sampleSize));
-  const sampleNodes = [];
-  
-  // Collect sample nodes - ONLY from leaf nodes (leavesSel contains only leaf nodes)
-  for (let i = 0; i < allNodes.length && sampleNodes.length < sampleSize; i += step) {
-    sampleNodes.push(allNodes[i]);
-  }
-  
-  // If we don't have enough samples, add more evenly distributed ones
-  if (sampleNodes.length < sampleSize) {
-    const additionalStep = Math.max(1, Math.floor(allNodes.length / (sampleSize - sampleNodes.length)));
-    for (let i = 0; i < allNodes.length && sampleNodes.length < sampleSize; i += additionalStep) {
-      if (!sampleNodes.includes(allNodes[i])) {
-        sampleNodes.push(allNodes[i]);
-      }
-    }
-  }
-  
-  while (overlap && fontSize > 0.5) {
-    labelsSel.style('font-size', fontSize + 'px');
-    overlap = false;
-    
-    // Check overlaps only on sample leaf nodes
-    outer: for (let i = 0; i < sampleNodes.length; i++) {
-      const a = sampleNodes[i].getBoundingClientRect();
-      for (let j = 0; j < i; j++) {
-        const b = sampleNodes[j].getBoundingClientRect();
-        if (!(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom)) {
-          overlap = true;
-          break outer;
-        }
-      }
-    }
-    if (overlap) {
-      fontSize -= 1;
-    }
-  }
-  
-  // Ensure minimum font size of 0.5px
-  fontSize = Math.max(fontSize, 1);
-  
-  // Clear any inline font-size styles to let CSS class take precedence
-  labelsSel.style('font-size', null);
-  
-  const fontCalculationTime = performance.now() - fontCalculationStartTime;
-  
-  return fontSize;
+  const base = +labelSizeSel.value;
+  if (!leavesSel || leavesSel.size() === 0) return base;
+  // the tips whose labels are shown, in drawing order
+  const xs = [];
+  leavesSel.each(d => { if (!d._collapsed && Number.isFinite(d.x)) xs.push(d.x); });
+  if (xs.length < 2) return base;
+  xs.sort((p, q) => p - q);
+  let gap = Infinity;
+  for (let i = 1; i < xs.length; i++) { const dd = xs[i] - xs[i - 1]; if (dd > 1e-9 && dd < gap) gap = dd; }
+  if (!Number.isFinite(gap)) return base;
+  // (a text's box includes some room above and below the letters: boxes may touch by half
+  // a pixel without the letters coming near each other)
+  let f = Math.max(1, Math.min(base, Math.floor((gap + 0.5) / labelLineHeightRatio())));
+  // small sizes are drawn a little taller than in proportion: checked at the size itself
+  while (f > 1 && labelBoxHeightAt(f) - gap > 0.5) f--;
+  return f;
 }
 
 // Truncation function - only handles truncation, no font sizing
+// The width of a label text as the browser draws it, remembered per font size and text:
+// measuring means putting a text into the drawing and laying the page out again, which on
+// every redraw of a splitter drag cost several milliseconds (once per character tried when
+// labels are shortened). The same text in the same font always has the same width.
+const labelWidthCache = new Map();
+// The drawing's font family (asked once: asking the page's styles after a change makes it
+// work them all out again, which cost milliseconds on every redraw of a drag)
+let drawingFontCache = null;
+function drawingFontFamily(svgEl) {
+  if (drawingFontCache === null) drawingFontCache = (svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif';
+  return drawingFontCache;
+}
+// (a web font loaded after a first measurement: measure again)
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { labelWidthCache.clear(); drawingFontCache = null; });
+function measuredLabelWidth(svgEl, el, text) {
+  const key = el.style.fontSize + '|' + el.style.fontWeight + '|' + text;
+  let w = labelWidthCache.get(key);
+  if (w === undefined) {
+    el.textContent = text;
+    svgEl.appendChild(el);
+    w = el.getComputedTextLength ? el.getComputedTextLength() : el.getBBox().width;
+    svgEl.removeChild(el);
+    if (labelWidthCache.size > 20000) labelWidthCache.clear();
+    labelWidthCache.set(key, w);
+  }
+  return w;
+}
+
 function applyTruncation(leavesSel, fontSize) {
   if (!leavesSel || leavesSel.size() === 0) return;
   
@@ -721,22 +757,14 @@ function applyTruncation(leavesSel, fontSize) {
     testElement.style.visibility = 'hidden';
     testElement.setAttribute('x', '0');
     testElement.setAttribute('y', '0');
-    svg.appendChild(testElement);
-    testElement.offsetHeight; // Force reflow
-    
-    const textWidth = testElement.getComputedTextLength ? testElement.getComputedTextLength() : testElement.getBBox().width;
-    svg.removeChild(testElement);
+    const textWidth = measuredLabelWidth(svg, testElement, longestAccession);
     
     if (textWidth > maxLabelWidth) {
       // Calculate how many characters to keep
       let testLength = longestAccession.length;
       while (testLength > 1) {
         const testText = longestAccession.slice(0, testLength) + '…';
-        testElement.textContent = testText;
-        svg.appendChild(testElement);
-        testElement.offsetHeight; // Force reflow
-        const testWidth = testElement.getComputedTextLength ? testElement.getComputedTextLength() : testElement.getBBox().width;
-        svg.removeChild(testElement);
+        const testWidth = measuredLabelWidth(svg, testElement, testText);
         
         if (testWidth <= maxLabelWidth) {
           break;
@@ -1171,6 +1199,7 @@ function treeKeepKey() {
 // drag starts: reading them in the middle of a redraw makes the browser lay out the
 // whole half-built drawing an extra time on every frame
 let dragGeom = null;
+let dragLiveSticky = false, lastPreviewWidths = null;   // (refreshAllRAF: a pushing drag shown live)
 function readDragGeom() {
   const svgEl = document.getElementById('svg'), canvasEl = document.getElementById('canvas');
   return {
@@ -1184,6 +1213,7 @@ function startDrag(e) {
   panelTypeCountsCache = null;
   panelDragPreview = true;
   dragGeom = readDragGeom();
+  dragLiveSticky = false; lastPreviewWidths = null;
   if (window.tmDragLive) tmDragLive.capture();   // the drawing as it is: what live frames start from
   currentSplitter = parseInt(e.target.dataset.index);
   startX = e.clientX;
@@ -1297,6 +1327,7 @@ function endDrag() {
   panelTypeCountsCache = null;
   panelDragPreview = false;   // the redraw below draws every column for real
   dragGeom = null;
+  dragLiveSticky = false; lastPreviewWidths = null;
   if (window.tmDragLive) tmDragLive.reset();
   currentSplitter = null;
   document.removeEventListener('mousemove', drag);
@@ -1623,7 +1654,7 @@ function updateSplitterPositions() {
 // js/drag-live.js) and the drawing is drawn for real when the splitter is released.
 // (Not when the pointer only rests: that redraw takes long on such a drawing, and
 // moving on during it would make the drawing stop and jump.)
-const LIVE_DRAG_MIN_MS = 40, LIVE_DRAG_MIN_ELEMENTS = 8000;
+const LIVE_DRAG_MIN_MS = 40, LIVE_DRAG_MIN_ELEMENTS = 4000;   // (e.g. ~300 tips with a few data columns and an alignment)
 // worth showing a drag from the existing drawing: redraws are slow every time, and the
 // drawing is large (a small drawing that happened to redraw slowly is drawn as usual)
 function liveDragWorthIt() { return lastDrawMs > LIVE_DRAG_MIN_MS && lastDrawElements > LIVE_DRAG_MIN_ELEMENTS; }
@@ -1635,7 +1666,21 @@ function refreshAllRAF() {
     updatePanelPositions();
     updateSplitterPositions();
 
-    if (root && panelDragPreview && liveDragWorthIt() && geometry !== 'radial' && window.tmDragLive && tmDragLive.ready()) {
+    // A drag that pushes columns beyond the two next to the splitter (dragging past a
+    // column's smallest or largest width) changes the width of most columns, so a redraw
+    // draws nearly everything on every move: such a drag is shown from the drawing as it
+    // is (live), even when single redraws are quick - on drawings that are not small.
+    if (root && panelDragPreview && geometry !== 'radial' && window.tmDragLive && !dragLiveSticky && !liveDragWorthIt() &&
+        lastDrawElements > LIVE_DRAG_MIN_ELEMENTS && Array.isArray(startWidths) &&
+        panelWidths.filter((w, j) => w !== startWidths[j]).length > 2) {
+      // the drawing shown now was drawn at the widths of the last frame: start from those
+      const now = panelWidths;
+      panelWidths = lastPreviewWidths || startWidths; updatePanelPositions();
+      tmDragLive.capture();
+      panelWidths = now; updatePanelPositions(); updateSplitterPositions();
+      dragLiveSticky = true;
+    }
+    if (root && panelDragPreview && (liveDragWorthIt() || dragLiveSticky) && geometry !== 'radial' && window.tmDragLive && tmDragLive.ready()) {
       tmDragLive.frame();
       return;
     }
@@ -1644,6 +1689,7 @@ function refreshAllRAF() {
       // columns whose size is unchanged can be kept (moved); the release redraws all
       if (panelDragPreview) setDrawScope('tree');
       drawTree();
+      if (panelDragPreview) lastPreviewWidths = panelWidths.slice();
       console.log('drawTree in refreshAllRAF');
     }
   });
@@ -1680,7 +1726,9 @@ function drawSplittersInSVG(g, contentHeight, canvasRect) {
     radialPanelsContainer.style.height = canvasRect.height + 'px';
     
     // Fit, recalculate and redraw radial panels after container is positioned
-    if (window.radialPanelSystem) {
+    // (circular layout only: the rectangular drawing does not show them, and fitting them
+    // measured the page on every redraw of a splitter drag)
+    if (window.radialPanelSystem && geometry === 'radial') {
       window.radialPanelSystem.fitToCanvas();
       window.radialPanelSystem.calculateRings();
       window.radialPanelSystem.draw();
@@ -3014,6 +3062,9 @@ function keepUpright(sel) {
   if (!n.hasAttribute('data-upright-base')) n.setAttribute('data-upright-base', n.getAttribute('transform') || '');
   const base = n.getAttribute('data-upright-base');
   n.setAttribute('transform', base);
+  // only the circular layout turns axes (the rectangular drawing is never rotated): there
+  // is nothing to undo, and asking where the button is would lay the page out on every redraw
+  if (geometry !== 'radial') return;
   const m = n.getCTM();
   if (!m) return;
   const ang = Math.atan2(m.b, m.a) * 180 / Math.PI;
@@ -3063,7 +3114,7 @@ function placeRadialAxisTitle(parent, key, r0, r1, openingDeg, numbersPx) {
     // centre: centred on the axis, or else moved out along it (the gap widens outwards)
     if (!titleMeasureCtx) titleMeasureCtx = document.createElement('canvas').getContext('2d');
     const svgEl = document.getElementById('svg');
-    titleMeasureCtx.font = '600 12px ' + ((svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif');
+    titleMeasureCtx.font = '600 12px ' + drawingFontFamily(svgEl);
     const w = titleMeasureCtx.measureText(title).width;
     // kept off the ring edges (the edges are dragged to resize the rings): the title
     // from 12 px after the inner edge, its - button (26 px beyond it) 10 px before the outer
@@ -3140,7 +3191,7 @@ function heatmapTitleReach(below) {
   if (!heatmaps || !heatmaps.size) return 0;
   if (!titleMeasureCtx) titleMeasureCtx = document.createElement('canvas').getContext('2d');
   const svgEl = document.getElementById('svg');
-  titleMeasureCtx.font = 'bold 12px ' + ((svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif');
+  titleMeasureCtx.font = 'bold 12px ' + drawingFontFamily(svgEl);
   let w = 0;
   heatmaps.forEach((h, id) => {
     const cols = h && h.data && h.data.columns;
@@ -3169,7 +3220,7 @@ function fitClearances(top, bottom, labelPx, below, leafSep) {
 function axisTickCount(scale) {
   if (!titleMeasureCtx) titleMeasureCtx = document.createElement('canvas').getContext('2d');
   const svgEl = document.getElementById('svg');
-  titleMeasureCtx.font = 'bold 12px ' + ((svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif');
+  titleMeasureCtx.font = 'bold 12px ' + drawingFontFamily(svgEl);
   for (let n = 4; n > 1; n--) {
     const ticks = scale.ticks(n), fmt = scale.tickFormat(n);
     if (ticks.length < 2) return n;
@@ -6378,6 +6429,7 @@ function drawTreeBody(){
   // Disable panning when in fit-height mode (spacing at minimum)
   allowPan = !fitHeightMode;
   svg.classed('no-pan', fitHeightMode);
+  updatePanCursorClass();
   // when fitting height, reserve top space for the metadata axis/title ("legend");
   // with the axes below the tree that space is reserved at the bottom instead
   const axesBelow = axesBelowWanted();
@@ -7529,10 +7581,14 @@ function drawTreeBody(){
     // 1. It's null (first time)
     // 2. Expansion value changed
     // 3. NOT during selection/search operations (no tree structure changes)
-    const shouldUpdateFontSize = (cachedOptimalFontSize === null) || expansionChanged;
+    // (worked out on every redraw - it is quick now - so that it follows the tip spacing:
+    // a later redraw of the same tree, e.g. after fitting the view, can space the tips
+    // differently, and a font kept from before then made the labels overlap)
+    const fontNow = calculateOptimalFontSize(leavesSel);
+    const shouldUpdateFontSize = (cachedOptimalFontSize === null) || expansionChanged || fontNow !== cachedOptimalFontSize;
 
     if (shouldUpdateFontSize ) {
-      cachedOptimalFontSize = calculateOptimalFontSize(leavesSel);
+      cachedOptimalFontSize = fontNow;
       labelFontPxOverride = cachedOptimalFontSize;
       cachedTruncationLength = applyTruncation(leavesSel, cachedOptimalFontSize);
       // Update previous expansion value
@@ -24697,11 +24753,17 @@ window.addEventListener('resize', scheduleResizeRedraw);
 // Builds the standalone SVG document used by every export (SVG, PNG, PDF).
 function buildExportSvgSource(){
   const svgEl = document.getElementById('svg');
-  // alignment layers: sharp everywhere in the export (on screen only the visible part is), then back
-  if (window.tmMsa && tmMsa.prepareExport) { try { tmMsa.prepareExport(); setTimeout(() => { try { tmMsa.afterExport(); } catch (e) {} }, 0); } catch (e) { console.warn(e); } }
   
   // Create a clone of the SVG for export
   const svgClone = svgEl.cloneNode(true);
+  // alignment layers: their boxes as vector shapes (the screen shows them as pictures)
+  if (window.tmMsa && tmMsa.vectorize) { try { tmMsa.vectorize(svgClone); } catch (e) { console.warn(e); } }
+  // pictures embedded in the drawing: also as xlink:href, the form Illustrator and older
+  // programs read (with only href they take the picture data for the name of a linked file)
+  svgClone.querySelectorAll('image').forEach(im => {
+    const h = im.getAttribute('href');
+    if (h && !im.hasAttributeNS('http://www.w3.org/1999/xlink', 'href')) im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', h);
+  });
   // the pinned header of the expanded view goes back to its normal place
   svgClone.querySelectorAll('.pro-sticky-header').forEach(n => n.removeAttribute('transform'));
   svgClone.querySelectorAll('.pro-sticky-header-bg').forEach(n => n.remove());

@@ -297,24 +297,30 @@
     return out;
   }
 
-  // the x layout of the columns in a width W: highlighted columns may have a width of their own
+  // the width wanted for a highlighted column: its own (set per group in the card), else
+  // the default for highlighted columns; 0 = the normal width
+  function wantedWidth(m, c) {
+    var own = m.colWidth && m.colWidth[c];
+    return own > 0 ? own : (m.hiWidth > 0 ? m.hiWidth : 0);
+  }
+  // the x layout of the columns in a width W: highlighted columns may have widths of their
+  // own (together at most 85% of W; scaled down to fit), the others share the rest
   function columnLayout(m, W) {
-    var L = m.L, sel = m.selected, nSel = 0;
-    sel.forEach(function (c) { if (c >= 1 && c <= L) nSel++; });
-    var hw = m.hiWidth > 0 && nSel ? m.hiWidth : 0;
-    if (hw) {
-      if (nSel === L) hw = W / L;
-      else if (nSel * hw > W * 0.85) hw = W * 0.85 / nSel;
-    }
-    var ow = hw ? (W - nSel * hw) / (L - nSel) : W / L;
+    var L = m.L, wide = new Float64Array(L + 1), nWide = 0, total = 0;
+    m.selected.forEach(function (c) { if (c >= 1 && c <= L) { var w = wantedWidth(m, c); if (w > 0) { wide[c] = w; nWide++; total += w; } } });
+    var f = 1;
+    if (nWide && nWide === L) f = W / total;
+    else if (total > W * 0.85) f = W * 0.85 / total;
+    var ow = nWide < L ? (W - total * f) / (L - nWide) : 0;
     var starts = new Float64Array(L + 1), runs = [];
     for (var c = 1; c <= L; c++) {
-      var wide = !!(hw && sel.has(c)), w = wide ? hw : ow;
+      var w = wide[c] ? wide[c] * f : ow, isWide = !!wide[c];
       starts[c] = starts[c - 1] + w;
       var last = runs[runs.length - 1];
-      if (last && last.wide === wide) last.c1 = c; else runs.push({ c0: c, c1: c, wide: !!wide, w: w });
+      // a run: neighbouring columns of the same width
+      if (last && last.wide === isWide && Math.abs(last.w - w) < 1e-9) last.c1 = c; else runs.push({ c0: c, c1: c, wide: isWide, w: w });
     }
-    return { starts: starts, runs: runs, ow: ow, hw: hw, W: W };
+    return { starts: starts, runs: runs, ow: ow, hw: nWide ? (total * f) / nWide : 0, W: W };
   }
   function columnAt(lay, x) {
     var s = lay.starts, lo = 1, hi = s.length - 1;
@@ -337,13 +343,35 @@
     scratch.width = 1; scratch.height = 1;
     return url;
   }
-  // per column: coloured (residue colours) or grey
-  function colouredColumns(m) {
-    var on = new Uint8Array(m.L + 1);
-    if (m.colorOn) on.fill(1);
-    else m.selected.forEach(function (c) { if (c >= 1 && c <= m.L) on[c] = 1; });
-    return on;
+  // Per column how its boxes are coloured: 0 grey, 1 residue colours, 2 residue colours
+  // only where the residue is the column's consensus (grey elsewhere). Highlighted
+  // columns always keep their residue colours.
+  // The consensus of a column (majority rule, as in AliView): the residue that the shown
+  // sequences have most often there, when its share (gaps counted) reaches the threshold.
+  var CONS_LEVELS = [[50, 'Majority (more than 50%)'], [70, 'At least 70%'], [90, 'At least 90%'], [100, 'Identical (100%)']];
+  function consensusOf(m, rows) {
+    var key = rows.join(',') + '|' + m.consLevel;
+    if (m._cons && m._cons.key === key) return m._cons;
+    var L = m.L, cons = new Uint8Array(L + 1), share = new Float32Array(L + 1), n = rows.length, cnt = new Int32Array(128);
+    for (var c = 1; c <= L; c++) {
+      cnt.fill(0);
+      for (var i = 0; i < n; i++) cnt[m.seqs[rows[i]].charCodeAt(c - 1)]++;
+      var best = 0, bc = 0, tie = false;
+      for (var ch = 42; ch < 91; ch++) { if (ch === 45) continue; if (cnt[ch] > best) { best = cnt[ch]; bc = ch; tie = false; } else if (cnt[ch] === best && best) tie = true; }
+      share[c] = n ? best / n : 0;
+      var lv = m.consLevel || 50, okShare = lv === 50 ? share[c] > 0.5 : share[c] >= lv / 100 - 1e-9;
+      if (best && !tie && okShare) cons[c] = bc;
+    }
+    m._cons = { key: key, cons: cons, share: share };
+    return m._cons;
   }
+  function colourPlan(m, rows) {
+    var mode = new Uint8Array(m.L + 1);
+    mode.fill(m.colorOn ? (m.consOn ? 2 : 1) : 0);
+    m.selected.forEach(function (c) { if (c >= 1 && c <= m.L) mode[c] = 1; });
+    return { mode: mode, cons: m.colorOn && m.consOn ? consensusOf(m, rows).cons : null };
+  }
+  function shownRows(rowOf) { var r = []; for (var i = 0; i < rowOf.length; i++) if (rowOf[i] >= 0) r.push(rowOf[i]); return r; }
 
   // -------------------------------------------------- drawing: rectangular
   // The rectangular picture: sharp tiles where the screen is - drawn at the screen's
@@ -376,7 +404,7 @@
       if (rect.x1 <= rect.x0 || rect.y1 <= rect.y0) rect = null;
     }
     // the sharp tiles (on a grid of TILE_PX picture pixels)
-    var tu = TILE_PX / sHi, keep = new Set();
+    var tu = TILE_PX / sHi, keep = new Set(), fresh = [];
     if (rect) {
       var i0 = Math.floor(rect.x0 / tu), i1 = Math.ceil(rect.x1 / tu), j0 = Math.floor(rect.y0 / tu), j1 = Math.ceil(rect.y1 / tu);
       rect = { x0: i0 * tu, y0: j0 * tu, x1: Math.min(job.lay.W, i1 * tu), y1: Math.min(job.H, j1 * tu) };
@@ -386,25 +414,45 @@
         if (job.hiTiles.has(key)) continue;
         var tile = { x0: i * tu, y0: j * tu, w: Math.min(tu, job.lay.W - i * tu), h: Math.min(tu, job.H - j * tu) };
         if (tile.w <= 0 || tile.h <= 0) continue;
-        job.hiTiles.set(key, drawPicture(job, job.hi, tile, sHi, null));
+        var el = drawPicture(job, job.hi, tile, sHi, null);
+        job.hiTiles.set(key, el); if (el) fresh.push(el);
       }
     }
-    job.hiTiles.forEach(function (el, key) { if (!keep.has(key)) { if (el) el.remove(); job.hiTiles.delete(key); } });
+    var old = [];
+    job.hiTiles.forEach(function (el, key) { if (!keep.has(key)) { if (el) old.push(el); job.hiTiles.delete(key); } });
     // the whole column at a lower resolution, with a hole for the sharp tiles
     var full = rect && rect.x0 <= 0 && rect.y0 <= 0 && rect.x1 >= job.lay.W && rect.y1 >= job.H;
     var loKey = full ? 'none' : sLo.toFixed(5) + '|' + (rect ? [rect.x0, rect.y0, rect.x1, rect.y1].map(function (q) { return q.toFixed(3); }).join(',') : '');
     if (loKey !== job.loKey) {
-      job.loTiles.forEach(function (el) { if (el) el.remove(); });
+      job.loTiles.forEach(function (el) { if (el) old.push(el); });
       job.loTiles = [];
       if (!full) {
         if (!job.lo) job.lo = job.pics.insert('g', ':first-child').attr('class', 'msa-far');
         var tl = TILE_PX / sLo;
         for (var ty = 0; ty < job.H; ty += tl) for (var tx = 0; tx < job.lay.W; tx += tl)
-          job.loTiles.push(drawPicture(job, job.lo, { x0: tx, y0: ty, w: Math.min(tl, job.lay.W - tx), h: Math.min(tl, job.H - ty) }, sLo, rect));
+        { var lt = drawPicture(job, job.lo, { x0: tx, y0: ty, w: Math.min(tl, job.lay.W - tx), h: Math.min(tl, job.H - ty) }, sLo, rect); job.loTiles.push(lt); if (lt) fresh.push(lt); }
       }
       job.loKey = loKey;
     }
     job.scale = sHi;
+    // what was shown before goes once the new pictures are loaded (no blank frame while
+    // the browser decodes them); at once for an export
+    if (job.under) { old.push(d3.select(job.under)); job.under = null; }
+    whenLoaded(fresh, forExport, function () { old.forEach(function (el) { el.remove(); }); });
+  }
+  // f() once every picture in `group` has loaded (or after a moment)
+  // f() once the new pictures (d3 selections) have loaded, or after a moment
+  function whenLoaded(fresh, now, f) {
+    if (now || !fresh.length) { f(); return; }
+    var left = fresh.length, done = false;
+    var finish = function () { if (!done) { done = true; f(); } };
+    fresh.forEach(function (sel) {
+      var im = sel.node();
+      if (im.__msaLoaded) { if (--left <= 0) finish(); return; }
+      var one = function () { if (--left <= 0) finish(); };
+      im.addEventListener('load', one, { once: true }); im.addEventListener('error', one, { once: true });
+    });
+    setTimeout(finish, 1500);
   }
   // one picture of the part `tile` (drawing units, from the column's top left) at s pixels
   // per unit; nothing is drawn inside `hole`
@@ -434,29 +482,139 @@
     // the hole in this picture's pixels (rounded outwards: the sharp tiles are drawn there)
     var hx0 = 0, hx1 = 0, hy0 = 0, hy1 = 0;
     if (hole) { hx0 = Math.floor((hole.x0 - tile.x0) * sx); hx1 = Math.ceil((hole.x1 - tile.x0) * sx); hy0 = Math.floor((hole.y0 - tile.y0) * sy); hy1 = Math.ceil((hole.y1 - tile.y0) * sy); }
-    var lut = lutOf(m).px, grey = lutOf(m).grey, coloured = colouredColumns(m);
+    var lut = lutOf(m).px, grey = lutOf(m).grey, plan = job.plan, mode = plan.mode, cons = plan.cons;
     var url = pictureURL(w, h, function (buf) {
       rows.forEach(function (rw) {
         var seq = m.seqs[rw[0]], y0 = rw[1], y1 = rw[2];
         for (var cc = cA; cc <= cB; cc++) {
           var ch = seq.charCodeAt(cc - 1);
           if (ch === 45 || xb[cc] <= xa[cc]) continue;
-          var col = coloured[cc] ? (lut[ch] || lut[88]) : grey, x0 = xa[cc], x1 = xb[cc];
+          var md = mode[cc], col = md === 1 || (md === 2 && cons[cc] === ch) ? (lut[ch] || lut[88]) : grey, x0 = xa[cc], x1 = xb[cc];
           for (var yy = y0; yy < y1; yy++) { var o = yy * w; for (var xx = x0; xx < x1; xx++) buf[o + xx] = col; }
         }
       });
       if (hole) for (var yy2 = Math.max(0, hy0); yy2 < Math.min(h, hy1); yy2++) buf.fill(0, yy2 * w + Math.max(0, hx0), yy2 * w + Math.max(0, Math.min(w, hx1)));
     });
-    return parent.append('image').attr('class', 'msa-img')
+    var im = parent.append('image').attr('class', 'msa-img');
+    im.node().addEventListener('load', function () { im.node().__msaLoaded = true; }, { once: true });
+    return im
       .attr('x', job.x0 + tile.x0).attr('y', job.top + tile.y0).attr('width', tile.w).attr('height', tile.h)
       .attr('preserveAspectRatio', 'none').attr('image-rendering', 'optimizeSpeed')
       .style('image-rendering', 'pixelated').attr('data-scale', +s.toFixed(4))
       .attr('href', url);
   }
-  // before an export: every tile at full resolution (within EXPORT_PX)
-  function prepareExport() {
-    msas.forEach(function (m) { var j = m._rect; if (j && j.pics.node() && j.pics.node().isConnected) renderRect(j, true); });
-    // (afterwards, the next zoom or pan goes back to sharp-on-screen only)
+  // ---------------------------------------------------------------- export
+  // An export gets the boxes as vector shapes (editable, sharp at any size; programs such as
+  // Illustrator also do not read pictures embedded the way the screen uses them): in each row,
+  // neighbouring boxes of one colour are one rectangle (circular layout: one ring segment),
+  // and all boxes of a colour are one path.
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function fmt2(v) { return Math.round(v * 100) / 100; }
+  function cellColour(m, plan, lut, ch, c) {
+    if (ch === 45) return null;
+    var md = plan.mode[c];
+    return md === 1 || (md === 2 && plan.cons[c] === ch) ? (lut.css[ch] || lut.css[88]) : lut.greyCss;
+  }
+  function pathsInto(doc, parent, byColour, cls) {
+    var g = doc.createElementNS(SVGNS, 'g');
+    g.setAttribute('class', cls);
+    byColour.forEach(function (d, colour) {
+      var p = doc.createElementNS(SVGNS, 'path');
+      p.setAttribute('fill', colour); p.setAttribute('stroke', 'none'); p.setAttribute('d', d);
+      g.appendChild(p);
+    });
+    parent.appendChild(g);
+    return g;
+  }
+  // Boxes of one colour, as merged blocks: in each row the neighbouring boxes of one colour
+  // are one run; a run continues into the next row when that row touches it and has the same
+  // run there (common in conserved columns). blocks(colour, a, b, t0, t1): a..b across the
+  // columns, t0..t1 along the rows (y in the rectangular layout, the angle in the circle).
+  function mergedBlocks(job, edges, rowSpan, emit) {
+    var m = job.m, L = m.L, lut = lutOf(m), plan = job.plan || colourPlan(m, shownRows(job.rowOf));
+    var open = new Map();   // colour|a|b -> [t0, t1] of a block still growing
+    var lastT1 = null;
+    job.leaves.forEach(function (d, i) {
+      var row = job.rowOf[i];
+      if (row < 0) return;
+      var span = rowSpan(d), seq = m.seqs[row], seen = new Set();
+      var touching = lastT1 !== null && Math.abs(span[0] - lastT1) < 1e-6;
+      if (!touching) { open.forEach(function (v, k) { emit(k, v); }); open.clear(); }
+      var runCol = null, runA = 0, runB = 0;
+      var close = function () {
+        if (runCol === null) return;
+        var key = runCol + '|' + runA + '|' + runB, o = open.get(key);
+        if (o) o[1] = span[1]; else open.set(key, [span[0], span[1]]);
+        seen.add(key);
+        runCol = null;
+      };
+      for (var c = 1; c <= L; c++) {
+        var ch = seq.charCodeAt(c - 1), col = cellColour(m, plan, lut, ch, c);
+        if (col !== null && col === runCol && !edges.gapped[c] && !edges.gapped[c - 1]) { runB = edges.b[c]; continue; }
+        close();
+        if (col !== null) { runCol = col; runA = edges.a[c]; runB = edges.b[c]; }
+      }
+      close();
+      // blocks that this row does not continue are finished
+      open.forEach(function (v, k) { if (!seen.has(k)) { emit(k, v); open.delete(k); } });
+      lastT1 = span[1];
+    });
+    open.forEach(function (v, k) { emit(k, v); });
+  }
+  function columnEdges(job, base, inset) {
+    var lay = job.lay, L = job.m.L, a = new Float64Array(L + 1), b = new Float64Array(L + 1), gapped = new Uint8Array(L + 1);
+    for (var c = 1; c <= L; c++) {
+      var x0 = base + lay.starts[c - 1], x1 = base + lay.starts[c], w = x1 - x0;
+      if (w >= 6) { x0 += w * inset; x1 -= w * inset; gapped[c] = 1; }
+      a[c] = fmt2(x0); b[c] = fmt2(x1);
+    }
+    return { a: a, b: b, gapped: gapped };
+  }
+  function rectVectors(doc, job) {
+    var byColour = new Map(), last = new Map();
+    mergedBlocks(job, columnEdges(job, job.x0, 0.06), function (d) { return [fmt2(d.x - job.boxH / 2), fmt2(d.x + job.boxH / 2)]; }, function (key, t) {
+      var k = key.split('|'), colour = k[0], a = +k[1], b = +k[2], y0 = t[0], h = fmt2(t[1] - t[0]);
+      // relative to where the previous block of this colour started (shorter)
+      var prev = last.get(colour), mv = prev ? 'm' + fmt2(a - prev[0]) + ' ' + fmt2(y0 - prev[1]) : 'M' + a + ' ' + y0;
+      last.set(colour, [a, y0]);
+      byColour.set(colour, (byColour.get(colour) || '') + mv + 'h' + fmt2(b - a) + 'v' + h + 'h' + fmt2(a - b) + 'z');
+    });
+    return byColour;
+  }
+  function ringVectors(job) {
+    var byColour = new Map(), half = job.span * job.fill / 2;
+    var pt = function (r, t) { return fmt2(r * Math.sin(t)) + ' ' + fmt2(-r * Math.cos(t)); };
+    mergedBlocks(job, columnEdges(job, job.r0, 0.1), function (d) { return [d.a - half, d.a + half]; }, function (key, t) {
+      var k = key.split('|'), colour = k[0], ra = +k[1], rb = +k[2], t0 = t[0], t1 = t[1], da = t1 - t0, d;
+      // a narrow segment: straight sides (the curve is far below a hundredth of a unit)
+      if (rb * (1 - Math.cos(da / 2)) < 0.01) d = 'M' + pt(ra, t0) + 'L' + pt(rb, t0) + ' ' + pt(rb, t1) + ' ' + pt(ra, t1) + 'Z';
+      else { var lg = da > Math.PI ? 1 : 0; d = 'M' + pt(ra, t0) + 'L' + pt(rb, t0) + 'A' + rb + ' ' + rb + ' 0 ' + lg + ' 1 ' + pt(rb, t1) + 'L' + pt(ra, t1) + 'A' + ra + ' ' + ra + ' 0 ' + lg + ' 0 ' + pt(ra, t0) + 'Z'; }
+      byColour.set(colour, (byColour.get(colour) || '') + d);
+    });
+    return byColour;
+  }
+  // in a copy of the drawing (an export): the pictures of every alignment become vector shapes
+  function vectorize(clone) {
+    var doc = clone.ownerDocument || document, done = 0;
+    msas.forEach(function (m) {
+      var rj = m._rect;
+      if (rj && rj.pics && rj.pics.node() && rj.pics.node().isConnected) {
+        clone.querySelectorAll('.msa-layer[data-msa-id="' + m.id + '"] .msa-pictures').forEach(function (pics) {
+          var parent = pics.parentNode, g = pathsInto(doc, parent, rectVectors(doc, rj), 'msa-boxes');
+          parent.insertBefore(g, pics); pics.remove(); done++;
+        });
+      }
+      var jr = m._ring;
+      if (jr && jr.img && jr.img.node() && jr.img.node().isConnected) {
+        clone.querySelectorAll('.radial-msa[data-msa-id="' + m.id + '"] image.msa-ring-img').forEach(function (im) {
+          var parent = im.parentNode, g = pathsInto(doc, parent, ringVectors(jr), 'msa-boxes');
+          parent.insertBefore(g, im); im.remove(); done++;
+        });
+      }
+    });
+    // (nothing of the screen pictures is left behind)
+    clone.querySelectorAll('image.msa-img, image.msa-ring-img, .msa-prev').forEach(function (n) { n.remove(); });
+    return done;
   }
 
   function drawRect(id, o) {
@@ -498,10 +656,31 @@
       ri = rj2;
     }
     // the boxes: pictures drawn at the screen's resolution (drawn again after zooming)
-    var pics = layer.append('g').attr('class', 'msa-pictures');
-    var job = { kind: 'rect', m: m, pics: pics, x0: x0, top: top, H: bottom - top, lay: lay, leaves: leaves, rowOf: rowOf, boxH: boxH, scale: 0 };
-    renderRect(job);
-    m._rect = job;
+    var rowsKey = rowOf.join(','), prev = m._rect, prevNode = prev && prev.pics && prev.pics.node();
+    var sameRows = !!(prev && prevNode && prev.ver === m._ver && prev.rowsKey === rowsKey && Math.abs(prev.top - top) < 1e-6 && Math.abs(prev.H - (bottom - top)) < 1e-6);
+    // maps the earlier pictures onto this column (the same rows; another width / place)
+    var stretch = function () { return 'translate(' + x0 + ',0) scale(' + (lay.W / prev.lay.W) + ',1) translate(' + (-prev.x0) + ',0)'; };
+    var job;
+    if (sameRows && typeof panelDragPreview !== 'undefined' && panelDragPreview) {
+      // while a column is resized: the pictures already shown, stretched (no new pictures
+      // to make and decode on every move; the real ones are drawn when the drag ends)
+      layer.node().appendChild(prevNode);
+      prevNode.setAttribute('transform', stretch());
+      job = prev;
+    } else {
+      var pics = layer.append('g').attr('class', 'msa-pictures');
+      job = { kind: 'rect', m: m, pics: pics, x0: x0, top: top, H: bottom - top, lay: lay, leaves: leaves, rowOf: rowOf, rowsKey: rowsKey, ver: m._ver, boxH: boxH, scale: 0,
+        plan: colourPlan(m, shownRows(rowOf)) };
+      // the earlier pictures stay underneath until the new ones are shown (no blank frame)
+      if (sameRows && !prevNode.isConnected) {
+        prevNode.setAttribute('transform', stretch());
+        prevNode.classList.add('msa-prev');
+        layer.node().insertBefore(prevNode, pics.node());
+        job.under = prevNode;
+      }
+      renderRect(job);
+      m._rect = job;
+    }
     // letters in cells that are large enough (highlighted columns first)
     var fs = Math.min(boxH * 0.78, 16);
     var letterCols = [];
@@ -578,6 +757,10 @@
     var ch = m.seqs[row].charAt(c - 1), u = positionsOf(m, row)[c];
     html += '<br>Alignment column ' + c + ': ' + esc(residueName(m, ch));
     if (ch !== '-') html += '<br>Sequence position ' + u;
+    if (m.colorOn && m.consOn && m._cons) {
+      var cc = m._cons.cons[c], sh = m._cons.share[c];
+      html += '<br>Consensus: ' + (cc ? esc(String.fromCharCode(cc)) + ' (' + Math.round(sh * 100) + '%)' + (ch === String.fromCharCode(cc) ? '' : ' – this residue differs') : 'none (' + Math.round(sh * 100) + '% at most)');
+    }
     var rr = refRow(m);
     if (rr >= 0 && rr !== row) {
       var ur = positionsOf(m, rr)[c];
@@ -615,7 +798,7 @@
   function textWidth(s, font) {
     if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
     var svgEl = document.getElementById('svg');
-    measureCtx.font = font + ' ' + ((svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif');
+    measureCtx.font = font + ' ' + (typeof drawingFontFamily === 'function' ? drawingFontFamily(svgEl) : ((svgEl && getComputedStyle(svgEl).fontFamily) || 'sans-serif'));
     return measureCtx.measureText(s).width;
   }
   function drawAxis(layer, m, lay, x0, axisY, sel) {
@@ -766,7 +949,7 @@
       }
       colAt[q] = c;
     }
-    var coloured = colouredColumns(m), lut = lutOf(m).px, greyPx = lutOf(m).grey;
+    var plan = colourPlan(m, shownRows(job.rowOf)), mode = plan.mode, cons = plan.cons, lut = lutOf(m).px, greyPx = lutOf(m).grey;
     var url = pictureURL(S, S, function (buf) {
       var ri2 = r0 * r0 * sc * sc, ro2 = r1 * r1 * sc * sc, ctr = S / 2;
       for (var py = 0; py < S; py++) {
@@ -783,11 +966,20 @@
           if (row < 0) continue;
           var ch = m.seqs[row].charCodeAt(col - 1);
           if (ch === 45) continue;
-          buf[py * S + px] = coloured[col] ? (lut[ch] || lut[88]) : greyPx;
+          var md = mode[col];
+          buf[py * S + px] = md === 1 || (md === 2 && cons[col] === ch) ? (lut[ch] || lut[88]) : greyPx;
         }
       }
     });
+    var oldImg = job.img.attr('href') ? job.img : null;
+    if (oldImg) {
+      // the new picture next to the old one; the old goes once the new one is shown
+      var ni = d3.select(oldImg.node().cloneNode(false));
+      oldImg.node().parentNode.insertBefore(ni.node(), oldImg.node().nextSibling);
+      job.img = ni;
+    }
     job.img.attr('href', url).attr('data-res', +res.toFixed(3));
+    if (oldImg) whenLoaded([job.img], false, function () { oldImg.remove(); });
     job.res = res;
   }
 
@@ -811,7 +1003,7 @@
   if (typeof zoom !== 'undefined' && zoom && zoom.on) zoom.on('end.msa', afterZoom);
 
   // ------------------------------------------------------------- the card
-  function state(m) { return { c: m.colorOn, r: m.ref, m: m.mode, s: selectedSorted(m), w: m.hiWidth, sc: m.scheme, cu: m.custom || {} }; }
+  function state(m) { return { c: m.colorOn, r: m.ref, m: m.mode, s: selectedSorted(m), w: m.hiWidth, sc: m.scheme, cu: m.custom || {}, cs: !!m.consOn, ct: m.consLevel || 50, cw: m.colWidth || {} }; }
   function saveState(m) { var el = $('msaState' + m.id); if (el) el.value = JSON.stringify(state(m)); }
   function $(id) { return document.getElementById(id); }
 
@@ -834,6 +1026,9 @@
           '<div class="pro-row"><label for="msaScheme' + id + '">Colour scheme</label><select id="msaScheme' + id + '" class="pro-select msa-scheme">' +
             (SCHEMES[m.type] || SCHEMES.protein).map(function (x) { return '<option value="' + x.key + '"' + (x.key === schemeOf(m).key ? ' selected' : '') + '>' + escapeHTML(x.label) + '</option>'; }).join('') +
           '</select></div>' +
+          '<label class="pro-row" title="Residues that are their column\'s consensus keep their colour; the others are grey (like AliView\'s majority-rule consensus highlighting)"><span>Highlight consensus</span><input type="checkbox" id="msaCons' + id + '" class="pro-switch"' + (m.consOn ? ' checked' : '') + '></label>' +
+          '<div class="pro-row pro-sub msa-cons-row" id="msaConsRow' + id + '"><label for="msaConsLevel' + id + '">Consensus</label><select id="msaConsLevel' + id + '" class="pro-select">' +
+            CONS_LEVELS.map(function (x) { return '<option value="' + x[0] + '"' + ((m.consLevel || 50) === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
           '<div class="pro-card-head msa-colours-head"><span class="pro-section-title">Colours</span><button type="button" class="msa-btn" id="msaColReset' + id + '" title="Back to the colours of the scheme">Reset</button></div>' +
           '<div class="pro-list msa-colours" id="msaColours' + id + '"></div>' +
         '</div>' +
@@ -864,8 +1059,8 @@
           '<div class="pro-card-head"><span class="pro-section-title">Highlighted columns</span>' +
             '<button type="button" class="msa-btn" id="msaClear' + id + '" title="Remove all highlights">Clear</button></div>' +
           '<div class="msa-hi" id="msaHi' + id + '"></div>' +
-          '<div class="pro-row"><span>Column width</span><span class="pro-num-wrap"><input type="number" id="msaHiWidth' + id + '" min="0" max="400" step="1" value="' + (m.hiWidth || 0) + '" class="pro-num"><span class="pro-unit">px</span></span></div>' +
-          '<p class="pro-hint msa-hint">Width of each highlighted column; 0 keeps the normal width.</p>' +
+          '<div class="pro-row"><span>Default width</span><span class="pro-num-wrap"><input type="number" id="msaHiWidth' + id + '" min="0" max="400" step="1" value="' + (m.hiWidth || 0) + '" class="pro-num"><span class="pro-unit">px</span></span></div>' +
+          '<p class="pro-hint msa-hint">Width of each highlighted column. Each group above can have its own (px box; empty = this default); 0 keeps the normal width.</p>' +
         '</div>' +
       '</div>';
   }
@@ -1021,11 +1216,16 @@
         for (var c = r[0]; c <= r[1]; c++) if (p[c]) { if (!ua) ua = p[c]; ub = p[c]; }
         sub = ua ? (ua === ub ? ' · pos ' + ua : ' · pos ' + ua + '–' + ub) : ' · gap';
       }
-      return '<span class="msa-chip" data-c0="' + r[0] + '" data-c1="' + r[1] + '" title="Alignment column' + (r[0] === r[1] ? ' ' : 's ') + lab + (p ? ' (' + esc(m.ids[rr]) + sub.replace(' · ', ' ') + ')' : '') + '">' +
-        'col ' + lab + '<span class="msa-muted">' + sub + '</span><button type="button" class="msa-chip-x" aria-label="Remove this highlight" title="Remove">×</button></span>';
+      // the group's own width (empty: the default; "mixed" when its columns differ)
+      var ws = new Set(); for (var c2 = r[0]; c2 <= r[1]; c2++) ws.add((m.colWidth && m.colWidth[c2]) || 0);
+      var wv = ws.size === 1 ? Array.from(ws)[0] : null;
+      return '<div class="msa-chip" data-c0="' + r[0] + '" data-c1="' + r[1] + '" title="Alignment column' + (r[0] === r[1] ? ' ' : 's ') + lab + (p ? ' (' + esc(m.ids[rr]) + sub.replace(' · ', ' ') + ')' : '') + '">' +
+        '<span class="msa-chip-label">col ' + lab + '<span class="msa-muted">' + sub + '</span></span>' +
+        '<span class="pro-num-wrap msa-chip-wrap"><input type="number" class="pro-num msa-chip-w" min="0" max="400" step="1" value="' + (wv ? wv : '') + '" placeholder="' + (wv === null ? 'mixed' : (m.hiWidth > 0 ? m.hiWidth : 'auto')) + '" aria-label="Width of columns ' + lab + ' (px)" title="Width of each of these columns, in px (empty: the default width below)"><span class="pro-unit">px</span></span>' +
+        '<button type="button" class="msa-chip-x" aria-label="Remove this highlight" title="Remove">×</button></div>';
     });
     var more = runsOf(sel).length > 60 ? '<span class="msa-muted">… and more</span>' : '';
-    el.innerHTML = '<div class="msa-hi-count">' + sel.length + ' column' + (sel.length === 1 ? '' : 's') + '</div><div class="msa-chips">' + chips.join('') + more + '</div>';
+    el.innerHTML = '<div class="msa-hi-count">' + sel.length + ' column' + (sel.length === 1 ? '' : 's') + ' in ' + runsOf(sel).length + ' group' + (runsOf(sel).length === 1 ? '' : 's') + '</div><div class="msa-chips">' + chips.join('') + more + '</div>';
   }
   function refreshColours(m) {
     var box = $('msaColours' + m.id), reset = $('msaColReset' + m.id);
@@ -1042,6 +1242,7 @@
 
   // a change of the layer: card, state, drawing
   function changed(m, what) {
+    m._ver = (m._ver || 0) + 1;
     saveState(m);
     if (what === 'sel') { syncListSelection(m); refreshHi(m); }
     else if (what === 'colour') { refreshList(m); var rs = $('msaColReset' + m.id); if (rs) rs.disabled = !Object.keys((m.custom && m.custom[schemeOf(m).key]) || {}).length; }
@@ -1072,6 +1273,11 @@
       b.setAttribute('aria-expanded', String(open)); if (ul) ul.hidden = !open;
     });
     $('msaColor' + id).addEventListener('change', function (ev) { m.colorOn = ev.target.checked; changed(m, 'all'); });
+    var consUi = function () { var on = m.colorOn; $('msaCons' + id).disabled = !on; $('msaConsRow' + id).hidden = !(on && m.consOn); };
+    consUi();
+    $('msaCons' + id).addEventListener('change', function (ev) { m.consOn = ev.target.checked; consUi(); changed(m, 'colour'); setStatus(m.consOn ? 'Consensus residues highlighted' : 'Consensus highlighting off'); });
+    $('msaConsLevel' + id).addEventListener('change', function (ev) { m.consLevel = +ev.target.value; changed(m, 'colour'); });
+    $('msaColor' + id).addEventListener('change', consUi);
     $('msaScheme' + id).addEventListener('change', function (ev) { m.scheme = ev.target.value; changed(m, 'all'); setStatus('Colour scheme: ' + schemeOf(m).label); });
     $('msaColours' + id).addEventListener('input', function (ev) {
       var t = ev.target; if (!t.classList.contains('msa-swatch')) return;
@@ -1092,6 +1298,9 @@
       m.colorOn = st.c !== false; m.ref = st.r || null; m.mode = st.m === 'gapped' ? 'gapped' : 'ungapped';
       m.selected = new Set((st.s || []).filter(function (c) { return c >= 1 && c <= m.L; })); m.hiWidth = Math.max(0, +st.w || 0);
       m.scheme = schemeOf({ type: m.type, scheme: st.sc }).key; m.custom = st.cu && typeof st.cu === 'object' ? st.cu : {};
+      m.consOn = !!st.cs; m.consLevel = CONS_LEVELS.some(function (x) { return x[0] === +st.ct; }) ? +st.ct : 50;
+      m.colWidth = {}; if (st.cw && typeof st.cw === 'object') Object.keys(st.cw).forEach(function (k) { var v = +st.cw[k]; if (v > 0 && +k >= 1 && +k <= m.L) m.colWidth[+k] = v; });
+      if ($('msaCons' + id)) { $('msaCons' + id).checked = m.consOn; $('msaConsLevel' + id).value = String(m.consLevel); consUi(); }
       if ($('msaScheme' + id)) $('msaScheme' + id).value = m.scheme;
       $('msaColor' + id).checked = m.colorOn;
       $(m.mode === 'gapped' ? 'msaModeG' + id : 'msaModeU' + id).checked = true;
@@ -1110,11 +1319,20 @@
     wIn.addEventListener('change', applyWidth);
     wIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); applyWidth(); } });
     $('msaClear' + id).addEventListener('click', function () { if (!m.selected.size) return; m.selected.clear(); changed(m, 'sel'); setStatus('Highlights removed'); });
+    var groupWidth = function (inp) {
+      var chip = inp.closest('.msa-chip'), v = Math.max(0, Math.min(400, Math.round(+inp.value || 0)));
+      if (!m.colWidth) m.colWidth = {};
+      for (var c = +chip.getAttribute('data-c0'); c <= +chip.getAttribute('data-c1'); c++) { if (v > 0) m.colWidth[c] = v; else delete m.colWidth[c]; }
+      changed(m, 'width');
+      setStatus(v > 0 ? 'Columns ' + chip.getAttribute('data-c0') + (chip.getAttribute('data-c1') !== chip.getAttribute('data-c0') ? '–' + chip.getAttribute('data-c1') : '') + ': ' + v + ' px wide' : 'Columns back to the default width');
+    };
+    $('msaHi' + id).addEventListener('change', function (e) { if (e.target.classList.contains('msa-chip-w')) groupWidth(e.target); });
+    $('msaHi' + id).addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.classList.contains('msa-chip-w')) { e.preventDefault(); e.target.blur(); } });
     $('msaHi' + id).addEventListener('click', function (e) {
       var x = e.target.closest('.msa-chip-x');
       if (!x) return;
       var chip = x.closest('.msa-chip'), cols = [];
-      for (var c = +chip.getAttribute('data-c0'); c <= +chip.getAttribute('data-c1'); c++) cols.push(c);
+      for (var c = +chip.getAttribute('data-c0'); c <= +chip.getAttribute('data-c1'); c++) { cols.push(c); if (m.colWidth) delete m.colWidth[c]; }
       toggleColumns(m, cols, false);
     });
     // filter
@@ -1240,7 +1458,7 @@
     }
     var id = msas.size + 1;
     var m = { id: id, name: name, format: a.format, ids: a.ids, seqs: a.seqs, byAcc: a.byAcc, L: a.L, type: a.type, skipped: a.skipped,
-      colorOn: true, ref: null, mode: 'ungapped', filter: '', selected: new Set(), hiWidth: 0, scheme: null, custom: {} };
+      colorOn: true, ref: null, mode: 'ungapped', filter: '', selected: new Set(), hiWidth: 0, scheme: null, custom: {}, consOn: false, consLevel: 50, colWidth: {}, _ver: 0 };
     m.scheme = schemeOf(m).key;
     indexNames(m);
     msas.set(id, m);
@@ -1319,6 +1537,7 @@
       if (shown.length > 1) html += '<div class="legend-subtitle">Alignment ' + m.id + '</div>';
       if (coloured) html += groups.filter(function (g) { return !g.grey; }).map(function (g) { return item(g.label, g.color); }).join('');
       if (!m.colorOn) html += item(m.selected.size ? 'Grey (columns not highlighted)' : 'Residues (colours off)', lutOf(m).greyCss);
+      else if (m.consOn) html += item('Not the consensus (' + CONS_LEVELS.filter(function (x) { return x[0] === (m.consLevel || 50); })[0][1].toLowerCase() + ')', lutOf(m).greyCss);
     });
     box.innerHTML = html;
     if (title) title.style.display = html ? 'block' : 'none';
@@ -1334,8 +1553,7 @@
     return { format: read.format, rows: read.recs.filter(function (r) { return !r.header; }).map(function (r) { return [r.id, r.raw]; }) };
   }
   window.tmMsa = { drawRect: drawRect, drawRadial: drawRadial, reorderFromCards: reorderFromCards, fillLegend: fillLegend,
-    parse: parseAlignment, records: records, prepareExport: prepareExport,
-    afterExport: function () { msas.forEach(function (m) { var j = m._rect; if (j && j.pics.node() && j.pics.node().isConnected) renderRect(j); }); }, layout: columnLayout, rowForName: rowForName, columnOfPosition: columnOfPosition, positionsOf: positionsOf,
+    parse: parseAlignment, records: records, vectorize: vectorize, layout: columnLayout, rowForName: rowForName, columnOfPosition: columnOfPosition, positionsOf: positionsOf,
     get: function (id) { return msas.get(id); },
     // where a cell is on screen (client coordinates; for tests)
     cellScreen: function (id, name, c) {
