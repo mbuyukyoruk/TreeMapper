@@ -22,7 +22,8 @@
     { type: 'heatmap', loader: 'handleHeatmapFile', container: 'heatmapContainer', map: function () { return heatmaps; } },
     { type: 'highlight', loader: 'handleHighlightFile', container: 'highlightContainer', map: function () { return highlights; } },
     { type: 'clade', loader: 'handleCladeFile', container: 'cladeContainer', map: function () { return clades; } },
-    { type: 'chart', loader: 'handleChartFile', container: 'chartContainer', map: function () { return charts; } }
+    { type: 'chart', loader: 'handleChartFile', container: 'chartContainer', map: function () { return charts; } },
+    { type: 'msa', loader: 'handleMsaFile', container: 'msaContainer', map: function () { return msas; } }
   ];
   var SETTING_IDS = ['tipSpacing', 'rotationDeg', 'openAngleDeg', 'hideLabels', 'labelGuides', 'orderEnable', 'orderDir',
     'transformEnable', 'layoutMode', 'edgeStyle', 'uniqueBranchTips', 'hideInternal', 'internalNodeShape', 'internalNodeSize',
@@ -47,19 +48,22 @@
   var treeSource = null;                  // { name, text }
   var cardSource = new WeakMap();          // card element -> { name, text }
   var pending = {};                        // type -> [{ name, text }] waiting for their card
-  function wrapLoader(name, onText) {
+  function wrapLoader(name, onText, after) {
     var orig = window[name];
     if (typeof orig !== 'function') return;
     window[name] = async function (f) {
-      var text = null;
+      var text = null, src = null;
       try { text = await readFile(f); } catch (e) {}
-      if (text !== null) onText({ name: (f && f.name) || 'file', text: text });
-      return orig.apply(this, arguments);
+      if (text !== null) { src = { name: (f && f.name) || 'file', text: text }; onText(src); }
+      try { return await orig.apply(this, arguments); }
+      finally { if (src && after) { await Promise.resolve(); after(src); } }
     };
   }
   wrapLoader('handleTreeFile', function (src) { treeSource = src; });
   LAYERS.forEach(function (L) {
-    wrapLoader(L.loader, function (src) { (pending[L.type] = pending[L.type] || []).push(src); });
+    // a file that made no card (not loaded, cancelled) must not be given to the next card
+    wrapLoader(L.loader, function (src) { (pending[L.type] = pending[L.type] || []).push(src); },
+      function (src) { var q = pending[L.type], i = q ? q.indexOf(src) : -1; if (i >= 0) q.splice(i, 1); });
     var box = $(L.container);
     if (!box) return;
     new MutationObserver(function (muts) {
@@ -513,8 +517,8 @@
   // a highlight or clade layer (only one of each) is loaded again from its old table.
   // Returns { ok: true, card } or { ok: false, error }.
   var VALIDATE = { dataframe: 'validateDataframeFormat', highlight: 'validateHighlightFormat', clade: 'validateCladeFormat', chart: 'validateChartFormat' };
-  var DELETE = { dataframe: 'deleteDataframeCard', heatmap: 'deleteHeatmapCard', chart: 'deleteChartCard' };
-  var REORDER = { dataframe: 'updateDataframeOrder', heatmap: 'updateHeatmapOrder', chart: 'updateChartOrder' };
+  var DELETE = { dataframe: 'deleteDataframeCard', heatmap: 'deleteHeatmapCard', chart: 'deleteChartCard', msa: 'deleteMsaCard' };
+  var REORDER = { dataframe: 'updateDataframeOrder', heatmap: 'updateHeatmapOrder', chart: 'updateChartOrder', msa: 'updateMsaOrder' };
   function layerOfCard(card) {
     for (var i = 0; i < LAYERS.length; i++) { var box = $(LAYERS[i].container); if (box && box.contains(card)) return LAYERS[i]; }
     return null;

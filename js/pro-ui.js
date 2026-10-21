@@ -28,7 +28,7 @@
     t.addEventListener('click', function () { showTab(t.getAttribute('data-pro-tab')); });
   });
   // a newly added data card shows up in the Layers tab
-  ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer', 'textContainer'].forEach(function (id) {
+  ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer', 'msaContainer', 'textContainer'].forEach(function (id) {
     var c = $(id);
     if (!c) return;
     new MutationObserver(function (muts) {
@@ -122,7 +122,7 @@
   // layers exactly as dragging the card does). Clicking a tile or an icon opens the
   // panel again. The canvas gets the width back (redrawn by the width watcher below).
   var leftToggle = $('proLeftToggle');
-  var CARD_BOXES = ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer', 'textContainer'];
+  var CARD_BOXES = ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer', 'msaContainer', 'textContainer'];
   function leftMinimized() { return body.classList.contains('pro-left-minimized'); }
   function railLabels() {
     var mini = leftMinimized();
@@ -1122,4 +1122,19 @@
   updateDoc();
   updateZoom();
   refreshAnno();
+
+  // ------------------------------------------------- overlay scrollbars
+  // Scrollbars that float over the content (macOS) cover the right edge of the card
+  // lists, where the colour boxes are: a click on a box then lands on the scrollbar.
+  // With such scrollbars the lists keep their right edge free (pro.css).
+  (function () {
+    var probe = document.createElement('div');
+    probe.className = 'pro-list';
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;width:100px;height:50px;max-height:50px;overflow-y:scroll;visibility:hidden';
+    probe.innerHTML = '<div style="height:200px"></div>';
+    document.body.appendChild(probe);
+    var overlay = probe.offsetWidth - probe.clientWidth === 0;
+    probe.remove();
+    document.documentElement.classList.toggle('pro-overlay-scrollbars', overlay);
+  })();
 })();

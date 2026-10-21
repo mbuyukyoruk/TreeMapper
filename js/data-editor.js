@@ -10,7 +10,8 @@
     { box: 'heatmapContainer', type: 'heatmap', label: 'Heatmap' },
     { box: 'highlightContainer', type: 'highlight', label: 'Highlight' },
     { box: 'cladeContainer', type: 'clade', label: 'Clade groups' },
-    { box: 'chartContainer', type: 'chart', label: 'Chart' }
+    { box: 'chartContainer', type: 'chart', label: 'Chart' },
+    { box: 'msaContainer', type: 'msa', label: 'Alignment' }
   ];
   var PAGE = 500;   // rows shown at a time (large tables are paged)
   function $(id) { return document.getElementById(id); }
@@ -34,7 +35,7 @@
     var box = $(T.box); if (!box) return;
     Array.prototype.forEach.call(box.children, function (c) { addPencil(c, T); });
     new MutationObserver(function () { Array.prototype.forEach.call(box.children, function (c) { addPencil(c, T); }); })
-      .observe(box, { childList: true });
+      .observe(box, { childList: true, subtree: T.type === 'msa' });
   });
 
   // ------------------------------------------------------------ table model
@@ -59,6 +60,10 @@
     return { delim: delim, header: header, rows: rows, width: extra, comments: keep.filter(function (k) { return k[0] === 0 || true; }), trailingNewline: trailingNewline, firstDataLine: lines.indexOf(data[0]) };
   }
   function build(m) {
+    if (m.msa) {
+      if (m.msa.format === 'table') return 'accession\tsequence\n' + m.rows.map(function (r) { return (r[0] || '') + '\t' + (r[1] || ''); }).join('\n') + '\n';
+      return m.rows.map(function (r) { return '>' + (r[0] || '') + '\n' + (r[1] || ''); }).join('\n') + '\n';
+    }
     var out = [];
     // comment / blank lines that came before the header stay before it; the others after it
     m.comments.forEach(function (k) { if (k[0] < m.firstDataLine) out.push(k[1]); });
@@ -85,6 +90,7 @@
     return rules;
   }
   function validate(T, m) {
+    if (T.type === 'msa') return validateMsa(m);
     var problems = [], rules = columnRules(T, m.header);
     for (var r = 0; r < m.rows.length && problems.length < 50; r++) {
       for (var c = 0; c < m.rows[r].length; c++) {
@@ -95,6 +101,26 @@
         else if (c < rules.length && rules[c] === 'number-or-empty' && v.trim() !== '' && !isFinite(+v)) problems.push({ r: r, c: c, msg: '"' + v + '" is not a number' });
       }
     }
+    if (!m.rows.length) problems.push({ r: -1, c: -1, msg: 'the table has no rows' });
+    return problems;
+  }
+
+  // an alignment: every changed or added row needs an accession and an aligned sequence of the
+  // alignment's length (rows left as they were may stay as they are: the loader skips bad ones)
+  function validateMsa(m) {
+    var problems = [], touched = new Set();
+    state.changed.forEach(function (k) { touched.add(+k.split(':')[0]); });
+    state.original.forEach(function (o, i) { if (o === null) touched.add(i); });
+    var seen = new Map();
+    m.rows.forEach(function (r, i) { var a = String(r[0] || '').trim(); if (a) seen.set(a, (seen.get(a) || 0) + 1); });
+    touched.forEach(function (i) {
+      if (problems.length >= 50 || i >= m.rows.length) return;
+      var r = m.rows[i], acc = String(r[0] || '').trim(), sq = String(r[1] || '').replace(/\s+/g, '');
+      if (!acc) problems.push({ r: i, c: 0, msg: 'empty accession' });
+      else if (seen.get(acc) > 1) problems.push({ r: i, c: 0, msg: acc + ' is in the table more than once' });
+      if (!/^[A-Za-z*.~?\-]+$/.test(sq)) problems.push({ r: i, c: 1, msg: sq ? 'only letters, "-" (gap), "." and "*" can be in a sequence' : 'empty sequence' });
+      else if (m.msa.L && sq.length !== m.msa.L) problems.push({ r: i, c: 1, msg: 'length ' + sq.length + ', the alignment has ' + m.msa.L + ' columns' });
+    });
     if (!m.rows.length) problems.push({ r: -1, c: -1, msg: 'the table has no rows' });
     return problems;
   }
@@ -118,7 +144,7 @@
         '<div class="pro-de-pager" id="proDePager"></div>' +
         '<div class="pro-de-msg" id="proDeMsg" role="alert"></div>' +
         '<div class="pro-de-foot">' +
-          '<span class="pro-de-hint">Headers stay as they are. Paste a block from Excel into a cell to fill several cells.</span>' +
+          '<span class="pro-de-hint" id="proDeHint">Headers stay as they are. Paste a block from Excel into a cell to fill several cells.</span>' +
           '<button type="button" class="pro-btn" id="proDeCancel">Cancel</button>' +
           '<button type="button" class="pro-btn pro-btn-primary" id="proDeApply">Apply</button>' +
         '</div>' +
@@ -147,13 +173,23 @@
   function open(card, T) {
     var src = window.tmSession && tmSession.layerSource ? tmSession.layerSource(card) : null;
     if (!src || typeof src.text !== 'string') { alert('The data of this layer is not available for editing.'); return; }
-    var m = parse(src.text);
+    var m;
+    if (T.type === 'msa') {
+      // an alignment: one row per sequence (whatever the file format), the skipped rows too
+      var rec = window.tmMsa ? tmMsa.records(src.text) : null;
+      var idm = /(\d+)$/.exec(card.id || ''), layer = idm && window.tmMsa ? tmMsa.get(+idm[1]) : null;
+      if (!rec || !rec.rows.length) { alert('This alignment has no rows to edit.'); return; }
+      m = { delim: '\t', header: ['accession', 'sequence'], rows: rec.rows.map(function (r) { return [r[0], r[1]]; }), width: 2, comments: [], trailingNewline: true, firstDataLine: 0,
+        msa: { format: rec.format, L: layer ? layer.L : 0 } };
+    } else m = parse(src.text);
     if (!m) { alert('This layer has no table to edit.'); return; }
     ensureDialog();
     var t = card.querySelector('.pro-card-title');
     state = { card: card, T: T, model: m, original: m.rows.map(function (r) { return r.slice(); }), changed: new Set(), page: 0, selected: new Set(), filterRows: null, structural: false };
     $('proDeTitle').textContent = 'Edit data — ' + (t ? t.textContent.trim() : T.label);
     $('proDeFile').textContent = src.name || '';
+    $('proDeHint').textContent = m.msa ? 'One row per sequence; rows the alignment skipped are listed too, so they can be fixed. ' + (m.msa.format === 'table' ? 'Saved as a table.' : 'Saved as FASTA.')
+      : 'Headers stay as they are. Paste a block from Excel into a cell to fill several cells.';
     $('proDeFilter').value = '';
     $('proDeMsg').textContent = '';
     $('proDeDelete').disabled = true;
@@ -180,7 +216,8 @@
       h.push('<tr data-r="' + i + '"><th class="pro-de-num" scope="row"><label><input type="checkbox" class="pro-de-rowsel" data-r="' + i + '"' + (state.selected.has(i) ? ' checked' : '') + '>' + (i + 1) + '</label></th>');
       for (var c2 = 0; c2 < width; c2++) {
         var key = i + ':' + c2, v = c2 < r.length ? r[c2] : '';
-        h.push('<td contenteditable="plaintext-only" spellcheck="false" data-r="' + i + '" data-c="' + c2 + '"' + (state.changed.has(key) ? ' class="is-changed"' : '') + '>' + esc(v) + '</td>');
+        var cls = (state.changed.has(key) ? 'is-changed' : '') + (m.msa && c2 === 1 ? ' is-seq' : '');
+        h.push('<td contenteditable="plaintext-only" spellcheck="false" data-r="' + i + '" data-c="' + c2 + '"' + (cls.trim() ? ' class="' + cls.trim() + '"' : '') + '>' + esc(v) + '</td>');
       }
       h.push('</tr>');
     }
