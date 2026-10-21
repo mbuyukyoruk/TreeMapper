@@ -181,6 +181,13 @@
       .map(function (d) { return { node: d, names: (d._children && !d.children) ? hiddenTips(d, []) : [String(d.data.name)] }; });
   }
   function sig(set) { return Array.from(set).sort().join('\n'); }
+  // a press on the drawing takes the keyboard from the side panel (clicking SVG does not move
+  // focus by itself, so the last card control used would keep the arrow keys)
+  var svgEl = document.getElementById('svg');
+  if (svgEl) svgEl.addEventListener('pointerdown', function () {
+    var a = document.activeElement;
+    if (a && a !== document.body && !svgEl.contains(a) && a.closest && a.closest('.sidepanel') && typeof a.blur === 'function') a.blur();
+  }, true);
   function rowOf(list, name) { for (var i = 0; i < list.length; i++) if (list[i].names.indexOf(name) >= 0) return i; return -1; }
 
   document.addEventListener('keydown', function (e) {
