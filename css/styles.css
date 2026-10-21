@@ -346,6 +346,7 @@ input[type=range]{ width: 140px; }
  /* :active cursor removed — caused 1s+ browser style recalc on large SVGs.
     Cursor is now managed via JS in the zoom start/end callbacks below. */
  #svg.no-pan{ cursor: default !important; }
+ #svg.no-pan.pan-zoomed{ cursor: grab !important; }   /* fitted view, zoomed in or out: it can be dragged */
 .links path{ stroke-linecap:round; pointer-events:none; }
 .clade-background-highlights, .clade-background-highlight{ pointer-events:none; }
 .node circle{ cursor:pointer; }
