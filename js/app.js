@@ -100,8 +100,6 @@ let radialTreeRadius = 300;
 let radialLabelWidth = 40;
 let radialSvg = null;
 let radialTreeUpdatePending = false;
-let alignmentWorker = null;
-let alignmentWorkerSupported = false;
 
 const MIN_PANEL_WIDTH = 80;
 const MIN_TREE_PANEL_WIDTH = 120;
@@ -197,6 +195,8 @@ const RADIAL_DEFAULT_HEATMAP_WIDTH = 30;
 const RADIAL_DEFAULT_DATAFRAME_WIDTH = 120;
 const RADIAL_DEFAULT_CHART_WIDTH = 100;
 const RADIAL_DEFAULT_MSA_WIDTH = 120;
+// category values listed as people read them: numbers in order, "Clade 2" before "Clade 10"
+const naturalCompare = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 const accessionCache = new Map();
 const ALIGNMENT_OPTIMIZATIONS = {
   cache: new Map(),
@@ -393,6 +393,15 @@ function panTreeBy(dx, dy){
 // OPTIMIZATION: Pre-generate a large palette to avoid expensive HSL→RGB conversion during runtime
 let preGeneratedPalette = null;
 
+function hslHex(hue, saturation, lightness) {
+  const h = hue / 360, sat = saturation / 100, l = lightness / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * sat, x = c * (1 - Math.abs((h * 6) % 2 - 1)), m = l - c / 2;
+  let r, g, b;
+  if (h < 1/6) { r = c; g = x; b = 0; } else if (h < 2/6) { r = x; g = c; b = 0; } else if (h < 3/6) { r = 0; g = c; b = x; }
+  else if (h < 4/6) { r = 0; g = x; b = c; } else if (h < 5/6) { r = x; g = 0; b = c; } else { r = c; g = 0; b = x; }
+  const hex = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
 function generateLargePalette() {
   if (preGeneratedPalette) return preGeneratedPalette;
   
@@ -458,10 +467,12 @@ function getUniqueColor() {
     }
   }
   
-  // Fallback: generate a simple color if palette is exhausted (shouldn't happen with 1000+ colors)
-  const fallbackColor = `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`;
-  globalUsedColors.add(fallbackColor);
-  return fallbackColor;
+  // Past the palette (more than ~1000 values): carry the golden-angle sequence on, so the
+  // colours are the same every time the same data is loaded
+  for (let i = palette.length; ; i++) {
+    const c = hslHex((i * 137.508) % 360, 55 + (i % 4) * 10, 40 + (i % 3) * 12);
+    if (!globalUsedColors.has(c)) { globalUsedColors.add(c); return c; }
+  }
 }
 
 // Helper function to register an existing color as used
@@ -1472,7 +1483,6 @@ function refreshAll() {
   
   if (typeof drawTree === 'function') {
     drawTree();
-    console.log('drawTree in refreshAll');
     updateZoomBounds(); 
   }
 }
@@ -1690,7 +1700,6 @@ function refreshAllRAF() {
       if (panelDragPreview) setDrawScope('tree');
       drawTree();
       if (panelDragPreview) lastPreviewWidths = panelWidths.slice();
-      console.log('drawTree in refreshAllRAF');
     }
   });
 }
@@ -2689,7 +2698,6 @@ function handleRadialMouseMove(event) {
           resetFontTruncationCache();
         }
         drawTree();
-        console.log('drawTree in handleRadialMouseMove');
       }
     });
   }
@@ -2724,7 +2732,6 @@ function handleRadialMouseUp() {
         resetFontTruncationCache();
       }
       drawTree();
-      console.log('drawTree in handleRadialMouseUp');
     }
   }
 }
@@ -2942,7 +2949,6 @@ function toggleLabelsPanelVisibility(hideLabels, fromDrawTree) {
     }
     if (fromDrawTree) return;   // already inside a redraw
     drawTree();
-    console.log('drawTree in toggleLabelsPanelVisibility');
     updateMetadataLegend(); // Update legend visibility when labels are toggled
     return;
   }
@@ -3422,7 +3428,6 @@ function updatePanelSystemAfterDeletion() {
   
   if (root) {
     drawTree();
-    console.log('drawTree in updatePanelSystemAfterDeletion');
   }
 }
 
@@ -3745,7 +3750,6 @@ function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
   const useSampling = ALIGNMENT_OPTIMIZATIONS.useSampling && isLargeDataset;
   
   if (useSampling) {
-    console.log(`🎯 Using sampling optimization for ${leaves.length} leaves`);
   }
   
   // Calculate alignment offsets first
@@ -4594,7 +4598,6 @@ function selectAllDisplayedAccessions() {
   
   // Redraw tree to show selection
   drawTree();
-  console.log('drawTree in Select All Displayed Accessions');
   
   // Show notification
   showNotification(`Selected all ${displayedLeaves.length} displayed accessions`);
@@ -5375,7 +5378,6 @@ function applyPermanentPathColor() {
   }
   
   drawTree();
-  console.log('drawTree in resetAllPathColors');
   
   if (colorPathCard) colorPathCard.style.display = 'none';
   if (resetPathColorsBtn) resetPathColorsBtn.style.display = 'none';
@@ -5542,315 +5544,6 @@ function refreshRadialPositions(){
 }
 
 
-// Create Web Worker for alignment calculations
-function createAlignmentWorker() {
-  if (typeof Worker === 'undefined') {
-    console.log('Web Workers not supported, using fallback');
-    return null;
-  }
-
-  const workerCode = `
-    // Web Worker for dataframe alignment calculations
-    function normalizeAccession(val) {
-      if (!val) return '';
-      return String(val).replace(/[^a-zA-Z0-9._-]/g, '').toLowerCase();
-    }
-
-    function getDataframeColumnIndices(meta) {
-      const columns = meta.columns || [];
-      // Find column names (not indices) using regex matching
-      const moleculeCol = columns.find(c => 
-        /^(molecule|accession|id|name|label|taxon|seq|leaf)$/i.test(c)
-      ) || columns[0]; // fallback to first column
-      
-      const geneCol = columns.find(c => 
-        /^(gene|genename|gene_name)$/i.test(c)
-      ) || columns[1]; // fallback to second column
-      
-      const startCol = columns.find(c => 
-        /^(start|startpos|start_pos|begin|from)$/i.test(c)
-      ) || columns[2]; // fallback to third column
-      
-      const endCol = columns.find(c => 
-        /^(end|endpos|end_pos|stop|to)$/i.test(c)
-      ) || columns[3]; // fallback to fourth column
-      
-      const orientCol = columns.find(c => 
-        /^(orientation|orient|strand|direction)$/i.test(c)
-      ); // optional column
-      
-      return { moleculeCol, geneCol, startCol, endCol, orientCol };
-    }
-
-    function processOperonGeneFlipping(sourceDataset, selectedGene, selectedDirection) {
-      // Create a copy of the source dataset
-      const processedDataset = {
-        ...sourceDataset,
-        rows: sourceDataset.rows.map(row => ({...row})),
-        byId: new Map(),
-        byIdAll: new Map()
-      };
-      
-      // Get column names using flexible matching
-      const columnIndices = getDataframeColumnIndices(sourceDataset);
-      const moleculeColName = columnIndices.moleculeCol;
-      
-      // Rebuild the byId and byIdAll maps using detected molecule column
-      processedDataset.rows.forEach(row => {
-        const key = normalizeAccession(row[moleculeColName]);
-        if (!processedDataset.byIdAll.has(key)) {
-          processedDataset.byIdAll.set(key, []);
-        }
-        processedDataset.byIdAll.get(key).push(row);
-        if (!processedDataset.byId.has(key)) {
-          processedDataset.byId.set(key, row);
-        }
-      });
-      
-      return processedDataset;
-    }
-
-    function processOperonGeneData(dataframe, leaves, panelWidth, margin) {
-      const dfAlignByGeneEnabled = dataframe.alignByGeneEnabled || false;
-      const dfAlignGeneName = dataframe.alignGeneName || '';
-      const isAlignmentActive = dfAlignByGeneEnabled && dfAlignGeneName;
-      
-      // Get selected operon gene (only one can be selected at a time)
-      let selectedOperonGene = null;
-      let selectedOperonDirection = null;
-      
-      // Check for selected genes regardless of master toggle state
-      if (dataframe.operonSelection) {
-        for (const [geneName, isSelected] of dataframe.operonSelection.entries()) {
-          if (isSelected) {
-            selectedOperonGene = geneName;
-            // Get the direction (F or R) for this gene
-            if (dataframe.operonDirection) {
-              selectedOperonDirection = dataframe.operonDirection.get(geneName) || 'F';
-            }
-            break; // Only one gene can be selected at a time
-          }
-        }
-      }
-      
-      // Process in correct order: Flip first, then align
-      let processedDataset;
-      let datasetSource;
-      
-      // Step 1: Start with original dataset
-      let currentDataset = dataframe.meta;
-      datasetSource = 'original';
-      
-      // Step 2: Apply flipping if operon gene is selected
-      if (selectedOperonGene && selectedOperonDirection) {
-        currentDataset = processOperonGeneFlipping(currentDataset, selectedOperonGene, selectedOperonDirection);
-        datasetSource = 'flipped';
-      }
-      
-      // Step 3: Apply alignment if enabled (using the current dataset - either original or flipped)
-      if (isAlignmentActive) {
-        // Create a temporary dataframe with the current dataset for alignment
-        const tempDataframe = { ...dataframe, meta: currentDataset };
-        processedDataset = prepareDataframeForDrawing(tempDataframe, leaves, panelWidth, margin);
-        datasetSource = selectedOperonGene ? 'flipped-and-aligned' : 'aligned';
-      } else {
-        processedDataset = currentDataset;
-      }
-
-      return {
-        dataset: processedDataset,
-        source: datasetSource,
-        isAlignmentActive: isAlignmentActive,
-        selectedOperonGene: selectedOperonGene,
-        selectedOperonDirection: selectedOperonDirection
-      };
-    }
-
-    function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
-      // Check if alignment is enabled for this dataframe
-      const dfAlignByGeneEnabled = dataframe.alignByGeneEnabled || false;
-      const dfAlignGeneName = dataframe.alignGeneName || '';
-      const dfAlignType = dataframe.alignType || 'left';
-      
-      if (!dfAlignByGeneEnabled || !dfAlignGeneName) {
-        // No alignment - return original metadata
-        return dataframe.meta;
-      }
-      
-      // Alignment is enabled - create transformed metadata
-      const originalMeta = dataframe.meta;
-      const columnIndices = getDataframeColumnIndices(originalMeta);
-      const { moleculeCol, geneCol, startCol, endCol, orientCol } = columnIndices;
-      
-      // PERFORMANCE OPTIMIZATION: Create a Map for O(1) lookups instead of O(m) searches
-      // Map normalized accession names to leaves
-      const leafMap = new Map();
-      leaves.forEach(leaf => {
-        const key = normalizeAccession(leaf.data.name);
-        leafMap.set(key, leaf);
-      });
-      
-      // Calculate alignment offsets first
-      const dfAlignOffsetByLeaf = new Map();
-      
-      leaves.forEach(leaf => {
-        const key = normalizeAccession(leaf.data.name);
-        const recs = originalMeta.byIdAll && originalMeta.byIdAll.get(key);
-        if (!recs) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
-        
-        const row = recs.find(r => String(r[geneCol]) === dfAlignGeneName);
-        if (!row) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
-        
-        let s = +row[startCol], e = +row[endCol];
-        if (!Number.isFinite(s) || !Number.isFinite(e)) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
-        
-        // Calculate the anchor point for this gene
-        let anchorPoint;
-        if (dfAlignType === 'left') {
-          anchorPoint = Math.min(s, e); // Use start position
-        } else if (dfAlignType === 'right') {
-          anchorPoint = Math.max(s, e); // Use end position
-        } else { // center
-          anchorPoint = (Math.min(s, e) + Math.max(s, e)) / 2; // Use center position
-        }
-        
-        // Calculate offset to move this anchor point to 0
-        const offset = -anchorPoint;
-        dfAlignOffsetByLeaf.set(leaf, offset);
-      });
-      
-      // Now calculate the data range AFTER applying alignment offsets
-      let minVal = Infinity, maxVal = -Infinity;
-      originalMeta.rows.forEach(row => {
-        const s = +row[startCol], e = +row[endCol];
-        if (Number.isFinite(s) && Number.isFinite(e)) {
-          // Use Map for O(1) lookup instead of leaves.find() which is O(m)
-          const key = normalizeAccession(row[originalMeta.idCol]);
-          const leaf = leafMap.get(key);
-          
-          if (leaf) {
-            const offset = dfAlignOffsetByLeaf.get(leaf) || 0;
-            const startNew = s + offset;
-            const endNew = e + offset;
-            minVal = Math.min(minVal, startNew, endNew);
-            maxVal = Math.max(maxVal, startNew, endNew);
-          } else {
-            // No leaf found, use original values
-            minVal = Math.min(minVal, s, e);
-            maxVal = Math.max(maxVal, s, e);
-          }
-        }
-      });
-      
-      const dataRange = maxVal - minVal;
-      const panelWidthAvailable = panelWidth - margin.right;
-      
-      // Add user-configurable margin to prevent bars from ending exactly at panel edge
-      const marginFactor = 0.05; // Default 5% margin
-      const marginAmount = dataRange * marginFactor;
-      const expandedMinVal = minVal - marginAmount;
-      const expandedMaxVal = maxVal + marginAmount;
-      const expandedDataRange = expandedMaxVal - expandedMinVal;
-      
-      const scaleFactor = panelWidthAvailable / expandedDataRange;
-      
-      // Transform the actual data by applying offsets to start/end values
-      const transformedRows = [];
-      
-      // Transform each row (using leafMap for O(1) lookups)
-      originalMeta.rows.forEach(row => {
-        const transformedRow = {...row};
-        const s = +row[startCol], e = +row[endCol];
-        const gene = row[geneCol];
-        const molecule = row[originalMeta.idCol];
-        const orientation = row[orientCol] || 'N/A';
-        
-        if (Number.isFinite(s) && Number.isFinite(e)) {
-          // Use Map for O(1) lookup instead of leaves.find() which is O(m)
-          const key = normalizeAccession(row[originalMeta.idCol]);
-          const leaf = leafMap.get(key);
-          
-          if (leaf) {
-            const offset = dfAlignOffsetByLeaf.get(leaf) || 0;
-            
-            // Apply offset directly to start and end values (no scaling needed)
-            const startNew = s + offset;
-            const endNew = e + offset;
-            // Preserve original values for tooltip display
-            if (typeof transformedRow._origStart === 'undefined') transformedRow._origStart = s;
-            if (typeof transformedRow._origEnd === 'undefined') transformedRow._origEnd = e;
-            if (orientCol && typeof transformedRow._origOrientation === 'undefined') transformedRow._origOrientation = row[orientCol];
-            // Write transformed coordinates
-            transformedRow[startCol] = startNew;
-            transformedRow[endCol] = endNew;
-          } 
-        }     
-        transformedRows.push(transformedRow);
-      });
-      
-      // Create the transformed metadata structure
-      const transformedMeta = {
-        rows: transformedRows,
-        columns: [...originalMeta.columns],
-        byId: new Map(),
-        byIdAll: new Map(),
-        idCol: originalMeta.idCol
-      };
-      
-      // Rebuild the byId and byIdAll maps with transformed data
-      transformedRows.forEach(row => {
-        const key = normalizeAccession(row[originalMeta.idCol]);
-        if (!transformedMeta.byId.has(key)) transformedMeta.byId.set(key, row);
-        if (!transformedMeta.byIdAll.has(key)) transformedMeta.byIdAll.set(key, []);
-        transformedMeta.byIdAll.get(key).push(row);
-      });
-      return transformedMeta;
-    }
-
-    // Listen for messages from main thread
-    self.onmessage = function(e) {
-      const { type, data } = e.data;
-      
-      if (type === 'ALIGN_DATAFRAME') {
-        try {
-          const { dataframe, leaves, panelWidth, margin } = data;
-          const result = processOperonGeneData(dataframe, leaves, panelWidth, margin);
-          
-          // Send result back to main thread
-          self.postMessage({
-            type: 'ALIGNMENT_RESULT',
-            data: {
-              dataframeId: dataframe.id,
-              result: result.dataset,
-              source: result.source,
-              success: true
-            }
-          });
-        } catch (error) {
-          self.postMessage({
-            type: 'ALIGNMENT_ERROR',
-            data: {
-              dataframeId: dataframe.id,
-              error: error.message,
-              success: false
-            }
-          });
-        }
-      }
-    };
-  `;
-
-  try {
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const workerUrl = URL.createObjectURL(blob);
-    const worker = new Worker(workerUrl);
-    alignmentWorkerSupported = true;
-    return worker;
-  } catch (error) {
-    return null;
-  }
-}
-
 // Performance optimizations for smooth interactions
 let performanceOptimizations = {
   // Event delegation cache
@@ -5877,11 +5570,6 @@ let performanceOptimizations = {
   },
   
   // Alignment worker management
-  alignmentWorker: null,
-  alignmentWorkerSupported: false,
-  pendingAlignments: new Map(),
-  alignmentCache: new Map(),
-  alignmentCallbacks: new Map() // Store callbacks for pending alignments
 };
 
 function clearElementPool() {
@@ -5940,77 +5628,6 @@ function resetEventDelegation() {
   // Reset event delegation flag when tree structure changes significantly
   performanceOptimizations.eventDelegationAdded = false;
 }
-
-// Initialize alignment worker
-function initializeAlignmentWorker() {
-  if (!performanceOptimizations.alignmentWorker) {
-    performanceOptimizations.alignmentWorker = createAlignmentWorker();
-    performanceOptimizations.alignmentWorkerSupported = alignmentWorkerSupported;
-    
-    if (performanceOptimizations.alignmentWorker) {
-      // Set up message handler for worker responses
-      performanceOptimizations.alignmentWorker.onmessage = function(e) {
-        const { type, data } = e.data;
-        
-        if (type === 'ALIGNMENT_RESULT') {
-          const { dataframeId, result, source, success } = data;
-          
-          // Store result in cache
-          const cacheKey = `${dataframeId}-${performanceOptimizations.metrics.nodeCount}`;
-          performanceOptimizations.alignmentCache.set(cacheKey, { dataset: result, source: source });
-          
-          // Remove from pending alignments
-          performanceOptimizations.pendingAlignments.delete(dataframeId);
-          
-          // Call the stored callback
-          const callback = performanceOptimizations.alignmentCallbacks.get(dataframeId);
-          if (callback) {
-            performanceOptimizations.alignmentCallbacks.delete(dataframeId);
-            callback({ dataset: result, source: source });
-          }
-          
-        } else if (type === 'ALIGNMENT_ERROR') {
-          const { dataframeId, error } = data;
-          console.error(`Alignment error for dataframe ${dataframeId}:`, error);
-          
-          // Remove from pending alignments
-          performanceOptimizations.pendingAlignments.delete(dataframeId);
-          
-          // Call the stored callback with error
-          const callback = performanceOptimizations.alignmentCallbacks.get(dataframeId);
-          if (callback) {
-            performanceOptimizations.alignmentCallbacks.delete(dataframeId);
-            callback(null); // Pass null to indicate error
-          }
-          
-          // Fall back to synchronous processing
-          console.log('Falling back to synchronous alignment processing');
-        }
-      };      
-    }
-  }
-}
-
-// Cleanup alignment worker
-function cleanupAlignmentWorker() {
-  if (performanceOptimizations.alignmentWorker) {
-    performanceOptimizations.alignmentWorker.terminate();
-    performanceOptimizations.alignmentWorker = null;
-    performanceOptimizations.alignmentCache.clear();
-    performanceOptimizations.pendingAlignments.clear();
-    performanceOptimizations.alignmentCallbacks.clear();
-  }
-}
-
-// Initialize worker when page loads
-document.addEventListener('DOMContentLoaded', function() {
-  initializeAlignmentWorker();
-});
-
-// Cleanup worker when page unloads
-window.addEventListener('beforeunload', function() {
-  cleanupAlignmentWorker();
-});
 
 // ======================= Incremental redraw of data layers =======================
 // drawTree rebuilds the whole drawing. The data layers (dataframe bars, heatmap
@@ -6329,7 +5946,7 @@ function drawTreeBody(){
   svg.selectAll('.radial-tree-scale-bar-custom').remove();
   
   // Clear element pool periodically to prevent memory leaks
-  if (Math.random() < 0.1) { // 10% chance to clear pool
+  if ((++drawTreeBody._pools || (drawTreeBody._pools = 1)) % 10 === 0) { // every tenth redraw
     scheduleRAFUpdate(() => clearElementPool(), 'low');
   }
   
@@ -12595,7 +12212,7 @@ function drawTreeBody(){
 
   // Update status
   const nLeaves = leaves.length, nNodes = root.descendants().length;
-  setStatus(`${nLeaves} tips, ${nNodes} nodes.`);
+  setStatus('Ready');
   
   // Update Add Data button visibility
   updateAddDataframeButtonVisibility();
@@ -12683,7 +12300,6 @@ function drawTreeBody(){
           const remaining = Math.max(MIN_BAR_W, availW - treePaneWidth - labelPaneWidth - barGap);
           barPaneWidthOverride = remaining;
           drawTree();
-          console.log('drawTree in self_1');
           return;
         }
 
@@ -12719,7 +12335,6 @@ function drawTreeBody(){
         }
         
         drawTree();
-        console.log('drawTree in self_2');
           
         } else if (splitterType === 'label') {
           // Label splitter logic (between labels and bars)
@@ -12747,7 +12362,6 @@ function drawTreeBody(){
         
         if(remaining === 0){ try{ trackWidthSel.value = '0'; }catch(e){} }
             drawTree();
-            console.log('drawTree in self_3');
         return;
       }
 
@@ -12772,7 +12386,6 @@ function drawTreeBody(){
         }
         
             drawTree();
-            console.log('drawTree in self_4');
         return;
       }
 
@@ -12792,7 +12405,6 @@ function drawTreeBody(){
       
       if(remaining === 0){ try{ trackWidthSel.value = '0'; }catch(e){} }
           drawTree();
-          console.log('drawTree in self_5');
           
                   } else if (splitterType === 'metadata') {
             // Metadata splitter logic (between metadata panels)
@@ -12905,7 +12517,6 @@ function drawTreeBody(){
         // For tree and label splitters, redraw to finalize
         if (splitterType === 'tree' || splitterType === 'label') {
           drawTree();
-          console.log('drawTree in self_6');
           updateZoomBounds(); // Update zoom bounds after splitter drag
         }
         
@@ -13162,7 +12773,6 @@ function rotateClade(d){
   } 
     updateResetRotationsButtonVisibility();
     drawTree();
-    console.log('drawTree in rotateClade');
   }
 
 function revertCartoonClade(d){
@@ -13535,7 +13145,6 @@ function dropSelectedNodes() {
   setTimeout(() => {
     updateMetadataLegend(); // Update legend to reflect visible data after dropping nodes
     drawTree();
-    console.log('drawTree in dropSelectedNodes');
     // Show status message
     setStatus(`Dropped ${tipNodesToDrop.size} accession${tipNodesToDrop.size > 1 ? 's' : ''} from ${selectedNodesCount} selected node${selectedNodesCount > 1 ? 's' : ''}`);
   }, 0);
@@ -13634,7 +13243,6 @@ function isolateSelectedNodes() {
   setTimeout(() => {
     updateMetadataLegend(); // Update legend to reflect visible data after isolating nodes
     drawTree();
-    console.log('drawTree in isolateSelectedNodes');
     // Show status message
     setStatus(`Isolated ${tipNodesToKeep.size} accession${tipNodesToKeep.size > 1 ? 's' : ''} (dropped ${tipNodesToDrop.length} others)`);
   }, 0);
@@ -14016,7 +13624,6 @@ async function rerootAtNode(selected, userInitiated = false) {
     }
   }
   drawTree();
-  console.log('drawTree in rerootAtNode');
 }
 
 function resetToOriginalRoot(userInitiated = false) {
@@ -14212,7 +13819,6 @@ function resetToOriginalRoot(userInitiated = false) {
   }
   
   drawTree();
-  console.log('drawTree in resetToOriginalRoot');
 }
 
 function snapshotTreeState() {
@@ -14660,7 +14266,6 @@ function restoreDroppedNodes() {
   clearCladeSelection();
   updateMetadataLegend(); // Update legend to reflect visible data after restoring nodes
   drawTree();
-  console.log('drawTree in restoreDroppedNodes');
 }
 
 function updateRestoreDroppedButtonVisibility() {
@@ -15348,7 +14953,7 @@ function updateMetadataLegend() {
   
   // Create legend items for unique heatmap values
   if (hasVisibleHeatmapValues) {
-    const sortedValues = Array.from(allHeatmapValues).sort();
+    const sortedValues = Array.from(allHeatmapValues).sort(naturalCompare);
     heatmapLegendHTML = sortedValues.map(value => {
       const colors = allHeatmapValueColors.get(value);
       if (!colors || colors.size === 0) {
@@ -15446,7 +15051,7 @@ function updateMetadataLegend() {
   
   // Generate chart legend HTML
   if (hasVisibleChartValues) {
-    const sortedValues = Array.from(allChartValues).sort();
+    const sortedValues = Array.from(allChartValues).sort(naturalCompare);
     chartLegendHTML = sortedValues.map(value => {
       const colors = allChartValueColors.get(value);
       if (!colors || colors.size === 0) {
@@ -15539,7 +15144,7 @@ function updateMetadataLegend() {
     const visibleValues = Array.from(allHighlightValues).filter(value => 
       allHighlightValueVisibility.get(value) === true
     );
-    const sortedValues = visibleValues.sort();
+    const sortedValues = visibleValues.sort(naturalCompare);
     highlightLegendHTML = sortedValues.map(value => {
       const colors = allHighlightValueColors.get(value);
       if (!colors || colors.size === 0) {
@@ -15643,7 +15248,7 @@ function updateMetadataLegend() {
     const visibleValues = Array.from(allCladeValues).filter(value => 
       allCladeValueVisibility.get(value) === true
     );
-    const sortedValues = visibleValues.sort();
+    const sortedValues = visibleValues.sort(naturalCompare);
     cladeLegendHTML = sortedValues.map(value => {
       const colors = allCladeValueColors.get(value);
       if (!colors || colors.size === 0) {
@@ -16563,7 +16168,6 @@ async function handleTreeFile(f){
     
     // Redraw tree to reflect all reassessment changes
     drawTree();
-    console.log('drawTree in handleTreeFile');
     
     // onFitToViewRect();
     
@@ -16919,7 +16523,6 @@ function addDataframe() {
   setTimeout(() => {
     if (typeof drawTree === 'function') {
       drawTree();
-      console.log('drawTree in addDataframe');
       updateZoomBounds();
     }
   }, 0);
@@ -17663,7 +17266,6 @@ function toggleDataframeFocusGene(dataframeId, geneName, ev=null) {
   applyGeneFocusStylingForDataframe(dataframeId);
   updateCopySelectedFeaturesButtonVisibility();
   if (root) drawTree();
-  console.log('drawTree in toggleDataframeFocusGene');
 }
 
 function wireGeneControlsForDataframe(dataframeId, df) {
@@ -17861,7 +17463,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
         updateMetadataLegend();
         if (root) {
           drawTree();
-          console.log('drawTree in wireGeneControlsForDataframe self_1');
         }
     });
   });
@@ -17874,7 +17475,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
         updateMetadataLegend();
         if (root) {
           drawTree();
-          console.log('drawTree in wireGeneControlsForDataframe color changed');
         }
     });
   });
@@ -17886,7 +17486,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
         
         if (root) {
           drawTree();
-          console.log('drawTree in wireGeneControlsForDataframe self_3');
         }
         
         // Update master toggle state based on individual toggles
@@ -17909,7 +17508,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
       
       if (root) {
         drawTree();
-        console.log('drawTree in wireGeneControlsForDataframe self_4');
       }
     });
   }
@@ -17943,7 +17541,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
         }
         
       drawTree();
-      console.log('drawTree in wireGeneControlsForDataframe self_5');
     });
   }
   
@@ -17958,7 +17555,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
       }
       
       drawTree();
-      console.log('drawTree in wireGeneControlsForDataframe self_6');
     });
   }
   
@@ -17974,7 +17570,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
         }
         
         drawTree();
-        console.log('drawTree in wireGeneControlsForDataframe self_7');
       }
     });
   });
@@ -18083,7 +17678,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
       df.geneOrder = Array.from(geneDiv.querySelectorAll('.gene-card')).map(el => el.getAttribute('data-gene'));
       updateMetadataLegend();
       drawTree();
-      console.log('drawTree in wireGeneControlsForDataframe self_8');
     });
   });
   
@@ -18122,7 +17716,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
        df.operonState.set('master', isOperonMode);
        if (root) {
          drawTree();
-         console.log('drawTree in wireGeneControlsForDataframe self_9');
        }
      });
   }
@@ -18160,7 +17753,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
         updateMetadataLegend();
         if (root) {
           drawTree();
-          console.log('drawTree in wireGeneControlsForDataframe self_10');
         }
       });
     });
@@ -18235,7 +17827,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
           const margin = { left: 10, right: 10 };
           processOperonGeneData(df, leaves, panelWidth, margin);
           drawTree();
-          console.log('drawTree in wireGeneControlsForDataframe self_11');
         }
       });
     });
@@ -18258,7 +17849,6 @@ function wireGeneControlsForDataframe(dataframeId, df) {
             const margin = { left: 10, right: 10 };
             processOperonGeneData(df, leaves, panelWidth, margin);
             drawTree();
-            console.log('drawTree in wireGeneControlsForDataframe self_12');
           }
         }
       });
@@ -18599,20 +18189,20 @@ function populateHeatmapCard(heatmapId, metadata) {
       data: metadata,
       visible: true,
       type: 'heatmap',
-      uniqueValues: Array.from(uniqueValues).sort(),
+      uniqueValues: Array.from(uniqueValues).sort(naturalCompare),
       accessionToValue: accessionToValue,
       valueVisibility: new Map(),
       valueColors: new Map()
     });
   } else {
-    hm.uniqueValues = Array.from(uniqueValues).sort();
+    hm.uniqueValues = Array.from(uniqueValues).sort(naturalCompare);
     hm.accessionToValue = accessionToValue;
     if (!hm.valueVisibility) hm.valueVisibility = new Map();
     if (!hm.valueColors) hm.valueColors = new Map();
   }
   
   // Assign colors to unique values using intelligent color assignment
-  const sortedValues = Array.from(uniqueValues).sort();
+  const sortedValues = Array.from(uniqueValues).sort(naturalCompare);
   const assignedColors = assignColors(sortedValues, 'heatmap', heatmapId);
   sortedValues.forEach((value, index) => {
     if (!hm.valueVisibility.has(value)) {
@@ -18671,7 +18261,6 @@ function populateHeatmapCard(heatmapId, metadata) {
         // Redraw tree to update heatmap display
         if (root) {
           drawTree();
-          console.log('drawTree in populateHeatmapCard self_1');
         }
       });
     });
@@ -18695,7 +18284,6 @@ function populateHeatmapCard(heatmapId, metadata) {
         // Redraw tree to update heatmap display
         if (root) {
           drawTree();
-          console.log('drawTree in populateHeatmapCard self_2');
         }
       });
     }
@@ -18712,7 +18300,6 @@ function populateHeatmapCard(heatmapId, metadata) {
         // Redraw tree to update heatmap display
         if (root) {
           drawTree();
-          console.log('drawTree in populateHeatmapCard color changed');
         }
       });
     });
@@ -18998,7 +18585,6 @@ function addHeatmap() {
   setTimeout(() => {
     if (typeof drawTree === 'function') {
       drawTree();
-      console.log('drawTree in addHeatmap');
       updateZoomBounds();
     }
   }, 0);
@@ -19128,7 +18714,6 @@ function createNewHighlightCard(highlightData) {
       highlightData.transparency = parseInt(value);
       highlights.set(highlightId, highlightData);
       drawTree(); // Redraw to apply new transparency
-      console.log('drawTree in createNewHighlightCard');
     }
   };
   
@@ -19232,7 +18817,6 @@ async function handleHighlightFile(f){
       // Redraw tree after legend update to ensure panel positions are correct
       if (root) {
         drawTree();
-        console.log('drawTree in handleHighlightFile');
       }
     }
     
@@ -19292,20 +18876,20 @@ function populateHighlightCard(highlightId, metadata) {
       data: metadata,
       visible: true,
       type: 'highlight',
-      uniqueValues: Array.from(uniqueValues).sort(),
+      uniqueValues: Array.from(uniqueValues).sort(naturalCompare),
       accessionToValue: accessionToValue,
       valueVisibility: new Map(),
       valueColors: new Map()
     });
   } else {
-    hl.uniqueValues = Array.from(uniqueValues).sort();
+    hl.uniqueValues = Array.from(uniqueValues).sort(naturalCompare);
     hl.accessionToValue = accessionToValue;
     if (!hl.valueVisibility) hl.valueVisibility = new Map();
     if (!hl.valueColors) hl.valueColors = new Map();
   }
   
   // Assign colors to unique values using intelligent color assignment
-  const sortedValues = Array.from(uniqueValues).sort();
+  const sortedValues = Array.from(uniqueValues).sort(naturalCompare);
   const assignedColors = assignColors(sortedValues, 'highlight', highlightId);
   sortedValues.forEach((value, index) => {
     if (!hl.valueVisibility.has(value)) {
@@ -19357,7 +18941,6 @@ function populateHighlightCard(highlightId, metadata) {
         updateHighlightMasterCheckbox(highlightId);
         updateMetadataLegend(); // Update legend to reflect visibility changes
         drawTree(); // Redraw to reflect visibility changes
-        console.log('drawTree in populateHighlightCard self_1');
       });
     });
     
@@ -19368,7 +18951,6 @@ function populateHighlightCard(highlightId, metadata) {
         hl.valueColors.set(value, ev.target.value);
         updateMetadataLegend(); // Update legend to reflect color changes
         drawTree(); // Redraw to reflect color changes
-        console.log('drawTree in populateHighlightCard self_2');
       });
     });
     
@@ -19388,7 +18970,6 @@ function populateHighlightCard(highlightId, metadata) {
         
         updateMetadataLegend(); // Update legend to reflect visibility changes
         drawTree(); // Redraw to reflect visibility changes
-        console.log('drawTree in populateHighlightCard self_3');
       });
     }
     
@@ -19496,7 +19077,6 @@ function deleteHighlightCard(highlightId) {
     
     // Redraw tree
     drawTree();
-    console.log('drawTree in deleteHighlightCard');
   }
 }
 
@@ -19504,7 +19084,6 @@ function addHighlight() {
   // The highlight functionality is now handled in the drawTree function
   // where labels get background highlighting based on highlight data
   drawTree();
-  console.log('drawTree in addHighlight');
 }
 
 function updateHighlightMasterCheckbox(highlightId) {
@@ -19708,7 +19287,6 @@ async function handleCladeFile(f){
       // Redraw tree after legend update to ensure panel positions are correct (addClade already calls drawTree, but ensure it's after legend update)
       if (root) {
         drawTree();
-        console.log('drawTree in handleCladeFile');
       }
     }
     
@@ -19810,20 +19388,20 @@ function populateCladeCard(cladeId, metadata) {
       data: metadata,
       visible: true,
       type: 'clade',
-      uniqueValues: Array.from(uniqueValues).sort(),
+      uniqueValues: Array.from(uniqueValues).sort(naturalCompare),
       accessionToValue: accessionToValue,
       valueVisibility: new Map(),
       valueColors: new Map()
     });
   } else {
-    cl.uniqueValues = Array.from(uniqueValues).sort();
+    cl.uniqueValues = Array.from(uniqueValues).sort(naturalCompare);
     cl.accessionToValue = accessionToValue;
     if (!cl.valueVisibility) cl.valueVisibility = new Map();
     if (!cl.valueColors) cl.valueColors = new Map();
   }
   
   // Assign colors to unique values using intelligent color assignment
-  const sortedValues = Array.from(uniqueValues).sort();
+  const sortedValues = Array.from(uniqueValues).sort(naturalCompare);
   const assignedColors = assignColors(sortedValues, 'clade', cladeId);
   sortedValues.forEach((value, index) => {
     if (!cl.valueVisibility.has(value)) {
@@ -19876,7 +19454,6 @@ function populateCladeCard(cladeId, metadata) {
         updateMetadataLegend(); // Update legend to reflect visibility changes
         applyCladeColorsToTree(); // Apply clade colors to tree branches
         drawTree(); // Redraw to reflect visibility changes
-        console.log('drawTree in populateCladeCard self_1');
       });
     });
     
@@ -19888,7 +19465,6 @@ function populateCladeCard(cladeId, metadata) {
         updateMetadataLegend(); // Update legend to reflect color changes
         applyCladeColorsToTree(); // Apply clade colors to tree branches
         drawTree(); // Redraw to reflect color changes
-        console.log('drawTree in populateCladeCard self_2');
       });
     });
     
@@ -19909,7 +19485,6 @@ function populateCladeCard(cladeId, metadata) {
         updateMetadataLegend(); // Update legend to reflect visibility changes
         applyCladeColorsToTree(); // Apply clade colors to tree branches
         drawTree(); // Redraw to reflect visibility changes
-        console.log('drawTree in populateCladeCard self_3');
       });
     }
     
@@ -20027,7 +19602,6 @@ function deleteCladeCard(cladeId) {
     
     // Redraw tree
     drawTree();
-    console.log('drawTree in deleteCladeCard');
     
     setStatus('Clade card deleted and colored branches removed from tree');
   }
@@ -20040,7 +19614,6 @@ function addClade() {
   // The clade functionality is now handled in the drawTree function
   // where labels get background highlighting based on clade data
   drawTree();
-  console.log('drawTree in addClade');
 }
 
 function applyCladeColorsToTree() {
@@ -20169,8 +19742,13 @@ function createNewChartCard(chartData) {
         </div>
         <div id="chartControls${chartId}" class="chart-type-controls">
           <div id="barControls${chartId}" class="chart-control-group" style="display: block;">
-            <label class="pro-row"><span>Dodge bars</span><input type="checkbox" id="dodgeBars${chartId}" class="bar-layout-checkbox pro-switch"></label>
-            <label class="pro-row"><span>Stack bars</span><input type="checkbox" id="stackBars${chartId}" class="bar-layout-checkbox pro-switch"></label>
+            <div class="pro-row"><span>Bars</span><span class="pro-radio-seg" role="radiogroup" aria-label="Bar layout">
+              <label title="Each series drawn from zero, in front of each other"><input type="radio" name="barLayout${chartId}" class="bar-layout-radio" value="default" checked><span>Overlaid</span></label>
+              <label title="Series side by side"><input type="radio" name="barLayout${chartId}" class="bar-layout-radio" value="dodge"><span>Beside</span></label>
+              <label title="Series stacked end to end"><input type="radio" name="barLayout${chartId}" class="bar-layout-radio" value="stack"><span>Stacked</span></label>
+            </span></div>
+            <input type="checkbox" id="dodgeBars${chartId}" class="bar-layout-checkbox" hidden aria-hidden="true" tabindex="-1">
+            <input type="checkbox" id="stackBars${chartId}" class="bar-layout-checkbox" hidden aria-hidden="true" tabindex="-1">
           </div>
           <div id="lineControls${chartId}" class="chart-control-group" style="display: none;">
             <label class="pro-row"><span>Treat missing values as 0</span><input type="checkbox" id="assignNaToZero${chartId}" class="line-na-checkbox pro-switch"></label>
@@ -20258,23 +19836,16 @@ function createNewChartCard(chartData) {
   const stackCheckbox = newCard.querySelector(`#stackBars${chartId}`);
   
   if (dodgeCheckbox && stackCheckbox) {
-    // Ensure only one checkbox can be checked at a time
+    // the hidden checkboxes are what sessions save and put back; the visible control follows them
     dodgeCheckbox.addEventListener('change', () => {
-      if (dodgeCheckbox.checked) {
-        stackCheckbox.checked = false;
-        updateBarLayout(chartId, 'dodge');
-      } else {
-        updateBarLayout(chartId, 'default');
-      }
+      if (dodgeCheckbox.checked) stackCheckbox.checked = false;
+      syncBarLayoutControl(newCard, dodgeCheckbox.checked ? 'dodge' : 'default');
+      updateBarLayout(chartId, dodgeCheckbox.checked ? 'dodge' : 'default');
     });
-    
     stackCheckbox.addEventListener('change', () => {
-      if (stackCheckbox.checked) {
-        dodgeCheckbox.checked = false;
-        updateBarLayout(chartId, 'stack');
-      } else {
-        updateBarLayout(chartId, 'default');
-      }
+      if (stackCheckbox.checked) dodgeCheckbox.checked = false;
+      syncBarLayoutControl(newCard, stackCheckbox.checked ? 'stack' : 'default');
+      updateBarLayout(chartId, stackCheckbox.checked ? 'stack' : 'default');
     });
   }
   
@@ -20543,17 +20114,31 @@ function updateChartType(chartId, chartType) {
     // Trigger chart panel update
     updatePanelSystemAfterDeletion();
     if (root) drawTree();
-    console.log('drawTree in updateChartType');
   }
 }
 
+// the Bars control of a chart card (Overlaid / Side by side / Stacked) and its hidden checkboxes
+function syncBarLayoutControl(card, layout) {
+  card.querySelectorAll('.bar-layout-radio').forEach(r => { r.checked = r.value === layout; });
+  const d = card.querySelector('input[id^="dodgeBars"]'), st = card.querySelector('input[id^="stackBars"]');
+  if (d) d.checked = layout === 'dodge';
+  if (st) st.checked = layout === 'stack';
+}
+document.addEventListener('change', (ev) => {
+  const r = ev.target;
+  if (!r || !r.classList || !r.classList.contains('bar-layout-radio') || !r.checked) return;
+  const card = r.closest('[id^="chartCard"]');
+  const m = card && /(\d+)$/.exec(card.id);
+  if (!m) return;
+  syncBarLayoutControl(card, r.value);
+  updateBarLayout(+m[1], r.value);
+});
 function updateBarLayout(chartId, layout) {
   const ch = charts.get(chartId);
   if (ch) {
     ch.barLayout = layout;
     // Only redraw the chart content, don't resize panels
     if (root) drawTree();
-    console.log('drawTree in updateBarLayout');
   }
 }
 
@@ -20563,7 +20148,6 @@ function updateLineNaSetting(chartId, assignNaToZero) {
     ch.assignNaToZero = assignNaToZero;
     // Only redraw the chart content, don't resize panels
     if (root) drawTree();
-    console.log('drawTree in updateLineNaSetting');
   }
 }
 
@@ -20580,7 +20164,6 @@ function updateLineShowDots(chartId, showDots) {
     
     // Only redraw the chart content, don't resize panels
     if (root) drawTree();
-    console.log('drawTree in updateLineShowDots');
   }
 }
 
@@ -20590,7 +20173,6 @@ function updateLineShowFill(chartId, showFill) {
     ch.showFill = showFill;
     // Only redraw the chart content, don't resize panels
     if (root) drawTree();
-    console.log('drawTree in updateLineShowFill');
   }
 }
 
@@ -20600,7 +20182,6 @@ function updateLineWidth(chartId, lineWidth) {
     ch.lineWidth = lineWidth;
     // Only redraw the chart content, don't resize panels
     if (root) drawTree();
-    console.log('drawTree in updateLineWidth');
   }
 }
 
@@ -20610,7 +20191,6 @@ function updateDotSize(chartId, dotSize) {
     ch.dotSize = dotSize;
     // Only redraw the chart content, don't resize panels
     if (root) drawTree();
-    console.log('drawTree in updateDotSize');
   }
 }
 
@@ -20620,7 +20200,6 @@ function updateDotNaSetting(chartId, assignNaToZero) {
     ch.assignNaToZeroDot = assignNaToZero;
     // Only redraw the chart content, don't resize panels
     if (root) drawTree();
-    console.log('drawTree in updateDotNaSetting');
   }
 }
 
@@ -20630,7 +20209,6 @@ function updateDotSizeDot(chartId, dotSize) {
     ch.dotSizeDot = dotSize;
     // Only redraw the chart content, don't resize panels
     if (root) drawTree();
-    console.log('drawTree in updateDotSizeDot');
   }
 }
 
@@ -20639,7 +20217,6 @@ function updateBoxShowDots(chartId, showDots) {
   if (ch) {
     ch.showDotsBox = showDots;
     if (root) drawTree();
-    console.log('drawTree in updateBoxShowDots');
   }
 }
 
@@ -20648,7 +20225,6 @@ function updateBoxShowOutlierDots(chartId, showOutlierDots) {
   if (ch) {
     ch.showOutlierDotsBox = showOutlierDots;
     if (root) drawTree();
-    console.log('drawTree in updateBoxShowOutlierDots');
   }
 }
 
@@ -20657,7 +20233,6 @@ function updateBoxShowMean(chartId, showMean) {
   if (ch) {
     ch.showMeanBox = showMean;
     if (root) drawTree();
-    console.log('drawTree in updateBoxShowMean');
   }
 }
 
@@ -20666,7 +20241,6 @@ function updateBoxShowMedian(chartId, showMedian) {
   if (ch) {
     ch.showMedianBox = showMedian;
     if (root) drawTree();
-    console.log('drawTree in updateBoxShowMedian');
   }
 }
 
@@ -20675,7 +20249,6 @@ function updateBoxShowWhiskers(chartId, showWhiskers) {
   if (ch) {
     ch.showWhiskersBox = showWhiskers;
     if (root) drawTree();
-    console.log('drawTree in updateBoxShowWhiskers');
   }
 }
 
@@ -20684,7 +20257,6 @@ function updateBoxDodge(chartId, dodgeBoxes) {
   if (ch) {
     ch.dodgeBoxes = dodgeBoxes;
     if (root) drawTree();
-    console.log('drawTree in updateBoxDodge');
   }
 }
 
@@ -20693,7 +20265,6 @@ function updateBoxMedianLineWidth(chartId, lineWidth) {
   if (ch) {
     ch.medianLineWidthBox = lineWidth;
     if (root) drawTree();
-    console.log('drawTree in updateBoxMedianLineWidth'); 
   }
 }
 
@@ -20702,7 +20273,6 @@ function updateBoxWhiskerLineWidth(chartId, whiskerLineWidth) {
   if (ch) {
     ch.whiskerLineWidthBox = whiskerLineWidth;
     if (root) drawTree();
-    console.log('drawTree in updateBoxWhiskerLineWidth');
   }
 }
 
@@ -20711,7 +20281,6 @@ function updateBoxDotSize(chartId, dotSize) {
   if (ch) {
     ch.dotSizeBox = dotSize;
     if (root) drawTree();
-    console.log('drawTree in updateBoxDotSize');
   }
 }
 
@@ -20720,7 +20289,6 @@ function updateBoxTransparency(chartId, transparency) {
   if (ch) {
     ch.boxTransparency = transparency;
     if (root) drawTree();
-    console.log('drawTree in updateBoxTransparency');
   }
 }
 
@@ -20730,7 +20298,6 @@ function updateShowMajorGrid(chartId, showMajorGrid) {
   if (ch) {
     ch.showMajorGrid = showMajorGrid;
     if (root) drawTree();
-    console.log('drawTree in updateShowMajorGrid');
   }
 }
 
@@ -20739,7 +20306,6 @@ function updateDashedMajorGrid(chartId, dashedMajorGrid) {
   if (ch) {
     ch.dashedMajorGrid = dashedMajorGrid;
     if (root) drawTree();
-    console.log('drawTree in updateDashedMajorGrid');
   }
 }
 
@@ -20748,7 +20314,6 @@ function updateMajorGridWidth(chartId, majorGridWidth) {
   if (ch) {
     ch.majorGridWidth = majorGridWidth;
     if (root) drawTree();
-    console.log('drawTree in updateMajorGridWidth');
   }
 }
 
@@ -20757,7 +20322,6 @@ function updateShowMinorGrid(chartId, showMinorGrid) {
   if (ch) {
     ch.showMinorGrid = showMinorGrid;
     if (root) drawTree();
-    console.log('drawTree in updateShowMinorGrid');
   }
 }
 
@@ -20766,7 +20330,6 @@ function updateDashedMinorGrid(chartId, dashedMinorGrid) {
   if (ch) {
     ch.dashedMinorGrid = dashedMinorGrid;
     if (root) drawTree();
-    console.log('drawTree in updateDashedMinorGrid');
   }
 }
 
@@ -20775,7 +20338,6 @@ function updateMinorGridWidth(chartId, minorGridWidth) {
   if (ch) {
     ch.minorGridWidth = minorGridWidth;
     if (root) drawTree();
-    console.log('drawTree in updateMinorGridWidth');
   }
 }
 
@@ -20785,7 +20347,6 @@ function updateDataframeShowMajorGrid(dataframeId, showMajorGrid) {
   if (df) {
     df.showMajorGrid = showMajorGrid;
     if (root) drawTree();
-    console.log('drawTree in updateDataframeShowMajorGrid');
   }
 }
 
@@ -20794,7 +20355,6 @@ function updateDataframeDashedMajorGrid(dataframeId, dashedMajorGrid) {
   if (df) {
     df.dashedMajorGrid = dashedMajorGrid;
     if (root) drawTree();
-    console.log('drawTree in updateDataframeDashedMajorGrid');
   }
 }
 
@@ -20803,7 +20363,6 @@ function updateDataframeMajorGridWidth(dataframeId, majorGridWidth) {
   if (df) {
     df.majorGridWidth = majorGridWidth;
     if (root) drawTree();
-    console.log('drawTree in updateDataframeMajorGridWidth');
   }
 }
 
@@ -20812,7 +20371,6 @@ function updateDataframeShowMinorGrid(dataframeId, showMinorGrid) {
   if (df) {
     df.showMinorGrid = showMinorGrid;
     if (root) drawTree();
-    console.log('drawTree in updateDataframeShowMinorGrid');
   }
 }
 
@@ -20821,7 +20379,6 @@ function updateDataframeDashedMinorGrid(dataframeId, dashedMinorGrid) {
   if (df) {
     df.dashedMinorGrid = dashedMinorGrid;
     if (root) drawTree();
-    console.log('drawTree in updateDataframeDashedMinorGrid');
   }
 }
 
@@ -20830,7 +20387,6 @@ function updateDataframeMinorGridWidth(dataframeId, minorGridWidth) {
   if (df) {
     df.minorGridWidth = minorGridWidth;
     if (root) drawTree();
-    console.log('drawTree in updateDataframeMinorGridWidth');
   }
 }
 
@@ -20888,7 +20444,6 @@ async function handleChartFile(f){
       // Redraw tree after legend update to ensure panel positions are correct
       if (root) {
         drawTree();
-        console.log('drawTree in handleChartFile');
       }
     }
     
@@ -21017,7 +20572,6 @@ function populateChartCard(chartId, metadata) {
         // Redraw tree to update chart display
         if (root) {
           drawTree();
-          console.log('drawTree in populateChartCard self_1');
         }
       });
     });
@@ -21041,7 +20595,6 @@ function populateChartCard(chartId, metadata) {
         // Redraw tree to update chart display
         if (root) {
           drawTree();
-          console.log('drawTree in populateChartCard self_2');
         }
       });
     }
@@ -21058,7 +20611,6 @@ function populateChartCard(chartId, metadata) {
         // Redraw tree to update chart display
         if (root) {
           drawTree();
-          console.log('drawTree in populateChartCard self_3');
         }
       });
     });
@@ -21159,9 +20711,14 @@ function deleteChartCard(chartId) {
               const newElement = element.cloneNode(true);
               element.parentNode.replaceChild(newElement, element);
               newElement.addEventListener('change', (ev) => {
-                const layout = ev.target.id.includes('dodge') ? 'dodge' : 'stack';
+                const card = ev.target.closest('[id^="chartCard"]');
+                const other = card.querySelector(ev.target.id.startsWith('dodge') ? 'input[id^="stackBars"]' : 'input[id^="dodgeBars"]');
+                if (ev.target.checked && other) other.checked = false;
+                const layout = ev.target.checked ? (ev.target.id.startsWith('dodge') ? 'dodge' : 'stack') : 'default';
+                syncBarLayoutControl(card, layout);
                 updateBarLayout(newId, layout);
               });
+              newElement.closest('[id^="chartCard"]').querySelectorAll(`input[name="barLayout${oldId}"]`).forEach(r => { r.name = `barLayout${newId}`; });
             } else if (oldElementId === `assignNaToZero${oldId}`) {
               const newElement = element.cloneNode(true);
               element.parentNode.replaceChild(newElement, element);
@@ -21343,7 +20900,6 @@ function deleteChartCard(chartId) {
     // Redraw tree after legend update to ensure panel positions are correct
     if (root) {
       drawTree();
-      console.log('drawTree in deleteChartCard');
     }
   }
 }
@@ -21434,9 +20990,14 @@ function updateChartOrder() {
               const newElement = element.cloneNode(true);
               element.parentNode.replaceChild(newElement, element);
               newElement.addEventListener('change', (ev) => {
-                const layout = ev.target.id.includes('dodge') ? 'dodge' : 'stack';
+                const card = ev.target.closest('[id^="chartCard"]');
+                const other = card.querySelector(ev.target.id.startsWith('dodge') ? 'input[id^="stackBars"]' : 'input[id^="dodgeBars"]');
+                if (ev.target.checked && other) other.checked = false;
+                const layout = ev.target.checked ? (ev.target.id.startsWith('dodge') ? 'dodge' : 'stack') : 'default';
+                syncBarLayoutControl(card, layout);
                 updateBarLayout(newId, layout);
               });
+              newElement.closest('[id^="chartCard"]').querySelectorAll(`input[name="barLayout${oldId}"]`).forEach(r => { r.name = `barLayout${newId}`; });
             } else if (oldElementId === `assignNaToZero${oldId}`) {
               const newElement = element.cloneNode(true);
               element.parentNode.replaceChild(newElement, element);
@@ -21601,7 +21162,6 @@ function updateChartOrder() {
   
   // Redraw the tree
   if (root) drawTree();
-  console.log('drawTree in updateChartOrder');
 }
 
 function addChart() {
@@ -21724,7 +21284,6 @@ function addChart() {
   setTimeout(() => {
     if (typeof drawTree === 'function') {
       drawTree();
-      console.log('drawTree in addChart');
       updateZoomBounds();
     }
   }, 0);
@@ -21848,7 +21407,6 @@ if (searchInput) {
     if(highlightedClade) {
       highlightedClade = null;
       drawTree();
-      console.log('drawTree in searchInput click');
     }
   });
 }
@@ -21870,7 +21428,6 @@ if (resetHighlightsBtn) {
   resetHighlightsBtn.addEventListener('click', () => {
     cladeBackgroundColors.clear();
     drawTree();
-    console.log('drawTree in resetHighlightsBtn click');
     updateResetHighlightsButtonVisibility();
   });
 }
@@ -21899,15 +21456,12 @@ function autoFitOnResize(){
   if(geometry === 'rect'){
     if(expPct <= 0){
       drawTree();
-      console.log('drawTree in autoFitOnResize self_1');
     } else {
       drawTree();
-      console.log('drawTree in autoFitOnResize self_2');
       anchorTopLeftPreserveScale();
     }
   } else {
     drawTree();
-    console.log('drawTree in autoFitOnResize self_3');
     centerRadial();
   }
 }
@@ -21924,7 +21478,6 @@ if(metaAlignEnable){
     }
     
     drawTree();
-    console.log('drawTree in metaAlignEnable change');
   });
 }
 if(metaAlignGeneSel){
@@ -21937,7 +21490,6 @@ if(metaAlignGeneSel){
     }
     
     drawTree();
-    console.log('drawTree in metaAlignGeneSel change');
   });
 }
 metaAlignTypeRadios().forEach(r => {
@@ -21950,7 +21502,6 @@ metaAlignTypeRadios().forEach(r => {
         df.alignType = alignType;
       }
       drawTree();
-      console.log('drawTree in metaAlignTypeRadios change');
     }
   });
 });
@@ -21999,7 +21550,7 @@ $('#metaFile').addEventListener('change', ev => {
       handleMetaFile(selectedMetaFile).catch(e=>{ console.error(e); setStatus('Metadata parse error'); });
     }
   } else {
-    if(!getFirstDataframeMeta()){ setMetaUiVisible(false); drawTree(); console.log('drawTree in deleteHeatmapCard');}
+    if(!getFirstDataframeMeta()){ setMetaUiVisible(false); drawTree();}
   }
 });
 
@@ -22059,6 +21610,8 @@ if (treeModeGenerate) treeModeGenerate.addEventListener('change', updateTreeInpu
 if (geneDataFileInput) {
   geneDataFileInput.addEventListener('change', (ev) => {
     selectedGeneDataFile = ev.target.files && ev.target.files[0] ? ev.target.files[0] : null;
+    const nameEl = document.getElementById('geneDataFileName');
+    if (nameEl) nameEl.textContent = selectedGeneDataFile ? selectedGeneDataFile.name : 'No file chosen';
     updateTreeInputMode();
     
     // Update button appearance
@@ -22078,7 +21631,7 @@ const algorithmDescription = document.getElementById('algorithmDescription');
 
 function updateAlgorithmDescription() {
   if (algorithmNJ && algorithmNJ.checked && algorithmDescription) {
-    algorithmDescription.textContent = 'Neighbor-Joining: Does not assume molecular clock (similar to R\'s ape::bionj)';
+    algorithmDescription.textContent = 'Neighbor-Joining: does not assume a molecular clock (as R\'s ape::nj)';
   } else if (algorithmUPGMA && algorithmUPGMA.checked && algorithmDescription) {
     algorithmDescription.textContent = 'UPGMA: Assumes molecular clock, produces ultrametric tree (all tips equidistant from root)';
   }
@@ -22093,7 +21646,6 @@ function upgmaTree(distanceMatrix, labels) {
   if (n === 0) return null;
   if (n === 1) return { name: labels[0], branchLength: 0 };
   
-  console.log('\n========== UPGMA CLUSTERING PROCESS ==========');
   
   // Initialize clusters (each sequence is its own cluster initially)
   const clusters = labels.map((label, i) => ({
@@ -22129,7 +21681,6 @@ function upgmaTree(distanceMatrix, labels) {
     
     if (minI === -1 || minJ === -1) break;
     
-    console.log(`Step ${step}: Merging clusters ${minI} and ${minJ}, distance: ${minDist.toFixed(10)}`);
     
     // Calculate new cluster height (average distance / 2)
     const newHeight = minDist / 2;
@@ -22170,7 +21721,7 @@ function upgmaTree(distanceMatrix, labels) {
   return clusters[rootIndex];
 }
 
-// Neighbor-Joining tree construction algorithm (similar to BIONJ used in R's ape package)
+// Neighbor-Joining (Saitou & Nei; the plain NJ of R's ape::nj, not BIONJ)
 function neighborJoiningTree(distanceMatrix, labels) {
   const n = labels.length;
   if (n === 0) return null;
@@ -22275,7 +21826,6 @@ function neighborJoiningTree(distanceMatrix, labels) {
     };
     
     // Calculate distances from new node to all other active nodes
-    console.log(`  Updating distances:`);
     const newDistances = new Array(nodes.length);
     for (const k of activeIndices) {
       if (k === minI || k === minJ) continue;
@@ -22352,8 +21902,6 @@ function calculateJaccardDistanceMatrix(dataframe) {
   const rows = dataframe.meta.rows;
   const columns = dataframe.meta.columns || [];
   
-  console.log(`calculateJaccardDistanceMatrix: ${rows.length} rows, ${columns.length} columns`);
-  console.log('Columns:', columns);
   
   if (columns.length < 2) {
     throw new Error(`Dataframe must have at least 2 columns (molecule/accession and gene). Found ${columns.length} column(s): ${columns.join(', ')}`);
@@ -22364,8 +21912,6 @@ function calculateJaccardDistanceMatrix(dataframe) {
   const moleculeCol = columnIndices.moleculeCol;
   const geneCol = columnIndices.geneCol;
   
-  console.log(`Using column "${moleculeCol}" (position: ${columns.indexOf(moleculeCol)}) for molecules`);
-  console.log(`Using column "${geneCol}" (position: ${columns.indexOf(geneCol)}) for genes`);
   
   // Build gene sets for each molecule
   const moleculeGenes = new Map();
@@ -22374,11 +21920,6 @@ function calculateJaccardDistanceMatrix(dataframe) {
     const molecule = row[moleculeCol];
     const gene = row[geneCol];
     
-    if (idx < 5) {
-      console.log(`Row ${idx}:`, row);
-      console.log(`  molecule (from "${moleculeCol}"):`, molecule);
-      console.log(`  gene (from "${geneCol}"):`, gene);
-    }
     
     if (molecule && gene) {
       const moleculeTrimmed = String(molecule).trim();
@@ -22394,18 +21935,6 @@ function calculateJaccardDistanceMatrix(dataframe) {
   // Get unique molecules
   const molecules = Array.from(moleculeGenes.keys()).sort();
   const n = molecules.length;
-  
-  console.log(`Found ${n} unique molecules (should be 304):`, molecules.slice(0, 10), n > 10 ? '...' : '');
-  let sampleCount = 0;
-  moleculeGenes.forEach((genes, mol) => {
-    if (sampleCount < 10) {
-      console.log(`  ${mol}: ${genes.size} genes`);
-      sampleCount++;
-    }
-  });
-  if (n > 10) {
-    console.log(`  ... and ${n - 10} more molecules`);
-  }
   
   if (n < 2) {
     throw new Error(`Need at least 2 molecules/accessions to generate a tree. Found ${n} molecule(s).`);
@@ -22430,31 +21959,6 @@ function calculateJaccardDistanceMatrix(dataframe) {
       distanceMatrix[j][i] = jaccardDistance;
     }
   }
-  
-  // Print distance matrix as a table for comparison with R
-  console.log('\n========== DISTANCE MATRIX ==========');
-  console.log(`Matrix size: ${n} x ${n}`);
-  
-  // Create table data for console.table
-  const tableData = {};
-  molecules.forEach((mol, i) => {
-    const row = {};
-    molecules.forEach((mol2, j) => {
-      row[mol2] = distanceMatrix[i][j].toFixed(6);
-    });
-    tableData[mol] = row;
-  });
-  
-  console.table(tableData);
-  
-  // Also print in text format for easy copy-paste
-  console.log('\n========== DISTANCE MATRIX (Text Format) ==========');
-  console.log('Row labels:\t' + molecules.join('\t'));
-  molecules.forEach((mol, i) => {
-    const row = distanceMatrix[i].map(d => d.toFixed(6)).join('\t');
-    console.log(`${mol}\t${row}`);
-  });
-  console.log('=====================================\n');
   
   return { distanceMatrix, labels: molecules };
 }
@@ -22483,8 +21987,6 @@ async function generateTreeFromGeneContent() {
     const delimiter = firstLine.includes('\t') ? '\t' : ',';
     const header = firstLine.split(delimiter).map(h => h.trim());
     
-    console.log(`Detected delimiter: ${delimiter === '\t' ? 'TAB' : 'COMMA'}`);
-    console.log(`Header columns (${header.length}):`, header);
     
     // Parse data rows
     const parsedRows = [];
@@ -22499,18 +22001,13 @@ async function generateTreeFromGeneContent() {
         
         // Log first few rows
         if (i <= 5) {
-          console.log(`Row ${i} raw:`, rows[i].substring(0, 100));
-          console.log(`Row ${i} split (${cols.length} cols):`, cols.slice(0, 3));
-          console.log(`Row ${i} object:`, rowObj);
         }
       }
     }
     
-    console.log(`Parsed ${parsedRows.length} data rows from ${rows.length - 1} total rows`);
     
     // Check for unique values in first column
     const uniqueFirstCol = new Set(parsedRows.map(r => r[header[0]]));
-    console.log(`Unique values in first column "${header[0]}": ${uniqueFirstCol.size}`);
     
     if (parsedRows.length === 0) {
       setStatus('Error: No valid data rows found in gene data file.');
@@ -22534,7 +22031,7 @@ async function generateTreeFromGeneContent() {
     const algorithmNJ = document.getElementById('algorithmNJ');
     const algorithmUPGMA = document.getElementById('algorithmUPGMA');
     const useNJ = algorithmNJ && algorithmNJ.checked;
-    const algorithmName = useNJ ? 'Neighbor-Joining (BIONJ)' : 'UPGMA';
+    const algorithmName = useNJ ? 'Neighbor-Joining' : 'UPGMA';
     
     setStatus(`Found ${labels.length} unique molecules. Building tree using ${algorithmName}...`);
     
@@ -22549,12 +22046,9 @@ async function generateTreeFromGeneContent() {
     // Convert to Newick format
     const newick = treeToNewick(tree) + ';';
     
-    console.log('Generated Newick (first 500 chars):', newick.substring(0, 500));
-    console.log('Newick length:', newick.length);
     
     // Count tips in Newick (rough estimate by counting leaf names)
     const tipMatches = newick.match(/[a-zA-Z0-9_]+:/g);
-    console.log(`Estimated tips in Newick: ${tipMatches ? tipMatches.length : 'unknown'}`);
     
     setStatus('Tree generated successfully. Loading...');
     
@@ -22589,13 +22083,11 @@ $('#edgeStyle').addEventListener('change', drawTree);
 { const el = document.getElementById('trackWidth'); if(el){ el.addEventListener('change', (ev)=>{
   barPaneWidthOverride = null;
   drawTree();
-  console.log('drawTree in trackWidth change');
 }); } }
 $('#metaColumn').addEventListener('change', ev=>{ metaColumn = ev.target.value; drawTree(); });
 { const el = document.getElementById('labelSize'); if(el) el.addEventListener('change', (ev) => {
   resetFontTruncationCache(); // Reset cache when user changes font size
   drawTree();
-  console.log('drawTree in labelSize change');
 }); }
 $('#fit').addEventListener('click', onFitToViewRect);
 
@@ -22610,7 +22102,6 @@ function onFitToViewRect(){
       window.radialPanelSystem.sync();
     }
     drawTree();
-    console.log('drawTree in onFitToViewRect self_1');
     if(geometry === 'radial'){
       centerRadial();
     }
@@ -22648,7 +22139,6 @@ function onFitToViewRect(){
   _fitViewState.nLeaves  = nL;
 
   drawTree();
-  console.log('drawTree in onFitToViewRect self_2');
   fitFillNonUniform();
   reapplyPermanentColors();
   setStatus(`Fit to view — canvas ${Math.round(canvasW)}×${Math.round(canvasH)}; tips ${nL}; spacing ${leafSepPx.toFixed(1)}px`);
@@ -22724,7 +22214,6 @@ if(openAngleDegSel){
       resetFontTruncationCache();
     }
     drawTree();
-    console.log('drawTree in onOpenInput');
     const max = +openAngleDegSel.max || 300; const min = +openAngleDegSel.min || 0; const v = +openAngleDegSel.value || 0;
     const pct = ((v - min) / (max - min)) * 100; openAngleDegSel.style.setProperty('--range-fill', pct + '%');
   };
@@ -22745,7 +22234,6 @@ if(openAngleDegNum){
       resetFontTruncationCache();
     }
     drawTree();
-    console.log('drawTree in onOpenNumInput');
     const max = +openAngleDegSel.max || 300; const min = +openAngleDegSel.min || 0;
     const pct = ((val - min) / (max - min)) * 100; openAngleDegSel.style.setProperty('--range-fill', pct + '%');
   };
@@ -22832,7 +22320,6 @@ if(transformEnableEl){
   transformEnableEl.addEventListener('change', ()=> {
     if(layoutSel) layoutSel.disabled = !transformEnableEl.checked;
     drawTree();
-    console.log('drawTree in transformEnableEl change');
     centerRadial();
   });
 }
@@ -22846,7 +22333,6 @@ function redrawTreePreservingHighlights() {
   
   // Redraw the tree
   drawTree();
-  console.log('drawTree in redrawTreePreservingHighlights');
   
   // Restore highlighting state after redraw
   highlightedClade = tempHighlightedClade;
@@ -22985,7 +22471,6 @@ if(uniqueBranchTipsEl) {
     }
     
     drawTree();
-    console.log('drawTree in uniqueBranchTipsEl change');
   });
   
   uniqueBranchTipsEl.checked = uniqueBranchTips;
@@ -23422,14 +22907,12 @@ window.SectionDebugMode = {
         sidebar.classList.add('debug-mode');
         document.querySelectorAll('.sidebar-divider-visual').forEach(div => div.classList.add('show-dividers'));
         document.querySelectorAll('.section-header h4').forEach(title => title.classList.add('show-titles'));
-        console.log('🔍 Section Debug Mode: ENABLED - Dividers and section titles are now visible');
       } else {
         sidebar.classList.remove('debug-mode');
         document.querySelectorAll('.sidebar-divider-visual').forEach(div => div.classList.remove('show-dividers'));
         document.querySelectorAll('.section-header h4').forEach(title => title.classList.remove('show-titles'));
         // Update section visibility to hide/show based on content
         updateSectionVisibilities();
-        console.log('🔍 Section Debug Mode: DISABLED - Dividers and section titles are now hidden');
       }
     }
   },
@@ -23447,12 +22930,6 @@ window.SectionDebugMode = {
   },
   
   status() {
-    console.log(`🔍 Section Debug Mode: ${this.enabled ? 'ENABLED' : 'DISABLED'}`);
-    console.log('Available commands:');
-    console.log('  SectionDebugMode.toggle() - Enable/disable debug mode');
-    console.log('  SectionDebugMode.enable() - Enable debug mode');
-    console.log('  SectionDebugMode.disable() - Disable debug mode');
-    console.log('  SectionDebugMode.status() - Show current status');
   }
 };
 
@@ -23733,7 +23210,6 @@ document.addEventListener('DOMContentLoaded', () => {
         clearCladeSelection();
         
         drawTree();
-        console.log('drawTree in applyCladeColorBtn');
       }
     });
   }
@@ -23786,7 +23262,6 @@ if(applyHighlightBackgroundBtn){
       clearCladeSelection();
       
       drawTree();
-      console.log('drawTree in applyHighlightBackgroundBtn');
       updateResetHighlightsButtonVisibility();
     }
   });
@@ -23795,7 +23270,6 @@ if(applyHighlightBackgroundBtn){
 if(branchStrokeWidthEl){
   branchStrokeWidthEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in branchStrokeWidthEl');
     updateSearchHighlights();
   });
 }
@@ -23808,7 +23282,6 @@ if(coverScaleBarEl){
       scaleRangeEl.disabled = coverScaleBarEl.checked;
     }
     drawTree();
-    console.log('drawTree in coverScaleBarEl');
   });
 }
 
@@ -23838,7 +23311,6 @@ if(labelGuidesEl){ labelGuidesEl.addEventListener('change', () => drawTree()); }
 if(hideScaleBarEl){
   hideScaleBarEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in hideScaleBarEl');
   });
 }
 
@@ -23863,7 +23335,6 @@ if(scaleRangeEl){
   scaleRangeEl.addEventListener('change', ()=>{
     validateScaleRange();
     drawTree();
-    console.log('drawTree in scaleRangeEl');
   });
   
   scaleRangeEl.addEventListener('input', ()=>{
@@ -23874,7 +23345,6 @@ if(scaleRangeEl){
 if(scaleStrokeWidthEl){
   scaleStrokeWidthEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in scaleStrokeWidthEl');
   });
 }
 
@@ -23882,7 +23352,6 @@ if(scaleStrokeWidthEl){
 if(showBootstrapEl){
   showBootstrapEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in showBootstrapEl');
     updateMetadataLegend();
   });
 }
@@ -23898,14 +23367,12 @@ if(bootstrapDataSourceEl){
 if(bootstrapMinRangeEl){
   bootstrapMinRangeEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapMinRangeEl');
   });
 }
 
 if(bootstrapMaxRangeEl){
   bootstrapMaxRangeEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapMaxRangeEl');
   });
 }
 
@@ -23913,7 +23380,6 @@ if(bootstrapMaxRangeEl){
 if(bootstrapSymbolTypeEl){
   bootstrapSymbolTypeEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapSymbolTypeEl');
     updateMetadataLegend();
   });
 }
@@ -23921,7 +23387,6 @@ if(bootstrapSymbolTypeEl){
 if(bootstrapFillColorEl){
   bootstrapFillColorEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapFillColorEl');
     updateMetadataLegend();
   });
 }
@@ -23929,7 +23394,6 @@ if(bootstrapFillColorEl){
 if(bootstrapBorderColorEl){
   bootstrapBorderColorEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapBorderColorEl');
     updateMetadataLegend();
   });
 }
@@ -23937,7 +23401,6 @@ if(bootstrapBorderColorEl){
 if(bootstrapBorderWidthEl){
   bootstrapBorderWidthEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapBorderWidthEl');
   });
 }
 
@@ -23952,7 +23415,6 @@ if(bootstrapMinSizeEl){
     }
     
     drawTree();
-    console.log('drawTree in bootstrapMinSizeEl');
     updateMetadataLegend();
   });
 }
@@ -23968,7 +23430,6 @@ if(bootstrapMaxSizeEl){
     }
     
     drawTree();
-    console.log('drawTree in bootstrapMaxSizeEl');
     updateMetadataLegend();
   });
 }
@@ -23976,7 +23437,6 @@ if(bootstrapMaxSizeEl){
 if(bootstrapPositionEl){
   bootstrapPositionEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapPositionEl');
   });
 }
 
@@ -23984,14 +23444,12 @@ if(bootstrapPositionEl){
 if(bootstrapFontSizeEl){
   bootstrapFontSizeEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapFontSizeEl');
   });
 }
 
 if(bootstrapFontColorEl){
   bootstrapFontColorEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapFontColorEl');
   });
 }
 
@@ -24000,7 +23458,6 @@ if(bootstrapBoldEl){
     // pro UI: state lives in aria-pressed (styled by CSS)
     bootstrapBoldEl.setAttribute('aria-pressed', String(bootstrapBoldEl.getAttribute('aria-pressed') !== 'true'));
     drawTree();
-    console.log('drawTree in bootstrapBoldEl');
   });
 }
 
@@ -24008,56 +23465,48 @@ if(bootstrapItalicEl){
   bootstrapItalicEl.addEventListener('click', ()=>{
     bootstrapItalicEl.setAttribute('aria-pressed', String(bootstrapItalicEl.getAttribute('aria-pressed') !== 'true'));
     drawTree();
-    console.log('drawTree in bootstrapItalicEl');
   });
 }
 
 if(bootstrapTextPositionEl){
   bootstrapTextPositionEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapTextPositionEl');
   });
 }
 
 if(bootstrapVerticalShiftEl){
   bootstrapVerticalShiftEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapVerticalShiftEl');
   });
 }
 
 if(bootstrapScaleFactorEl){
   bootstrapScaleFactorEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapScaleFactorEl');
   });
 }
 
 if(bootstrapRoundingEl){
   bootstrapRoundingEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapRoundingEl');
   });
 }
 
 if(bootstrapScientificEl){
   bootstrapScientificEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapScientificEl');
   });
 }
 
 if(bootstrapPercentEl){
   bootstrapPercentEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapPercentEl');
   });
 }
 
 if(bootstrapShowAllEl){
   bootstrapShowAllEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapShowAllEl');
   });
 }
 
@@ -24066,7 +23515,6 @@ if(bootstrapShowAllEl){
 if(bootstrapColorMinEl){
   bootstrapColorMinEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapColorMinEl');
     updateMetadataLegend();
   });
 }
@@ -24074,7 +23522,6 @@ if(bootstrapColorMinEl){
 if(bootstrapColorMidEl){
   bootstrapColorMidEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapColorMidEl');
     updateMetadataLegend();
   });
 }
@@ -24083,7 +23530,6 @@ if(bootstrapColorMidToggleEl){
   // pro UI: the midpoint toggle is a switch (checkbox)
   bootstrapColorMidToggleEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapColorMidToggleEl');
     updateMetadataLegend();
   });
 }
@@ -24091,7 +23537,6 @@ if(bootstrapColorMidToggleEl){
 if(bootstrapColorMaxEl){
   bootstrapColorMaxEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in bootstrapColorMaxEl');
     updateMetadataLegend();
   });
 }
@@ -24134,7 +23579,6 @@ document.addEventListener('DOMContentLoaded', function() {
       // Also redraw when switching away from color tab to remove branch colors
       if (targetTab === 'color' || currentActiveTab === 'color') {
         drawTree();
-        console.log('drawTree in bootstrapTabs click');
       } else {
         drawBootstrapValues();
       }
@@ -24150,7 +23594,6 @@ const dataMarginEl = document.getElementById('dataMargin');
 if(dataMarginEl){
   dataMarginEl.addEventListener('change', ()=>{
     drawTree();
-    console.log('drawTree in dataMarginEl');
   });
 }
 
@@ -24590,7 +24033,6 @@ function onExpansionInput(pct){
   setExpansionBadge();
   
   drawTree();
-  console.log('drawTree in onExpansionInput');
   updateZoomBounds();
   adjustSvgHeightForExpansion();
 }
@@ -24598,7 +24040,6 @@ function onExpansionInput(pct){
 function onExpansionChange(){
   setExpansionBadge();
   drawTree();
-  console.log('drawTree in onExpansionChange');
   updateZoomBounds();
   adjustSvgHeightForExpansion();
   
@@ -24656,7 +24097,6 @@ if(btnRect){
     }
     
     // drawTree();
-    console.log('drawTree in btnRect click called but suppressed by user');
     onFitToViewRect();
     syncControls();
   });
@@ -24683,7 +24123,6 @@ if(btnRadial){
     }
     
     drawTree();
-    console.log('drawTree in btnRadial click');
     centerRadial();
     spinDeg = rotationDegSel ? (+rotationDegSel.value||0) : 0;
     applySpin();
@@ -24748,7 +24187,6 @@ function scheduleResizeRedraw(){
     resizeRaf = null;
     if(!root) return; // Skip when no tree data (e.g. page reload before tree loaded)
     drawTree();
-    console.log('drawTree in scheduleResizeRedraw');
     if(geometry === 'radial'){
       centerRadial();
     } else {
@@ -25620,7 +25058,6 @@ document.getElementById('treeDebugToggle')?.addEventListener('click', (ev)=>{
   
   if (root) {
     drawTree();
-    console.log('drawTree in treeDebugToggle click');
   }
 });
 
@@ -26051,7 +25488,6 @@ if(rotateCladeBtn){
       });
       updateResetRotationsButtonVisibility();
       drawTree();
-      console.log('drawTree in rotateCladeBtn click');
     }
   });
 }
@@ -26069,7 +25505,6 @@ if(collapseCladeBtn){
       updateResetCollapsesButtonVisibility();
       updateMetadataLegend(); // Update legend to reflect visible data after collapse
       drawTree();
-      console.log('drawTree in collapseCladeBtn click');
     }
   });
 }
@@ -26087,7 +25522,6 @@ if(cartoonCladeBtn){
       });
       updateResetCartoonsButtonVisibility();
       drawTree();
-      console.log('drawTree in cartoonCladeBtn click');
     }
   });
 }
@@ -26096,7 +25530,6 @@ if(highlightCladeBackgroundBtn){
   highlightCladeBackgroundBtn.addEventListener('click', () => {
     if(highlightedClade) {
       drawTree();
-      console.log('drawTree in highlightCladeBackgroundBtn click');
     }
   });
 }
@@ -26239,7 +25672,6 @@ resetRotationsBtn.addEventListener('click', () => {
     nodeRotationCounts.clear();
     updateResetRotationsButtonVisibility();
     drawTree();
-    console.log('drawTree in resetRotationsBtn click');
   }
 });
 
@@ -26270,7 +25702,6 @@ setTimeout(() => {
         updateResetCollapsesButtonVisibility();
         updateMetadataLegend(); // Update legend to reflect visible data after resetting collapses
         drawTree();
-        console.log('drawTree in resetCollapsesBtn click');
       }
     });
     
@@ -26299,7 +25730,6 @@ setTimeout(() => {
         cartoonedNodes.clear();
         updateResetCartoonsButtonVisibility();
         drawTree();
-        console.log('drawTree in resetCartoonsBtn click');
       }
     });
     
@@ -26431,7 +25861,6 @@ setStatus('Load a Newick tree to begin');
       // (no updateTreeBranchColors() first: drawTree recreates every branch in the new
       // colours, and recolouring the old ones forced a restyle of the whole drawing)
       drawTree();
-      console.log('drawTree in themeToggle change');
     });
   }
 })();

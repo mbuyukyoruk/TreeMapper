@@ -1278,3 +1278,19 @@ html.pro .ar-menu .pro-menu-item { height: auto; min-height: 38px; padding: 6px 
 html.pro .ar-menu .pro-menu-item:disabled { opacity: .55; cursor: default; background: none; }
 html.pro .ar-menu .pro-menu-item.is-strong b { color: var(--accent); }
 html.pro .ar-menu .pro-menu-text small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Generate-tree dialog: file control, method and notes */
+html.pro .pro-modal #treeGenerateSection .pro-file, html.pro .pro-modal #treeGenerateSection .pro-gen-method, html.pro .pro-modal #treeGenerateSection .button-section { margin-top: 16px; }
+html.pro .pro-gen-intro { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+html.pro .pro-file { display: flex; flex-direction: column; gap: 6px; margin: 0; cursor: pointer; }
+html.pro .pro-file-label { font-size: 12px; font-weight: 600; color: var(--text); }
+html.pro .pro-file-ctl { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px; border: 1px dashed var(--pro-border-strong, var(--border)); border-radius: 10px; background: var(--panel); }
+html.pro .pro-file:hover .pro-file-ctl { border-color: var(--accent); }
+html.pro .pro-file:focus-within .pro-file-ctl { border-color: var(--accent); box-shadow: 0 0 0 3px var(--pro-accent-soft); }
+html.pro .pro-file-btn { flex: none; height: 30px; padding: 0 12px; display: inline-flex; align-items: center; }
+html.pro .pro-file-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted); }
+html.pro .pro-gen-method { display: flex; flex-direction: column; gap: 6px; }
+html.pro .pro-gen-method .pro-radio-seg { align-self: flex-start; }
+html.pro .pro-gen-hint { font-size: 11.5px; color: var(--muted); }
+html.pro .pro-modal #treeGenerateSection .file-upload-card { padding: 0; }
+html.pro .pro-radio-seg span { white-space: nowrap; }

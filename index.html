@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610212152" rel="stylesheet">
-<link href="css/styles.css?v=202610212152" rel="stylesheet">
-<link href="css/pro.css?v=202610212152" rel="stylesheet">
+<link href="css/tailwind.css?v=202610212319" rel="stylesheet">
+<link href="css/styles.css?v=202610212319" rel="stylesheet">
+<link href="css/pro.css?v=202610212319" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -462,7 +462,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610212152"></script>
+      <script src="js/drag-fastpath.js?v=202610212319"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -697,28 +697,20 @@
 
         <!-- Generate tree from gene content section -->
         <div id="treeGenerateSection" class="file-input-section" style="display: none;">
-          <div style="margin-bottom: 12px; padding: 8px; background: var(--bg); border-left: 3px solid var(--accent); font-size: 11px; color: var(--muted);">
-            Upload a gene/domain dataframe file (.csv/.tsv) to generate a phylogenetic tree based on Jaccard distance.
-          </div>
-          <label>Gene / domain table (.csv or .tsv)
-            <input autocomplete="off" id="geneDataFile" type="file" accept=".csv,.tsv,.txt">
+          <p class="pro-gen-intro">A table with one row per gene (or domain) per genome: a molecule / accession column and a gene column. Genomes are compared by the genes they share (Jaccard distance) and a tree is built from those distances.</p>
+          <label class="pro-file" for="geneDataFile">
+            <span class="pro-file-label">Gene / domain table (.csv or .tsv)</span>
+            <span class="pro-file-ctl"><span class="pro-btn pro-file-btn">Choose file…</span><span class="pro-file-name" id="geneDataFileName">No file chosen</span></span>
+            <input autocomplete="off" id="geneDataFile" type="file" accept=".csv,.tsv,.txt" class="pro-sr-only">
           </label>
 
-          <div style="margin-top: 12px; margin-bottom: 12px;">
-            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 12px;">Tree algorithm</label>
-            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-              <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px;">
-                <input autocomplete="off" type="radio" name="treeAlgorithm" value="nj" id="algorithmNJ" checked style="margin-right: 6px;">
-                <span>Neighbor-Joining (BIONJ)</span>
-              </label>
-              <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px;">
-                <input autocomplete="off" type="radio" name="treeAlgorithm" value="upgma" id="algorithmUPGMA" style="margin-right: 6px;">
-                <span>UPGMA</span>
-              </label>
-            </div>
-            <div style="margin-top: 6px; font-size: 10px; color: var(--muted);">
-              <span id="algorithmDescription">Neighbor-Joining: Does not assume molecular clock (similar to R's ape::bionj)</span>
-            </div>
+          <div class="pro-gen-method">
+            <span class="pro-file-label">Method</span>
+            <span class="pro-radio-seg" role="radiogroup" aria-label="Tree method">
+              <label><input autocomplete="off" type="radio" name="treeAlgorithm" value="nj" id="algorithmNJ" checked><span>Neighbor-Joining</span></label>
+              <label><input autocomplete="off" type="radio" name="treeAlgorithm" value="upgma" id="algorithmUPGMA"><span>UPGMA</span></label>
+            </span>
+            <span class="pro-gen-hint" id="algorithmDescription">Neighbor-Joining: does not assume a molecular clock (as R's ape::nj)</span>
           </div>
 
           <div class="button-section">
@@ -732,17 +724,17 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610212152"></script>
-<script src="js/tree-core.js?v=202610212152"></script>
-<script src="js/app.js?v=202610212152"></script>
-<script src="js/msa.js?v=202610212152"></script>
-<script src="js/align-rules.js?v=202610212152"></script>
-<script src="js/drag-live.js?v=202610212152"></script>
-<script src="js/session.js?v=202610212152"></script>
-<script src="js/undo.js?v=202610212152"></script>
-<script src="js/data-editor.js?v=202610212152"></script>
-<script src="js/pro-ui.js?v=202610212152"></script>
-<script src="js/select-tool.js?v=202610212152"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610212319"></script>
+<script src="js/tree-core.js?v=202610212319"></script>
+<script src="js/app.js?v=202610212319"></script>
+<script src="js/msa.js?v=202610212319"></script>
+<script src="js/align-rules.js?v=202610212319"></script>
+<script src="js/drag-live.js?v=202610212319"></script>
+<script src="js/session.js?v=202610212319"></script>
+<script src="js/undo.js?v=202610212319"></script>
+<script src="js/data-editor.js?v=202610212319"></script>
+<script src="js/pro-ui.js?v=202610212319"></script>
+<script src="js/select-tool.js?v=202610212319"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {
