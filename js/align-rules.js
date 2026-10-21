@@ -5,7 +5,9 @@
 //   - the group is a clade picked on the tree (its tip names are kept), or the tips
 //     with one value in a heatmap column (e.g. Clade = "Clade 1");
 //   - for each tip, the first rule that covers it and whose gene the tip has decides
-//     the row: that gene's left / centre / right edge goes to 0 bp;
+//     the row: that gene's left / centre / right edge goes to the rule's position, by
+//     default where that edge typically sits in the rule's tips under the card's own
+//     alignment (the median, worked out in prepareDataframeForDrawing), or a set bp;
 //   - tips no rule covers, or without the rule's gene, use the card's own gene;
 //   - a rule can also hide genes in its tips (stray hits).
 // The rules live on the dataframe (df.alignRules) and, for sessions, as JSON in a
@@ -15,6 +17,7 @@
   var EDGES = [['left', 'Left'], ['center', 'Centre'], ['right', 'Right']];
   var MAX_VALUES = 60;          // a heatmap column with more distinct values is not offered
   var uid = 0;
+  var lastTarget = new WeakMap();   // rule -> bp its gene was placed at in the last drawing
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function norm(v) { return normalizeAccession(v == null ? '' : v); }
@@ -61,10 +64,12 @@
         for (var i = 0; i < compiled.length; i++) {
           var c = compiled[i];
           if (!c.r.g || !c.m.has(key)) continue;
-          if (recs && recs.some(function (row) { return String(row[geneCol]) === c.r.g; })) return { gene: c.r.g, edge: c.r.e || 'left' };
+          if (recs && recs.some(function (row) { return String(row[geneCol]) === c.r.g; })) return { gene: c.r.g, edge: c.r.e || 'left', rule: c.r };
         }
         return null;
       },
+      // where each rule's gene went (bp), for the card
+      noteTargets: function (m) { m.forEach(function (bp, r) { lastTarget.set(r, bp); }); },
       // genes hidden in this tip's row (every rule that covers it), or null
       hidden: function (key) {
         var out = null;
@@ -87,8 +92,22 @@
     if (typeof root === 'undefined' || !root) return;
     if (typeof setDrawScope === 'function') setDrawScope('dataframe:' + idOf(card));
     drawTree();
+    showPlaces(card);
   }
   function changed(card, df) { save(card, df); render(card); redraw(card); }
+  function isPlace(p) { return p !== '' && p != null && isFinite(+p); }
+  // an empty "Place at" shows where the typical spot came out
+  function showPlaces(card) {
+    var df = dfOf(card);
+    if (!df) return;
+    Array.prototype.forEach.call(card.querySelectorAll('.align-rules .ar-rule'), function (row) {
+      var r = rulesOf(df)[+row.getAttribute('data-i')], inp = row.querySelector('.ar-place');
+      if (!r || !inp) return;
+      var bp = lastTarget.get(r);
+      inp.placeholder = r.g && bp != null && df.alignByGeneEnabled ? 'typical: ' + Math.round(bp) : 'typical';
+      inp.title = 'Empty: the gene goes where it typically sits in these tips' + (bp != null && r.g ? ' (' + Math.round(bp) + ' bp)' : '') + '. A number puts it there exactly, e.g. 0.';
+    });
+  }
   // an edit inside one rule: its controls stay (focus, open lists), only its texts change
   function edited(card, df, i) {
     save(card, df);
@@ -137,7 +156,7 @@
     box.classList.toggle('is-off', !df.alignByGeneEnabled);
     var html = '<div class="ar-title">Rules for groups of tips</div>' +
       '<p class="ar-hint">' + (df.alignByGeneEnabled ? '' : '<b>Switch on “Align bars by gene” to use them.</b> ') +
-      'For each tip, the first rule that covers it and whose gene the tip has puts that gene at 0 bp. Other tips use the gene above.</p>';
+      'For each tip, the first rule that covers it and whose gene the tip has lines that gene up with the rule\'s other tips, where it typically sits (or at the bp you set). Other tips use the gene above.</p>';
     rules.forEach(function (r, i) {
       var name = 'ar-edge-' + (++uid);
       html += '<div class="ar-rule" data-i="' + i + '">' +
@@ -155,6 +174,7 @@
         '<div class="pro-row pro-sub"><span>Anchor</span><span class="pro-radio-seg" role="radiogroup" aria-label="Rule anchor">' +
           EDGES.map(function (e) { return '<label><input type="radio" class="ar-edge" name="' + name + '" value="' + e[0] + '"' + ((r.e || 'left') === e[0] ? ' checked' : '') + '><span>' + e[1] + '</span></label>'; }).join('') +
         '</span></div>' +
+        '<div class="pro-row pro-sub"><label>Place at</label><span class="pro-num-wrap"><input type="number" step="1" class="pro-num ar-place" value="' + (isPlace(r.p) ? esc(r.p) : '') + '" placeholder="typical" aria-label="Position of the gene edge (empty: where it typically sits)"><span class="pro-unit">bp</span></span></div>' +
         '<details class="ar-hide"' + (open[i] ? ' open' : '') + '><summary>Hide genes in these tips: ' + ((r.h && r.h.length) ? esc(r.h.join(', ')) : 'none') + '</summary>' +
           '<div class="ar-hide-list">' + genes.map(function (gname) {
             return '<label class="ar-hide-item"><input type="checkbox" class="ar-hide-cb" value="' + esc(gname) + '"' + ((r.h || []).indexOf(gname) >= 0 ? ' checked' : '') + '><span>' + esc(gname) + '</span></label>';
@@ -250,6 +270,7 @@
     if (t.classList.contains('ar-gene')) x.rule.g = t.value || '';
     else if (t.classList.contains('ar-edge')) x.rule.e = t.value;
     else if (t.classList.contains('ar-name')) { x.rule.n = t.value; save(x.card, x.df); return; }
+    else if (t.classList.contains('ar-place')) x.rule.p = t.value.trim() === '' || !isFinite(+t.value) ? '' : +t.value;
     else if (t.classList.contains('ar-hide-cb')) {
       var h = new Set(x.rule.h || []);
       if (t.checked) h.add(t.value); else h.delete(t.value);
@@ -285,7 +306,7 @@
   window.tmAlignRules = {
     plan: plan,
     // the card was filled (a file was loaded): draw its rules
-    refresh: function (dataframeId) { var card = document.getElementById('dataframeCard' + dataframeId); if (card) render(card); },
+    refresh: function (dataframeId) { var card = document.getElementById('dataframeCard' + dataframeId); if (card) { render(card); setTimeout(function () { showPlaces(card); }, 0); } },
     _membersOf: membersOf
   };
 })();

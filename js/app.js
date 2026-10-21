@@ -3760,34 +3760,43 @@ function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
     leafLookup.set(key, leaf);
   });
   
+  // the left / centre / right edge of a gene in a tip (NaN without it)
+  const edgeOfGene = (recs, gene, edge) => {
+    const row = (gene && recs) ? recs.find(r => String(r[geneCol]) === gene) : null;
+    if (!row) return NaN;
+    const s = +row[startCol], e = +row[endCol];
+    if (!Number.isFinite(s) || !Number.isFinite(e)) return NaN;
+    return edge === 'left' ? Math.min(s, e) : edge === 'right' ? Math.max(s, e) : (Math.min(s, e) + Math.max(s, e)) / 2;
+  };
+  // the card's own gene: its edge goes to 0 (rows without it stay where they are)
+  const baseOffset = (recs) => { const a = edgeOfGene(recs, dfAlignGeneName, dfAlignType); return Number.isFinite(a) ? -a : 0; };
+  // rules (align-rules.js): the first rule covering a tip whose gene it has places the row; its gene's
+  // edge goes to the rule's position, by default where that edge typically sits in the rule's tips
+  // under the card's own alignment (the median), so the group lines up without moving away
+  const placed = [], typical = new Map();
   leavesToProcess.forEach(leaf => {
     const key = normalizeAccession(leaf.data.name);
     const recs = originalMeta.byIdAll && originalMeta.byIdAll.get(key);
-    if (!recs) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
-    
-    // the first rule covering this tip whose gene it has, else the card's own gene
-    const byRule = rulePlan && rulePlan.ruleFor(key, recs, geneCol);
-    const alignGene = byRule ? byRule.gene : dfAlignGeneName;
-    const alignEdge = byRule ? byRule.edge : dfAlignType;
-    const row = alignGene ? recs.find(r => String(r[geneCol]) === alignGene) : null;
-    if (!row) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
-    
-    let s = +row[startCol], e = +row[endCol];
-    if (!Number.isFinite(s) || !Number.isFinite(e)) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
-    
-    // Calculate the anchor point for this gene
-    let anchorPoint;
-    if (alignEdge === 'left') {
-      anchorPoint = Math.min(s, e); // Use start position
-    } else if (alignEdge === 'right') {
-      anchorPoint = Math.max(s, e); // Use end position
-    } else { // center
-      anchorPoint = (Math.min(s, e) + Math.max(s, e)) / 2; // Use center position
+    const byRule = (recs && rulePlan) ? rulePlan.ruleFor(key, recs, geneCol) : null;
+    const a = byRule ? edgeOfGene(recs, byRule.gene, byRule.edge) : NaN;
+    placed.push({ leaf, recs, byRule: Number.isFinite(a) ? byRule : null, a });
+    if (byRule && Number.isFinite(a)) {
+      if (!typical.has(byRule.rule)) typical.set(byRule.rule, []);
+      typical.get(byRule.rule).push(a + baseOffset(recs));
     }
-    
-    // Calculate offset to move this anchor point to 0
-    const offset = -anchorPoint;
-    dfAlignOffsetByLeaf.set(leaf, offset);
+  });
+  const ruleTarget = new Map();
+  typical.forEach((v, rule) => {
+    const p = rule.p;
+    if (p !== '' && p != null && Number.isFinite(+p)) { ruleTarget.set(rule, +p); return; }
+    v.sort((x, y) => x - y);
+    const m = v.length >> 1;
+    ruleTarget.set(rule, v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2);
+  });
+  if (rulePlan) rulePlan.noteTargets(ruleTarget);
+  placed.forEach(({ leaf, recs, byRule, a }) => {
+    if (!recs) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
+    dfAlignOffsetByLeaf.set(leaf, byRule ? ruleTarget.get(byRule.rule) - a : baseOffset(recs));
   });
   // genes a rule hides in its tips are left out (also from the axis range)
   const hiddenByRule = (row) => {
