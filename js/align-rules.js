@@ -303,7 +303,26 @@
     changed(x.card, x.df);
   });
 
+  // a heatmap loaded or removed changes what value rules cover (a session puts the dataframe
+  // card back before its heatmaps): draw every card's rules again
+  function refreshAll() {
+    Array.prototype.forEach.call(document.querySelectorAll('[id^="dataframeCard"] .align-rules'), function (box) {
+      var card = cardOf(box);
+      if (card && dfOf(card) && rulesOf(dfOf(card)).length) { render(card); showPlaces(card); }
+    });
+  }
+  ['handleHeatmapFile', 'deleteHeatmapCard'].forEach(function (name) {
+    var orig = window[name];
+    if (typeof orig !== 'function') return;
+    window[name] = function () {
+      var r = orig.apply(this, arguments);
+      Promise.resolve(r).then(function () { setTimeout(refreshAll, 0); });
+      return r;
+    };
+  });
+
   window.tmAlignRules = {
+    refreshAll: refreshAll,
     plan: plan,
     // the card was filled (a file was loaded): draw its rules
     refresh: function (dataframeId) { var card = document.getElementById('dataframeCard' + dataframeId); if (card) { render(card); setTimeout(function () { showPlaces(card); }, 0); } },
