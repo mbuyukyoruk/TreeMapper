@@ -173,7 +173,7 @@
   }
   function cardControls(card) {
     return Array.prototype.filter.call(card.querySelectorAll('input, select, textarea, button[aria-pressed]'), function (el) {
-      return el.type !== 'file' && el.type !== 'search' && !el.classList.contains('pro-search');
+      return el.type !== 'file' && el.type !== 'search' && !el.classList.contains('pro-search') && !el.closest('[data-session-skip]');
     });
   }
   // a description of each control that does not depend on the card's number

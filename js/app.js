@@ -3724,8 +3724,10 @@ function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
   const dfAlignByGeneEnabled = dataframe.alignByGeneEnabled || false;
   const dfAlignGeneName = dataframe.alignGeneName || '';
   const dfAlignType = dataframe.alignType || 'left';
+  // rules for groups of tips (align-rules.js): their own gene per group, genes hidden per group
+  const rulePlan = (dfAlignByGeneEnabled && window.tmAlignRules) ? window.tmAlignRules.plan(dataframe) : null;
   
-  if (!dfAlignByGeneEnabled || !dfAlignGeneName) {
+  if (!dfAlignByGeneEnabled || (!dfAlignGeneName && !rulePlan)) {
     // No alignment - return original metadata
     return dataframe.meta;
   }
@@ -3763,7 +3765,11 @@ function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
     const recs = originalMeta.byIdAll && originalMeta.byIdAll.get(key);
     if (!recs) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
     
-    const row = recs.find(r => String(r[geneCol]) === dfAlignGeneName);
+    // the first rule covering this tip whose gene it has, else the card's own gene
+    const byRule = rulePlan && rulePlan.ruleFor(key, recs, geneCol);
+    const alignGene = byRule ? byRule.gene : dfAlignGeneName;
+    const alignEdge = byRule ? byRule.edge : dfAlignType;
+    const row = alignGene ? recs.find(r => String(r[geneCol]) === alignGene) : null;
     if (!row) { dfAlignOffsetByLeaf.set(leaf, 0); return; }
     
     let s = +row[startCol], e = +row[endCol];
@@ -3771,9 +3777,9 @@ function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
     
     // Calculate the anchor point for this gene
     let anchorPoint;
-    if (dfAlignType === 'left') {
+    if (alignEdge === 'left') {
       anchorPoint = Math.min(s, e); // Use start position
-    } else if (dfAlignType === 'right') {
+    } else if (alignEdge === 'right') {
       anchorPoint = Math.max(s, e); // Use end position
     } else { // center
       anchorPoint = (Math.min(s, e) + Math.max(s, e)) / 2; // Use center position
@@ -3783,6 +3789,12 @@ function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
     const offset = -anchorPoint;
     dfAlignOffsetByLeaf.set(leaf, offset);
   });
+  // genes a rule hides in its tips are left out (also from the axis range)
+  const hiddenByRule = (row) => {
+    if (!rulePlan) return false;
+    const h = rulePlan.hidden(normalizeAccession(row[originalMeta.idCol]));
+    return !!(h && h.has(String(row[geneCol])));
+  };
   
   // For sampled datasets, extrapolate offsets to all leaves
   if (useSampling) {
@@ -3811,6 +3823,7 @@ function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
     const batch = rowsToProcess.slice(i, i + batchSize);
     
     batch.forEach(row => {
+      if (hiddenByRule(row)) return;
       const s = +row[startCol], e = +row[endCol];
       if (Number.isFinite(s) && Number.isFinite(e)) {
         // Find the leaf this row belongs to
@@ -3858,6 +3871,7 @@ function prepareDataframeForDrawing(dataframe, leaves, panelWidth, margin) {
     const batch = originalMeta.rows.slice(i, i + batchSize);
     
     batch.forEach(row => {
+      if (hiddenByRule(row)) return;
       const transformedRow = {...row};
       const s = +row[startCol], e = +row[endCol];
       
@@ -3915,7 +3929,8 @@ function processOperonGeneData(dataframe, leaves, panelWidth, margin) {
   const dfAlignByGeneEnabled = dataframe.alignByGeneEnabled || false;
   const dfAlignGeneName = dataframe.alignGeneName || '';
   const dfAlignType = dataframe.alignType || 'left';
-  const isAlignmentActive = dfAlignByGeneEnabled && dfAlignGeneName;
+  const rulePlan = (dfAlignByGeneEnabled && window.tmAlignRules) ? window.tmAlignRules.plan(dataframe) : null;
+  const isAlignmentActive = !!(dfAlignByGeneEnabled && (dfAlignGeneName || rulePlan));
   
   // Check if operon master toggle is enabled (for logging only)
   const isOperonMasterEnabled = dataframe.operonState && dataframe.operonState.get('master');
@@ -3940,7 +3955,7 @@ function processOperonGeneData(dataframe, leaves, panelWidth, margin) {
   
   // Create comprehensive cache key including all relevant state
   const operonState = selectedOperonGene ? `${selectedOperonGene}-${selectedOperonDirection}` : 'none';
-  const cacheKey = `${dataframe.id || 'default'}-${leaves.length}-${dfAlignGeneName}-${dfAlignType}-${operonState}`;
+  const cacheKey = `${dataframe.id || 'default'}-${leaves.length}-${dfAlignGeneName}-${dfAlignType}-${operonState}` + (rulePlan ? '-' + rulePlan.sig : '');
   
   // Check cache first
   if (ALIGNMENT_OPTIMIZATIONS.cache.has(cacheKey)) {
@@ -17026,6 +17041,8 @@ function createNewDataframeCard(metadata) {
               <label><input type="radio" name="metaAlignType${dataframeId}" value="right" disabled><span>Right</span></label>
             </span>
           </div>
+          <div class="align-rules" data-session-skip></div>
+          <input type="hidden" class="align-rules-state">
         </div>
       </div>
       <div class="pro-card-section">
@@ -17520,6 +17537,7 @@ function populateDataframeCard(dataframeId, metadata) {
         alignGeneSelect.value = '';
       }
     }
+    if (window.tmAlignRules) window.tmAlignRules.refresh(dataframeId);
     
     // Wire the gene controls for this dataframe
     wireGeneControlsForDataframe(dataframeId, df);

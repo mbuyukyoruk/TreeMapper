@@ -1191,3 +1191,25 @@ html.pro .msa-ref-chip { flex: 0 1 auto; }
 
 /* scrollbars drawn over the content (see pro-ui.js): the list rows end before them */
 html.pro.pro-overlay-scrollbars .pro-list { padding-right: 14px; }
+
+/* alignment rules for groups of tips (align-rules.js) */
+html.pro .align-rules { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+html.pro .align-rules.is-off .ar-rule, html.pro .align-rules.is-off .ar-add { opacity: .55; }
+html.pro .ar-title { font-size: 12px; font-weight: 600; color: var(--text); }
+html.pro .ar-hint { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+html.pro .ar-rule { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--pro-panel2); }
+html.pro .ar-top { display: flex; align-items: center; gap: 4px; }
+html.pro .ar-num { flex: none; min-width: 18px; height: 18px; border-radius: 9px; background: var(--pro-accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+html.pro .ar-name { flex: 1 1 auto; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text); font-size: 12.5px; font-weight: 600; }
+html.pro .ar-name:hover, html.pro .ar-name:focus { border-color: var(--border); background: var(--panel); outline: none; }
+html.pro .sidepanel .align-rules button.ar-btn { flex: none; width: auto; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font-size: 12px; line-height: 1; cursor: pointer; }
+html.pro .sidepanel .align-rules button.ar-btn:hover:not(:disabled) { background: var(--pro-hover); }
+html.pro .sidepanel .align-rules button.ar-btn:disabled { opacity: .4; cursor: default; }
+html.pro .sidepanel .align-rules button.ar-reclade { align-self: flex-start; font-size: 11.5px; }
+html.pro .ar-src { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.pro .ar-count { font-size: 11.5px; color: var(--muted); }
+html.pro .ar-warn { color: #b45309; }
+html.pro .ar-hide summary { cursor: pointer; font-size: 11.5px; color: var(--muted); padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.pro .ar-hide-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 2px 8px; padding: 4px 0 2px; max-height: 160px; overflow: auto; }
+html.pro .ar-hide-item { display: flex; align-items: center; gap: 5px; font-size: 12px; min-width: 0; cursor: pointer; }
+html.pro .ar-hide-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
