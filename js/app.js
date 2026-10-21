@@ -3363,7 +3363,8 @@ function setupOneTabAtATime() {
   document.addEventListener('click', (event) => {
     if (event.target.tagName === 'SUMMARY' || event.target.closest('summary')) {
       const detailsElement = event.target.closest('details');
-      if (detailsElement) {
+      // a list folded inside a card (e.g. an alignment rule's "Hide genes") leaves the cards alone
+      if (detailsElement && !(detailsElement.parentElement && detailsElement.parentElement.closest('aside details'))) {
         const allDetails = document.querySelectorAll('aside details');
         allDetails.forEach(details => {
           if (details !== detailsElement) {
