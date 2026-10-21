@@ -24,6 +24,7 @@ let droppedNodes = new Set();
 let dataframes = new Map();
 let heatmaps = new Map();
 let charts = new Map();
+let msas = new Map();   // sequence alignment layers (js/msa.js); their columns come after the charts
 let highlights = new Map();
 let clades = new Map();
 let internalNodeShape = 'circle';
@@ -94,6 +95,7 @@ let radialChartCount = 0;
 let radialHeatmapWidths = [];
 let radialDataframeWidths = [];
 let radialChartWidths = [];
+let radialMsaWidths = [];   // alignment rings (after the charts)
 let radialTreeRadius = 300;
 let radialLabelWidth = 40;
 let radialSvg = null;
@@ -104,6 +106,7 @@ let alignmentWorkerSupported = false;
 const MIN_PANEL_WIDTH = 80;
 const MIN_TREE_PANEL_WIDTH = 120;
 const MIN_DATAFRAME_PANEL_WIDTH = 120;
+const MIN_MSA_PANEL_WIDTH = 80;   // an alignment column
 const MIN_HEATMAP_PANEL_WIDTH = 20;
 const MAX_HEATMAP_PANEL_WIDTH = 40;
 const MIN_CHART_PANEL_WIDTH = 40;
@@ -188,11 +191,12 @@ const bootstrapColorMidEl = document.getElementById('bootstrapColorMid');
 const bootstrapColorMidToggleEl = document.getElementById('bootstrapColorMidToggle');
 const bootstrapColorMaxEl = document.getElementById('bootstrapColorMax');
 const RADIAL_SPLITTER_WIDTH = 2;
-const RADIAL_MIN_RING_WIDTH = {tree: 50, labels: 40, heatmap: 10, dataframe: 80, chart: 60};
-const RADIAL_MAX_RING_WIDTH = {tree: 500, labels: 200, heatmap: 30, dataframe: 400, chart: 400};
+const RADIAL_MIN_RING_WIDTH = {tree: 50, labels: 40, heatmap: 10, dataframe: 80, chart: 60, msa: 60};
+const RADIAL_MAX_RING_WIDTH = {tree: 500, labels: 200, heatmap: 30, dataframe: 400, chart: 400, msa: 400};
 const RADIAL_DEFAULT_HEATMAP_WIDTH = 30;
 const RADIAL_DEFAULT_DATAFRAME_WIDTH = 120;
 const RADIAL_DEFAULT_CHART_WIDTH = 100;
+const RADIAL_DEFAULT_MSA_WIDTH = 120;
 const accessionCache = new Map();
 const ALIGNMENT_OPTIMIZATIONS = {
   cache: new Map(),
@@ -771,12 +775,15 @@ function applyTruncation(leavesSel, fontSize) {
 // large drawing, and a splitter drag asks for every frame, so during a drag (when the
 // panels cannot change) the first answer is kept.
 let panelTypeCountsCache = null;
+// number of alignment cards (their panels follow the charts)
+function msaPanelCount() { return document.querySelectorAll('.msa-panel').length; }
 function panelTypeCounts() {
   if (panelTypeCountsCache && isDragging) return panelTypeCountsCache;
   const c = {
     dataframeCount: document.querySelectorAll('.dataframe-panel').length,
     chartCount: document.querySelectorAll('.chart-panel').length,
-    heatmapCount: document.querySelectorAll('.heatmap-panel').length
+    heatmapCount: document.querySelectorAll('.heatmap-panel').length,
+    msaCount: document.querySelectorAll('.msa-panel').length
   };
   panelTypeCountsCache = isDragging ? c : null;
   return c;
@@ -791,8 +798,8 @@ function getMaxPanelWidth(panelIndex) {
   if (panelIndex === 0) return Infinity; // Tree panel has no max width
   
   // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const { dataframeCount, chartCount, heatmapCount } = panelTypeCounts();
-  const needsPlaceholder = dataframeCount === 0 && chartCount === 0;
+  const { dataframeCount, chartCount, heatmapCount, msaCount } = panelTypeCounts();
+  const needsPlaceholder = dataframeCount === 0 && chartCount === 0 && msaCount === 0;
   
   // Calculate heatmap start index (after labels, before placeholder)
   const heatmapStartIndex = 2;
@@ -827,8 +834,8 @@ function getMinPanelWidth(panelIndex) {
   if (panelIndex === 0) return MIN_TREE_PANEL_WIDTH;
   
   // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const { dataframeCount, chartCount, heatmapCount } = panelTypeCounts();
-  const needsPlaceholder = dataframeCount === 0 && chartCount === 0;
+  const { dataframeCount, chartCount, heatmapCount, msaCount } = panelTypeCounts();
+  const needsPlaceholder = dataframeCount === 0 && chartCount === 0 && msaCount === 0;
   
   // Calculate heatmap start index (after labels, before placeholder)
   const heatmapStartIndex = 2;
@@ -848,6 +855,10 @@ function getMinPanelWidth(panelIndex) {
   const chartStartIndex = heatmapStartIndex + heatmapCount + dataframeCount;
   if (panelIndex >= chartStartIndex && panelIndex < chartStartIndex + chartCount) {
     return 40; // Minimum width of 40px for chart panels
+  }
+  // Alignment panels follow the charts
+  if (panelIndex >= chartStartIndex + chartCount && panelIndex < chartStartIndex + chartCount + msaCount) {
+    return MIN_MSA_PANEL_WIDTH;
   }
   
   // All other panels are dataframe panels
@@ -930,9 +941,10 @@ function initializePanels() {
     const heatmapPanelCount = heatmapPanels.length;
     const dataframePanelCount = dataframePanels.length;
     const chartPanelCount = chartPanels.length;
+    const msaPanelCountNow = msaPanelCount();
     
     // Check if we need a placeholder panel
-    const needsPlaceholder = dataframePanelCount === 0 && chartPanelCount === 0;
+    const needsPlaceholder = dataframePanelCount === 0 && chartPanelCount === 0 && msaPanelCountNow === 0;
     
     // Allocate fixed width for heatmap panels (20-40px each)
     const heatmapPanelWidth = Math.min(MAX_HEATMAP_PANEL_WIDTH, Math.max(MIN_HEATMAP_PANEL_WIDTH, Math.floor(remainingWidth * 0.1)));
@@ -954,7 +966,7 @@ function initializePanels() {
     
     // CRITICAL: Use panelCount to determine the actual number of panels that should exist
     // This ensures consistency when panels are being added/removed
-    const expectedPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount;
+    const expectedPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCountNow;
     
     // If panelCount doesn't match expected, adjust the counts to match panelCount
     let adjustedDataframePanelCount = dataframePanelCount;
@@ -976,8 +988,8 @@ function initializePanels() {
       }
     }
     
-    // Add dataframe and chart panel widths (treated equally)
-    const totalDataframeAndChartCount = adjustedDataframePanelCount + adjustedChartPanelCount;
+    // Add dataframe, chart and alignment panel widths (treated equally)
+    const totalDataframeAndChartCount = adjustedDataframePanelCount + adjustedChartPanelCount + msaPanelCountNow;
     if (totalDataframeAndChartCount > 0) {
       const widthPerPanel = Math.floor(remainingForDataframesAndCharts / totalDataframeAndChartCount);
       const extraWidth = remainingForDataframesAndCharts % totalDataframeAndChartCount;
@@ -999,6 +1011,8 @@ function initializePanels() {
         }
         panelWidths.push(panelWidth);
       }
+      // and the alignments after the charts
+      for (let i = 0; i < msaPanelCountNow; i++) panelWidths.push(widthPerPanel);
     }
   
   }
@@ -1030,7 +1044,8 @@ function createPanels() {
   // Check if we need a placeholder panel (when no dataframes AND no charts exist)
   const dataframePanels = Array.from(document.querySelectorAll('.dataframe-panel'));
   const chartPanels = Array.from(document.querySelectorAll('.chart-panel'));
-  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0;
+  const msaCountNow = msaPanelCount();
+  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0 && msaCountNow === 0;
   
   // Add heatmap panels after labels (before placeholder)
   const heatmapPanels = Array.from(document.querySelectorAll('.heatmap-panel'));
@@ -1059,6 +1074,13 @@ function createPanels() {
     dynamicPanelTypes.push(`chart${i + 1}`);
     dynamicPanelLabels.push(`Chart ${i + 1}`);
     dynamicPanelColors.push(i % 2 === 0 ? 'panel-chart' : 'panel-chart-2');
+  }
+  
+  // Add alignment panels after charts
+  for (let i = 0; i < msaCountNow; i++) {
+    dynamicPanelTypes.push(`msa${i + 1}`);
+    dynamicPanelLabels.push(`Alignment ${i + 1}`);
+    dynamicPanelColors.push('panel-chart');
   }
   
   let currentX = 0;
@@ -1324,6 +1346,14 @@ function normalizeWidths() {
   const totalSplitterWidth = (panelCount - 1) * SPLITTER_WIDTH;
   const availableWidth = svg.clientWidth - totalSplitterWidth;
   
+  // one width per panel: the width code of each panel kind does not know every other
+  // kind (an alignment panel added after the charts gets the width of the others)
+  if (panelWidths.length > panelCount) panelWidths.length = Math.max(0, panelCount);
+  while (panelWidths.length < panelCount) {
+    const flex = panelWidths.slice(2).filter((w, k) => getMaxPanelWidth(k + 2) === Infinity);
+    panelWidths.push(Math.max(getMinPanelWidth(panelWidths.length), flex.length ? Math.round(flex.reduce((a, b) => a + b, 0) / flex.length) : MIN_DATAFRAME_PANEL_WIDTH));
+  }
+  
   let totalCurrentWidth = panelWidths.reduce((sum, width) => sum + width, 0);
   
   const allAtMinimum = panelWidths.every((width, index) => {
@@ -1430,7 +1460,7 @@ function getPanelPositions() {
   const panelCounts = panelTypeCounts();   // (only the numbers are needed)
   const dataframePanels = { length: panelCounts.dataframeCount };
   const chartPanels = { length: panelCounts.chartCount };
-  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0;
+  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0 && panelCounts.msaCount === 0;
   
   // Add heatmap panels after labels (before placeholder)
   const heatmapPanels = { length: panelCounts.heatmapCount };
@@ -1455,6 +1485,12 @@ function getPanelPositions() {
   for (let i = 0; i < chartPanels.length; i++) {
     dynamicPanelTypes.push(`chart${i + 1}`);
     dynamicPanelLabels.push(`Chart ${i + 1}`);
+  }
+  
+  // Add alignment panels after charts
+  for (let i = 0; i < panelCounts.msaCount; i++) {
+    dynamicPanelTypes.push(`msa${i + 1}`);
+    dynamicPanelLabels.push(`Alignment ${i + 1}`);
   }
   
   for (let i = 0; i < panelCount; i++) {
@@ -2063,6 +2099,25 @@ function calculateRadialRings() {
     });
     currentRadius += width;
   });
+
+  // 6. Alignment rings
+  const msaIds = Array.from(msas ? msas.keys() : []).sort((a, b) => a - b);
+  msaIds.forEach((dataId, i) => {
+    const width = radialMsaWidths[i] || RADIAL_DEFAULT_MSA_WIDTH;
+    currentRadius += RADIAL_SPLITTER_WIDTH;
+    radialRings.push({
+      type: `msa${dataId}`,
+      label: `Alignment ${dataId}`,
+      innerRadius: currentRadius,
+      outerRadius: currentRadius + width,
+      width: width,
+      color: '#a8d8ea',
+      resizable: true,
+      panelIndex: i,
+      dataId: dataId
+    });
+    currentRadius += width;
+  });
 }
 
 // Get distance from center
@@ -2105,6 +2160,9 @@ function fitRadialRingsToCanvas() {
   radialChartWidths.forEach(w => {
     currentRadius += RADIAL_SPLITTER_WIDTH + w;
   });
+  radialMsaWidths.forEach(w => {
+    currentRadius += RADIAL_SPLITTER_WIDTH + w;
+  });
 
   // If current total radius exceeds available space, scale everything down
   if (currentRadius > maxAvailableRadius) {
@@ -2116,6 +2174,7 @@ function fitRadialRingsToCanvas() {
     radialHeatmapWidths = radialHeatmapWidths.map(w => Math.max(RADIAL_MIN_RING_WIDTH.heatmap, Math.round(w * scale)));
     radialDataframeWidths = radialDataframeWidths.map(w => Math.max(RADIAL_MIN_RING_WIDTH.dataframe, Math.round(w * scale)));
     radialChartWidths = radialChartWidths.map(w => Math.max(RADIAL_MIN_RING_WIDTH.chart, Math.round(w * scale)));
+    radialMsaWidths = radialMsaWidths.map(w => Math.max(RADIAL_MIN_RING_WIDTH.msa, Math.round(w * scale)));
   }
 }
 
@@ -2341,6 +2400,8 @@ function setAllRingWidths(widths) {
       radialDataframeWidths[ring.panelIndex] = newWidth;
     } else if (ring.type.startsWith('chart')) {
       radialChartWidths[ring.panelIndex] = newWidth;
+    } else if (ring.type.startsWith('msa')) {
+      radialMsaWidths[ring.panelIndex] = newWidth;
     }
   });
 }
@@ -2354,6 +2415,7 @@ function getMinRingWidth(ringIndex) {
   if (ring.type.startsWith('heatmap')) baseType = 'heatmap';
   if (ring.type.startsWith('dataframe')) baseType = 'dataframe';
   if (ring.type.startsWith('chart')) baseType = 'chart';
+  if (ring.type.startsWith('msa')) baseType = 'msa';
 
   // If labels are hidden, label panel minimum width should be 0 (like rect layout)
   if (baseType === 'labels') {
@@ -2375,6 +2437,7 @@ function getMaxRingWidth(ringIndex) {
   if (ring.type.startsWith('heatmap')) baseType = 'heatmap';
   if (ring.type.startsWith('dataframe')) baseType = 'dataframe';
   if (ring.type.startsWith('chart')) baseType = 'chart';
+  if (ring.type.startsWith('msa')) baseType = 'msa';
 
   // If labels are hidden, label panel maximum width should be 0 (like rect layout)
   if (baseType === 'labels') {
@@ -2682,6 +2745,8 @@ function syncRadialPanelsWithData() {
   radialHeatmapWidths.length = newHeatmapCount;
   radialDataframeWidths.length = newDataframeCount;
   radialChartWidths.length = newChartCount;
+  const msaIds = Array.from(msas ? msas.keys() : []).sort((a, b) => a - b);
+  radialMsaWidths.length = msaIds.length;
 
   // Calculate maximum allowed radius
   const container = document.getElementById('radialPanelsContainer');
@@ -2704,6 +2769,9 @@ function syncRadialPanelsWithData() {
       radialChartWidths[i] = RADIAL_DEFAULT_CHART_WIDTH;
     }
   });
+  msaIds.forEach((dataId, i) => {
+    if (radialMsaWidths[i] === undefined) radialMsaWidths[i] = RADIAL_DEFAULT_MSA_WIDTH;
+  });
 
     // Calculate total minimum radius (same as rectangular panel's totalMinimumWidth)
     let totalMinimumRadius = RADIAL_MIN_RING_WIDTH.tree; // Tree panel minimum
@@ -2717,6 +2785,9 @@ function syncRadialPanelsWithData() {
   }
   for (let i = 0; i < newChartCount; i++) {
     totalMinimumRadius += RADIAL_SPLITTER_WIDTH + RADIAL_MIN_RING_WIDTH.chart;
+  }
+  for (let i = 0; i < msaIds.length; i++) {
+    totalMinimumRadius += RADIAL_SPLITTER_WIDTH + RADIAL_MIN_RING_WIDTH.msa;
   }
 
   // Apply ratio-based scaling if there's enough space (same as rectangular normalizeWidths)
@@ -2750,6 +2821,10 @@ function syncRadialPanelsWithData() {
       const scaledWidth = Math.floor(RADIAL_MIN_RING_WIDTH.chart * expansionRatio);
       radialChartWidths[i] = Math.max(RADIAL_MIN_RING_WIDTH.chart, Math.min(scaledWidth, RADIAL_MAX_RING_WIDTH.chart));
     });
+    msaIds.forEach((dataId, i) => {
+      const scaledWidth = Math.floor(RADIAL_MIN_RING_WIDTH.msa * expansionRatio);
+      radialMsaWidths[i] = Math.max(RADIAL_MIN_RING_WIDTH.msa, Math.min(scaledWidth, RADIAL_MAX_RING_WIDTH.msa));
+    });
   }
 
   // Calculate final total radius
@@ -2766,6 +2841,9 @@ function syncRadialPanelsWithData() {
   chartIds.forEach((dataId, i) => {
     finalTotalRadius += RADIAL_SPLITTER_WIDTH + radialChartWidths[i];
   });
+  msaIds.forEach((dataId, i) => {
+    finalTotalRadius += RADIAL_SPLITTER_WIDTH + radialMsaWidths[i];
+  });
 
   // Recalculate and redraw if SVG exists
   if (radialSvg && !radialSvg.empty()) {
@@ -2780,6 +2858,7 @@ function resetRadialWidths() {
   radialHeatmapWidths = [];
   radialDataframeWidths = [];
   radialChartWidths = [];
+  radialMsaWidths = [];
   radialTreeRadius = 300; // Default tree radius
   radialLabelWidth = 40; // Default label width
 }
@@ -2858,9 +2937,9 @@ function axisForRow(scale) { return axisRow.below ? d3.axisBottom(scale) : d3.ax
 let treeAxisTitle = '';
 const AXIS_TITLE_BAND = 18;   // room for a title beyond the axis numbers
 function axisTitleLayer(key) {
-  const m = /^(dataframe|chart):(\d+)$/.exec(key || '');
+  const m = /^(dataframe|chart|msa):(\d+)$/.exec(key || '');
   if (!m) return null;
-  return (m[1] === 'dataframe' ? dataframes : charts).get(+m[2]) || null;
+  return (m[1] === 'dataframe' ? dataframes : m[1] === 'chart' ? charts : msas).get(+m[2]) || null;
 }
 function getAxisTitle(key) {
   if (key === 'tree') return treeAxisTitle || '';
@@ -2881,6 +2960,7 @@ function anyAxisTitle() {
   if (treeAxisTitle) return true;
   for (const o of dataframes.values()) if (o && o.axisTitle) return true;
   for (const o of charts.values()) if (o && o.axisTitle) return true;
+  for (const o of msas.values()) if (o && o.axisTitle) return true;
   return false;
 }
 // room reserved for titles (rectangular layout): when the + buttons show, or a title exists
@@ -3258,19 +3338,20 @@ function updatePanelSystemAfterDeletion() {
   const remainingDataframeCount = remainingDataframePanels.length;
   const remainingHeatmapCount = remainingHeatmapPanels.length;
   const remainingChartCount = remainingChartPanels.length;
+  const remainingMsaCount = msaPanelCount();
   
-  // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const needsPlaceholder = remainingDataframeCount === 0 && remainingChartCount === 0;
+  // Check if we need a placeholder panel (when no dataframes, charts or alignments exist)
+  const needsPlaceholder = remainingDataframeCount === 0 && remainingChartCount === 0 && remainingMsaCount === 0;
   
-  // Calculate new panel count: Tree + Labels + Placeholder(if needed) + Heatmaps + Dataframes + Charts
-  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + remainingHeatmapCount + remainingDataframeCount + remainingChartCount;
+  // Calculate new panel count: Tree + Labels + Placeholder(if needed) + Heatmaps + Dataframes + Charts + Alignments
+  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + remainingHeatmapCount + remainingDataframeCount + remainingChartCount + remainingMsaCount;
   
   // Update panel count
   window.panelCount = newPanelCount;
   panelCount = newPanelCount; // Also update the local variable
   
   // CRITICAL: Force panel count to be exactly what we expect
-  if (remainingDataframeCount === 1 && remainingHeatmapCount === 0 && remainingChartCount === 0) {
+  if (remainingDataframeCount === 1 && remainingHeatmapCount === 0 && remainingChartCount === 0 && remainingMsaCount === 0) {
     window.panelCount = 3;
     panelCount = 3; // Also update the local variable
   } else if (needsPlaceholder) {
@@ -5874,7 +5955,7 @@ window.addEventListener('beforeunload', function() {
 const layerReuse = {
   container: null,
   byKey: new Map(),                 // 'dataframe:1' -> { el, sig }
-  epoch: { dataframe: 0, heatmap: 0, chart: 0 },   // per type
+  epoch: { dataframe: 0, heatmap: 0, chart: 0, msa: 0 },   // per type
   keyEpoch: new Map(),                               // per layer ('dataframe:1')
   scope: null, scopeTimer: 0,
   blockRan: false, layoutSig: '', visited: null, lastEl: null,
@@ -5914,7 +5995,7 @@ function layerReuseBegin(keepTree) {
   layerReuse.container = c;
   // what may have changed: unless the action declared a narrower scope, every layer
   const scope = layerReuse.disabled ? null : layerReuse.scope;
-  if (!scope || scope === 'all') { layerReuse.epoch.dataframe++; layerReuse.epoch.heatmap++; layerReuse.epoch.chart++; }
+  if (!scope || scope === 'all') { layerReuse.epoch.dataframe++; layerReuse.epoch.heatmap++; layerReuse.epoch.chart++; layerReuse.epoch.msa++; }
   else if (scope in layerReuse.epoch) layerReuse.epoch[scope]++;
   else if (scope.indexOf(':') > 0) layerReuse.keyEpoch.set(scope, (layerReuse.keyEpoch.get(scope) || 0) + 1);
   layerReuse.blockRan = false;
@@ -6013,7 +6094,7 @@ function layerReuseEnd() {
     'internalNodeSize', 'showTipNodes', 'tipNodeShape', 'tipNodeSize', 'labelGuides', 'hideScaleBar', 'coverScaleBar',
     'scaleStrokeWidth', 'showBootstrap']);
   // data cards: a control in a card changes layers of that card's type only
-  const CARD_TYPES = [['dataframeContainer', 'dataframe'], ['heatmapContainer', 'heatmap'], ['chartContainer', 'chart']];
+  const CARD_TYPES = [['dataframeContainer', 'dataframe'], ['heatmapContainer', 'heatmap'], ['chartContainer', 'chart'], ['msaContainer', 'msa']];
   function scopeFor(t) {
     if (!t || !t.closest) return null;
     const btn = t.closest('button');
@@ -6126,6 +6207,7 @@ function drawTreeFinish(){
   updateSearchHighlights();
 }
 function drawTreeBody(){
+  dedupeChildLists(root);
   // Auto-hide labels for large trees to improve performance
   if (root && root.leaves && !labelsAutoHideDone) {
     labelsAutoHideDone = true;
@@ -9649,6 +9731,17 @@ function drawTreeBody(){
           });
         }
       }
+
+      // Alignment rings
+      if (window.tmMsa && msas.size && window.radialPanelSystem) {
+        const msaRings = window.radialPanelSystem.getRings().filter(r => r.type && /^msa\d+$/.test(r.type));
+        const openSel = document.getElementById('openAngleDeg');
+        const openRad = ((openSel ? (+openSel.value || 0) : 0) * Math.PI) / 180;
+        const radialLeaves = leavesSel.data();
+        msaRings.forEach(ring => {
+          if (msas.has(ring.dataId)) tmMsa.drawRadial(ring.dataId, { ring, leaves: radialLeaves, group: labelGroup, openRad });
+        });
+      }
       
       // Draw label text (only if labels are not hidden and label panel exists)
       if (!hideLabels && hasLabelRing) {
@@ -12284,6 +12377,15 @@ function drawTreeBody(){
     }
   }));
     
+    // Sequence alignments (js/msa.js), after the charts
+    if (window.tmMsa && msas.size) {
+      const msaIds = Array.from(msas.keys()).sort((a, b) => a - b);
+      msaIds.forEach(layerIteration('msa', getMsaPanelDimensions, (msaId, index) => {
+        const panel = getMsaPanelDimensions(index);
+        if (panel) tmMsa.drawRect(msaId, { panel, leaves, leafSep, barH: currentBarH, axisY: axisRow.y, below: axisRow.below, g });
+      }));
+    }
+    
     layerReuseBlockEnd();
   } 
   // Remove artificial right-side gutter to eliminate padding from bbox/fit calculations
@@ -13251,7 +13353,9 @@ function dropNode(selectedNode) {
   if(parent && parent.children) {
     const index = parent.children.indexOf(selectedNode);
     if(index > -1) {
+      selectedNode._dropIndex = index;   // put back at this place (restoreDroppedNodes)
       parent.children.splice(index, 1);
+      while (parent.children.indexOf(selectedNode) > -1) parent.children.splice(parent.children.indexOf(selectedNode), 1);
       
       // Check if parent becomes orphaned after removing this child
       if(parent.children.length === 0) {
@@ -13262,6 +13366,7 @@ function dropNode(selectedNode) {
           if(grandParent && grandParent.children) {
             const parentIndex = grandParent.children.indexOf(currentParent);
             if(parentIndex > -1) {
+              currentParent._dropIndex = parentIndex;
               grandParent.children.splice(parentIndex, 1);
             }
           }
@@ -14425,15 +14530,44 @@ function toNewickFromHierarchy(node) {
   return TreeCore.write(hierarchyToObject(node));
 }
 
-function restoreDroppedNodes() {
-  if(droppedNodes.size === 0) return;
-  droppedNodes.forEach(droppedNode => {
-    if(droppedNode.parent && droppedNode.parent.children) {
-      droppedNode.parent.children.push(droppedNode);
+// Dropped tips (and parents emptied by dropping) back in their parents, each once and at
+// the place it was dropped from: in the reverse order of dropping, so earlier places hold.
+function reattachDroppedNodes() {
+  Array.from(droppedNodes).reverse().forEach(n => {
+    const p = n.parent;
+    if (!p || !p.children || p.children.indexOf(n) > -1) return;
+    const i = Number.isInteger(n._dropIndex) ? Math.min(n._dropIndex, p.children.length) : p.children.length;
+    p.children.splice(i, 0, n);
+  });
+}
+// The dropped tips dropped again (after the tree's child lists were rebuilt): from the
+// tips, so parents left empty are dropped with them, as when they were first dropped.
+function redropDroppedNodes() {
+  const tips = Array.from(droppedNodes).filter(n => !n.children && !n._children);
+  droppedNodes.clear();
+  tips.forEach(n => dropNode(n));
+}
+// A node listed twice in its parent would take two rows but be drawn once (an empty row):
+// never draw that (safety net for edits that put children back).
+function dedupeChildLists(r) {
+  if (!r) return;
+  r.each(n => {
+    if (n.children && n.children.length > 1 && new Set(n.children).size !== n.children.length) {
+      const seen = new Set();
+      n.children = n.children.filter(c => !seen.has(c) && seen.add(c));
     }
   });
+}
+
+function restoreDroppedNodes() {
+  if(droppedNodes.size === 0) return;
+  // "remove redundant tip points" on: the duplicates are worked out again with the tips back
+  const dedupOn = uniqueBranchTips && root;
+  if (dedupOn) restoreCollapsedDuplicates(root);
+  reattachDroppedNodes();
   
   droppedNodes.clear();
+  if (dedupOn) collapseDuplicateBranchTips(root);
   
   // Reset font/truncation cache since tree structure changed
   resetFontTruncationCache();
@@ -14496,11 +14630,7 @@ function isDescendantOfCollapsed(node){
 function collapseDuplicateBranchTips(root) {
   if(!root) return;
   
-  droppedNodes.forEach(droppedNode => {
-    if(droppedNode.parent && droppedNode.parent.children) {
-      droppedNode.parent.children.push(droppedNode);
-    }
-  });
+  reattachDroppedNodes();
 
   root.eachBefore(node => {
     if(node.children && node.children.length > 1) {
@@ -14553,19 +14683,13 @@ function collapseDuplicateBranchTips(root) {
     }
   });
   if(droppedNodes.size === 0) return;
-  droppedNodes.forEach(droppedNode => {
-    dropNode(droppedNode);
-  });
+  redropDroppedNodes();
 }
 
 function restoreCollapsedDuplicates(root) {
   if(!root) return;
   
-  droppedNodes.forEach(droppedNode => {
-    if(droppedNode.parent && droppedNode.parent.children) {
-      droppedNode.parent.children.push(droppedNode);
-    }
-  });
+  reattachDroppedNodes();
     
   root.eachBefore(node => {
     if(node._dedupOriginalChildren) {
@@ -14589,9 +14713,7 @@ function restoreCollapsedDuplicates(root) {
     }
   }); 
   if(droppedNodes.size === 0) return;
-  droppedNodes.forEach(droppedNode => {
-    dropNode(droppedNode);
-  });
+  redropDroppedNodes();
 }
 
 function showTip(ev, d, isBar=false, extra={}){
@@ -14817,7 +14939,7 @@ function updateMetadataLegend() {
   const activeTab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab');
   const hasBootstrapLegend = showBootstrap && showBootstrap.checked && (activeTab === 'symbol' || activeTab === 'color');
   
-  if (dataframes.size === 0 && (!heatmaps || heatmaps.size === 0) && (!charts || charts.size === 0) && (!highlights || highlights.size === 0) && (!clades || clades.size === 0) && !hasBootstrapLegend) {
+  if (dataframes.size === 0 && (!heatmaps || heatmaps.size === 0) && (!charts || charts.size === 0) && (!highlights || highlights.size === 0) && (!clades || clades.size === 0) && (!msas || msas.size === 0) && !hasBootstrapLegend) {
     metadataLegend.style.display = 'none';
     return;
   }
@@ -15000,7 +15122,7 @@ function updateMetadataLegend() {
   const hasHighlights = highlights && highlights.size > 0;
   const hasClades = clades && clades.size > 0;
   
-  if (visibleGenes.length === 0 && !hasHeatmaps && !hasCharts && !hasHighlights && !hasClades && !hasBootstrapLegend) {
+  if (visibleGenes.length === 0 && !hasHeatmaps && !hasCharts && !hasHighlights && !hasClades && !(msas && msas.size) && !hasBootstrapLegend) {
     metadataLegend.style.display = 'none';
     return;
   }
@@ -15649,6 +15771,7 @@ function updateMetadataLegend() {
     chartLegendItems.innerHTML = chartHTML;
     setTimeout(() => setupLegendInteractivity(), 0);
   }
+  if (window.tmMsa) { try { tmMsa.fillLegend(); } catch (e) { console.warn(e); } }
 
   // Trigger layout recalculation after legend updates to fix positioning issues
   // This ensures canvas and panel containers are properly repositioned when legend changes
@@ -16686,7 +16809,7 @@ function addDataframe() {
   const needsPlaceholder = currentDataframePanelCount === 0 && chartPanelCount === 0 && false; // Never need placeholder when adding dataframe
   
   // Calculate new panel count: Tree + Labels + Placeholder(if needed) + Heatmaps + Dataframes + Charts
-  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount;
+  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCount();
     
   // CRITICAL: Only update panelCount if it's not already correct
   if (panelCount !== newPanelCount) {
@@ -21408,11 +21531,11 @@ function addChart() {
   const dataframePanelCount = dataframePanels.length;
   const chartPanelCount = chartPanels.length;
   
-  // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const needsPlaceholder = dataframePanelCount === 0 && chartPanelCount === 0;
+  // Check if we need a placeholder panel (when no dataframes, charts or alignments exist)
+  const needsPlaceholder = dataframePanelCount === 0 && chartPanelCount === 0 && msaPanelCount() === 0;
   
-  // Calculate new panel count: Tree + Labels + Placeholder(if needed) + Heatmaps + Dataframes + Charts
-  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount;
+  // Calculate new panel count: Tree + Labels + Placeholder(if needed) + Heatmaps + Dataframes + Charts + Alignments
+  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCount();
   
   // Update panel count
   window.panelCount = newPanelCount;
@@ -21521,6 +21644,12 @@ function addChart() {
       updateZoomBounds();
     }
   }, 0);
+}
+
+function getMsaPanelDimensions(msaIndex = 0) {
+  const positions = getPanelPositions();
+  const panels = positions.filter(p => /^msa\d+$/.test(p.type));
+  return msaIndex < panels.length ? panels[msaIndex] : null;
 }
 
 function getChartPanelDimensions(chartIndex = 0) {
@@ -22801,6 +22930,11 @@ function getCardOrderForType(cardType) {
       idAttr = 'data-chid';
       idPattern = /chartCard(\d+)/;
       break;
+    case 'msa':
+      selector = '.msa-panel';
+      idAttr = 'data-msaid';
+      idPattern = /msaCard(\d+)/;
+      break;
     default:
       return [];
   }
@@ -22860,7 +22994,7 @@ class UnifiedDragManager {
     this.containerCache.clear();
     this.cardRefs.clear();
     
-    const containers = ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer'];
+    const containers = ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer', 'msaContainer'];
     
     containers.forEach(id => {
       const container = document.getElementById(id);
@@ -22898,7 +23032,7 @@ class UnifiedDragManager {
       return;
     }
     
-    const card = event.target.closest('[data-draggable="true"], .dataframe-panel, .heatmap-panel, .chart-panel, .highlight-panel, .clade-panel');
+    const card = event.target.closest('[data-draggable="true"], .dataframe-panel, .heatmap-panel, .chart-panel, .highlight-panel, .clade-panel, .msa-panel');
     if (!card) return;
     
     // Block dragging of interactive elements, but allow dragging of expanded cards
@@ -22953,6 +23087,7 @@ class UnifiedDragManager {
     if (card.classList.contains('chart-panel')) return 'chart';
     if (card.classList.contains('highlight-panel')) return 'highlight';
     if (card.classList.contains('clade-panel')) return 'clade';
+    if (card.classList.contains('msa-panel')) return 'msa';
     return null;
   }
   
@@ -23065,7 +23200,7 @@ class UnifiedDragManager {
     
     // Find all visible containers
     const containers = [];
-    const containersWithIds = ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer'];
+    const containersWithIds = ['dataframeContainer', 'heatmapContainer', 'highlightContainer', 'cladeContainer', 'chartContainer', 'msaContainer'];
     
     containersWithIds.forEach(id => {
       const container = document.getElementById(id);
@@ -23182,6 +23317,9 @@ class UnifiedDragManager {
       case 'clade':
         // updateCladeOrder(); // Implement if needed
         break;
+      case 'msa':
+        if (window.tmMsa) tmMsa.reorderFromCards();
+        break;
     }
   }
 }
@@ -23243,6 +23381,7 @@ setupCardSectionDragListener('heatmapContainer');
 setupCardSectionDragListener('highlightContainer');
 setupCardSectionDragListener('cladeContainer');
 setupCardSectionDragListener('chartContainer');
+setupCardSectionDragListener('msaContainer');
 
 function setupCardSectionDragListener(containerId) {
   const container = document.getElementById(containerId);
@@ -23266,7 +23405,8 @@ function setupCardSectionDragListener(containerId) {
                            globalDragSrc.classList.contains('heatmap-panel') ? 'heatmap' :
                            globalDragSrc.classList.contains('dataframe-panel') ? 'dataframe' :
                            globalDragSrc.classList.contains('highlight-panel') ? 'highlight' :
-                           globalDragSrc.classList.contains('clade-panel') ? 'clade' : null;
+                           globalDragSrc.classList.contains('clade-panel') ? 'clade' :
+                           globalDragSrc.classList.contains('msa-panel') ? 'msa' : null;
 
     // Only allow dropping if card types match
     if (cardType !== draggedCardType) {
@@ -23309,7 +23449,7 @@ function setupCardSectionDragListener(containerId) {
 function updateSectionVisibilities() {
   const sections = [
     'dataframeSection', 'heatmapSection', 'highlightSection', 
-    'cladeSection', 'chartSection', 'textSection'
+    'cladeSection', 'chartSection', 'msaSection', 'textSection'
   ];
   
   // Track section visibility states
@@ -23345,7 +23485,7 @@ function clearGlobalColorsIfNoCards() {
   // Check if any cards are currently displayed
   const sections = [
     'dataframeSection', 'heatmapSection', 'highlightSection', 
-    'cladeSection', 'chartSection', 'textSection'
+    'cladeSection', 'chartSection', 'msaSection', 'textSection'
   ];
   
   let hasAnyCards = false;
@@ -24557,6 +24697,8 @@ window.addEventListener('resize', scheduleResizeRedraw);
 // Builds the standalone SVG document used by every export (SVG, PNG, PDF).
 function buildExportSvgSource(){
   const svgEl = document.getElementById('svg');
+  // alignment layers: sharp everywhere in the export (on screen only the visible part is), then back
+  if (window.tmMsa && tmMsa.prepareExport) { try { tmMsa.prepareExport(); setTimeout(() => { try { tmMsa.afterExport(); } catch (e) {} }, 0); } catch (e) { console.warn(e); } }
   
   // Create a clone of the SVG for export
   const svgClone = svgEl.cloneNode(true);
@@ -25169,6 +25311,7 @@ function buildExportSvgSource(){
     addLegendSection('Chart Legend:', 'chartLegendItems');
     addLegendSection('Bootstrap Legend:', 'bootstrapSymbolLegendItems');
     addLegendSection('Bootstrap Color Scale:', 'bootstrapColorLegendItems');
+    addLegendSection('Alignment residues:', 'msaLegendItems');
     
     // Add the legend group to the SVG clone if it has content
     if (legendGroup.children.length > 0) {

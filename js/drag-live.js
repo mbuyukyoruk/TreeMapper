@@ -1259,6 +1259,11 @@
         // label guides run from 8 px beyond their tip to 2 px before the ring after it
         if (okp) { out.push({ el: c, kind: 'path', M: Mc, Minv: invert(Mc), o: o, d0: c.getAttribute('d'), guide: c.classList.contains('label-guides') }); return; }
       }
+      // an alignment ring picture (centred on the centre): scaled so that its middle radius follows
+      if (c.tagName === 'image' && c.classList.contains('msa-ring-img')) {
+        var rm = (num(c.getAttribute('data-r0'), 0) + num(c.getAttribute('data-r1'), 0)) / 2 * (uniformScale(Mc) || 1);
+        if (rm > 0) { out.push({ el: c, kind: 'scale', rm: rm, t0: c.getAttribute('transform') }); return; }
+      }
       // anything else is moved as a whole to its new distance from the centre: text by
       // the point it is written from (labels start at the inner edge of their ring),
       // other elements by their middle
@@ -1460,7 +1465,10 @@
     });
     lift.svgItems.forEach(function (it) {
       if (it.kind === 'path') it.el.setAttribute('d', mappedD(it, f));
-      else {
+      else if (it.kind === 'scale') {
+        var sc = f(it.rm) / it.rm;
+        it.el.setAttribute('transform', 'scale(' + fmt(sc) + ')' + (it.t0 ? ' ' + it.t0 : ''));
+      } else {
         var m = mapPoint(f, it.ax, it.ay), dx = m[0] - it.ax, dy = m[1] - it.ay;
         // the move in the element's parent coordinates
         var lx = it.Pinv[0] * dx + it.Pinv[2] * dy, ly = it.Pinv[1] * dx + it.Pinv[3] * dy;
