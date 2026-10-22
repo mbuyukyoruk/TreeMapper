@@ -457,22 +457,26 @@ function generateLargePalette() {
 }
 
 // Helper function to get a unique color that hasn't been used by any card type
+// The palette is built once, and each search for a free colour starts where the last one
+// ended (a colour once taken stays taken until the set is cleared, which resets the cursor):
+// assigning n colours is O(n), not O(n²) — 20,000 distinct values took a minute before.
+let uniquePalette = null, uniqueColorCursor = 0;
 function getUniqueColor() {
-  const palette = generateLargePalette();
-  
-  // Find first unused color from pre-generated palette
-  for (const color of palette) {
-    if (!globalUsedColors.has(color)) {
-      globalUsedColors.add(color);
-      return color;
-    }
+  if (!uniquePalette) uniquePalette = generateLargePalette();
+  const palette = uniquePalette;
+  for (; uniqueColorCursor < palette.length; uniqueColorCursor++) {
+    const color = palette[uniqueColorCursor];
+    if (!globalUsedColors.has(color)) { globalUsedColors.add(color); uniqueColorCursor++; return color; }
   }
-  
   // Past the palette (more than ~1000 values): carry the golden-angle sequence on, so the
-  // colours are the same every time the same data is loaded
-  for (let i = palette.length; ; i++) {
-    const c = hslHex((i * 137.508) % 360, 55 + (i % 4) * 10, 40 + (i % 3) * 12);
-    if (!globalUsedColors.has(c)) { globalUsedColors.add(c); return c; }
+  // colours are the same every time the same data is loaded. Saturation and lightness
+  // walk wide ranges with their own strides, so the sequence yields millions of distinct
+  // colours (12 combinations as before ran out after a few thousand and then never ended)
+  for (let i = Math.max(palette.length, uniqueColorCursor), tries = 0; ; i++, tries++) {
+    const c = tries < 200000
+      ? hslHex((i * 137.508) % 360, 35 + ((i * 29) % 56), 28 + ((i * 17) % 50))
+      : '#' + ((Math.imul(i, 2654435761) >>> 8) & 0xffffff).toString(16).padStart(6, '0');   // (a last resort: a walk over every colour)
+    if (!globalUsedColors.has(c)) { globalUsedColors.add(c); uniqueColorCursor = i + 1; return c; }
   }
 }
 
@@ -23228,7 +23232,7 @@ function clearGlobalColorsIfNoCards() {
            }
            
            // Clear global color tracking
-           globalUsedColors.clear();
+           globalUsedColors.clear(); uniqueColorCursor = 0;
            globalColorCounter = 0;
     
     // Clear permanent colors from tree nodes
