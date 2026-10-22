@@ -4185,8 +4185,6 @@ function processOperonGeneFlipping(sourceDataset, selectedGene, selectedDirectio
   return processedDataset;
 }
 
-// a row's index in its table (feature-select.js finds the original row of a drawn bar by it)
-const TM_ROW = Symbol.for('tm.row');
 function parseTable(text){
   // Step 1: Text preprocessing
   const lines = text.replace(/\r/g,'').split(/\n/).filter(l=>l.trim().length && !l.trim().startsWith('#'));
@@ -4200,9 +4198,9 @@ function parseTable(text){
   const header = lines[0].split(new RegExp(delim)).map(s=>s.trim());
   
   // Step 3: Row parsing (most expensive operation)
-  const rows = lines.slice(1).map((line, ri) => {
+  const rows = lines.slice(1).map(line => {
     const parts = line.split(new RegExp(delim)).map(s=>s.trim());
-    const obj = {}; header.forEach((h,idx)=> obj[h]=parts[idx]); obj[TM_ROW] = ri; return obj; });
+    const obj = {}; header.forEach((h,idx)=> obj[h]=parts[idx]); return obj; });
   
   // Step 4: Index creation
   const byId = new Map();
@@ -10126,7 +10124,6 @@ function drawTreeBody(){
               const og = orientCol ? (parseInt(r[orientCol], 10) || 0) : 0;
               const showArrow = dfGeneOrientation.get(gname);
               geneLabelQueue.push({ x, w, y, h: dynamicBarH, gname: String(gname || ''), color: color(gname || ''), og });
-              if (window.tmFeatSel) tmFeatSel.bar(dataframeId, { x, w, y, h: dynamicBarH, gene: String(gname || ''), acc: String(d.data.name), row: r });
               
               // Build dynamic tooltip from all available columns
               const tooltipContent = buildDataframeTooltip(r, preparedMeta, columnIndices);
@@ -10339,7 +10336,6 @@ function drawTreeBody(){
         dataframeIds.forEach(layerIteration('dataframe', getDataframePanelDimensions, (dataframeId, index) => {
           const dataframe = dataframes.get(dataframeId);
           const dataframePanel = getDataframePanelDimensions(index);
-          if (window.tmFeatSel) tmFeatSel.beginLayer(dataframeId);   // the bars drawn below are listed for selection
           
           if (!dataframePanel) {
             return;
@@ -12279,7 +12275,6 @@ function drawTreeBody(){
   setStatus('Ready');
   // group separators and labels (group-marks.js), on top of everything drawn
   if (window.tmGroupMarks) { try { tmGroupMarks.draw({ isRadial, leaves }); } catch (e) { console.warn(e); } }
-  if (window.tmFeatSel) { try { tmFeatSel.afterDraw({ isRadial }); } catch (e) { console.warn(e); } }   // selected bars outlined
   // a second tree for comparison (tangle.js), to the right of everything
   
   // Update Add Data button visibility

@@ -1439,25 +1439,3 @@ html.pro .rp-summary { display: flex; flex-direction: column; gap: 4px; padding:
 html.pro .rp-line b { color: var(--text); font-weight: 600; margin-right: 4px; }
 html.pro .rp-opt { margin: 0; }
 html.pro .rp-opt > span { font-size: 12.5px; }
-
-/* Feature selection on a dataframe column (feature-select.js): the selection toolbar in feature mode */
-html.pro .clade-toolbar .feat-ctl { display: none; }
-html.pro .clade-toolbar.feature-mode .clade-toolbar-content > :not(.feat-ctl) { display: none !important; }
-html.pro .clade-toolbar.feature-mode .feat-ctl { display: flex; }
-html.pro .clade-toolbar.feature-mode .feat-box { display: contents; }   /* its controls sit in the toolbar's own row */
-html.pro .feat-pop { position: fixed; z-index: 100002; width: 220px; max-height: 320px; overflow: auto; padding: 8px 10px; box-sizing: border-box; background: var(--panel); color: var(--text); border: 1px solid var(--pro-island-border); border-radius: 12px; box-shadow: var(--shadow); animation: pro-pop .12s ease-out; }
-html.pro .feat-pop[hidden] { display: none; }
-html.pro .feat-pop-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 11.5px; color: var(--muted); }
-html.pro .feat-pop-head span { flex: 1; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
-html.pro .feat-pop-list { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; }
-html.pro .feat-pop-layer { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12px; color: var(--muted); }
-html.pro .feat-pop-layer[hidden] { display: none; }
-html.pro .feat-pop-layer select.pro-select { flex: 1; height: 26px; }
-html.pro .feat-pop-note { margin: 8px 0 0; font-size: 11px; line-height: 1.4; color: var(--muted); }
-html.pro .pro-tools .feat-toolbtn[hidden] { display: none; }
-html.pro .pro-tools .feat-toolbtn.is-set { color: var(--accent); background: rgba(var(--accent-rgb), .12); }
-html.pro .feat-gene { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 6px; font-size: 12.5px; cursor: pointer; }
-html.pro .feat-gene:hover { background: var(--pro-hover, var(--pro-panel2)); }
-html.pro .feat-gene span { flex: 1; }
-html.pro .feat-gene em { font-style: normal; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-html.pro .clade-toolbar .feat-danger:not(:disabled):hover { color: var(--destructive); border-color: var(--destructive); }
