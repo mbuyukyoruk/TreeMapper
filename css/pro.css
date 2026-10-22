@@ -1392,3 +1392,21 @@ html.pro .pro-modal #atSection .pro-field { display: flex; flex-direction: colum
 html.pro .pro-modal #atSection select.pro-select { width: 100%; height: 30px; }
 html.pro .pro-modal #atSection input.pro-input { width: 120px; height: 30px; padding: 0 8px; border: 1px solid var(--pro-border); border-radius: 6px; background: var(--pro-surface, #fff); color: inherit; font: inherit; font-size: 13px; }
 html.pro .pro-modal #atSection input.pro-input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+
+/* Column mapping dialog */
+html.pro .cm-card { width: 680px; max-width: calc(100vw - 32px); }
+html.pro .cm-body { display: flex; flex-direction: column; gap: 14px; }
+html.pro .cm-why { margin: 0; }
+html.pro .cm-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 14px; }
+html.pro .cm-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+html.pro .cm-label { display: flex; flex-direction: column; font-size: 12.5px; font-weight: 600; }
+html.pro .cm-opt { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+html.pro .cm-hint { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+html.pro .cm-field select.pro-select { width: 100%; height: 30px; }
+html.pro .cm-table { max-height: 200px; }
+html.pro .cm-table .ds-grid td, html.pro .cm-table .ds-grid th { white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+html.pro .cm-table .ds-grid td { padding: 5px 10px; border-bottom: 1px solid var(--border); }
+html.pro .cm-table .cm-chosen { background: rgba(var(--accent-rgb), .09); }
+html.pro .cm-table th.cm-chosen::after { content: attr(data-role); display: block; font-size: 10.5px; font-weight: 500; color: var(--accent); text-transform: capitalize; }
+html.pro .cm-error { margin: 0; font-size: 12.5px; color: #c2410c; }
+html.pro .cm-actions { display: flex; justify-content: flex-end; gap: 8px; }

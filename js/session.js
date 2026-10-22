@@ -639,6 +639,8 @@
     layerSource: function (card) { var s = cardSource.get(card); return s ? { name: s.name, text: s.text } : null; },
     replaceLayerData: replaceLayerData,
     isSessionFile: function (f) { return !!f && /\.treemapper$/i.test(f.name || ''); },
-    canSave: function () { return !!(root && treeSource); }
+    canSave: function () { return !!(root && treeSource); },
+    // true while a session is being opened or a layer's data replaced (loaders then skip their dialogs)
+    isLoading: function () { return !!(busy || replacing); }
   };
 })();
