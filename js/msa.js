@@ -629,6 +629,7 @@
     // the card's "N of M tips have a sequence" follows drops, collapses and new trees
     var infoSig = leaves.length + ':' + matches + ':' + (typeof root !== 'undefined' && root ? root.leaves().length : 0);
     if (m._infoSig !== infoSig) { m._infoSig = infoSig; m._rowOf = new Map(); setTimeout(function () { refreshInfo(m); }, 0); }
+    m._liveCtx = { leaves: o.leaves, leafSep: o.leafSep, barH: o.barH, axisY: o.axisY, below: o.below };   // for liveResize
     var layer = g.append('g').attr('class', 'msa-layer msa-layer-' + id).attr('data-msa-id', id);
     if (!leaves.length) return;
     if (!matches) { drawNoMatch(layer, m, x0, W, leaves); return; }
@@ -661,9 +662,10 @@
     // maps the earlier pictures onto this column (the same rows; another width / place)
     var stretch = function () { return 'translate(' + x0 + ',0) scale(' + (lay.W / prev.lay.W) + ',1) translate(' + (-prev.x0) + ',0)'; };
     var job;
-    if (sameRows && typeof panelDragPreview !== 'undefined' && panelDragPreview) {
-      // while a column is resized: the pictures already shown, stretched (no new pictures
-      // to make and decode on every move; the real ones are drawn when the drag ends)
+    if (sameRows && typeof panelDragPreview !== 'undefined' && panelDragPreview && (m._picMs || 0) > 60) {
+      // while a column is resized, new pictures are made on every move (see liveResize) unless
+      // the last ones took long to make: then the pictures already shown are stretched and the
+      // real ones are drawn when the drag ends
       layer.node().appendChild(prevNode);
       prevNode.setAttribute('transform', stretch());
       job = prev;
@@ -678,7 +680,9 @@
         layer.node().insertBefore(prevNode, pics.node());
         job.under = prevNode;
       }
+      var tPic = performance.now();
       renderRect(job);
+      m._picMs = performance.now() - tPic;
       m._rect = job;
     }
     // letters in cells that are large enough (highlighted columns first)
@@ -1445,6 +1449,21 @@
     call(function () { updatePanelHeights(); });
     if (window.radialPanelSystem && geometry === 'radial' && typeof window.radialPanelSystem.sync === 'function') call(function () { window.radialPanelSystem.sync(); });
   }
+  // while a column splitter is dragged (drag-live.js): the column with this layer index is
+  // drawn again, in place, at the panel geometry of this frame (about 10 ms for 120 tips ×
+  // 800 columns), instead of its picture being stretched until the splitter is released
+  function liveResize(index, panel) {
+    if (typeof root === 'undefined' || !root || typeof layerReuse === 'undefined' || typeof layerAppendMode !== 'function') return false;
+    var ids = Array.from(msas.keys()).sort(function (a, b) { return a - b; }), id = ids[index];
+    var m = id != null ? msas.get(id) : null, c = m && m._liveCtx, entry = layerReuse.byKey.get('msa:' + id);
+    if (!m || !c || !entry || !entry.el || !entry.el.isConnected || !panel) return false;
+    while (entry.el.firstChild) entry.el.removeChild(entry.el.firstChild);
+    layerAppendMode('layer', entry.el);
+    try { drawRect(id, { panel: panel, leaves: c.leaves, leafSep: c.leafSep, barH: c.barH, axisY: c.axisY, below: c.below, g: g }); }
+    catch (e) { console.warn(e); return false; }
+    finally { layerAppendMode(null); }
+    return true;
+  }
   window.tmRelayoutPanels = relayoutPanels;   // also used by the comparison tree (tangle.js)
   async function handleMsaFile(f) {
     var text;
@@ -1554,7 +1573,7 @@
     var read = readRecords(text);
     return { format: read.format, rows: read.recs.filter(function (r) { return !r.header; }).map(function (r) { return [r.id, r.raw]; }) };
   }
-  window.tmMsa = { drawRect: drawRect, drawRadial: drawRadial, reorderFromCards: reorderFromCards, fillLegend: fillLegend,
+  window.tmMsa = { drawRect: drawRect, drawRadial: drawRadial, liveResize: liveResize, reorderFromCards: reorderFromCards, fillLegend: fillLegend,
     parse: parseAlignment, records: records, vectorize: vectorize, layout: columnLayout, rowForName: rowForName, columnOfPosition: columnOfPosition, positionsOf: positionsOf,
     get: function (id) { return msas.get(id); },
     // where a cell is on screen (client coordinates; for tests)

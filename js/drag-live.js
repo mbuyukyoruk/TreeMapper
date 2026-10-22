@@ -778,7 +778,8 @@
       shared = null;
       var pp = prepared && prepared.has(u.el) ? prepared.get(u.el) : undefined;
       if (pp && pp.outlined) { u.el.__liveOutlined = pp.outlined; pp = undefined; }
-      var plan = canvasSame !== true ? null : pp !== undefined ? pp : planPart(u.el, cache, k.kind === 'nodes');
+      // (an alignment column stays whole: it is drawn again on every frame, see frame())
+      var plan = (canvasSame !== true || (k.kind === 'layer' && k.ref && k.ref.type === 'msa')) ? null : pp !== undefined ? pp : planPart(u.el, cache, k.kind === 'nodes');
       if (cache.bad) plan = null;
       if (!plan || !plan.some(function (r) { return r.kind === 'flat'; })) {
         var ov = newOverlay();
@@ -1058,6 +1059,13 @@
       L.changed = !(L.to && L.to.a === to.a && L.to.s === to.s);
       L.k = kk; L.to = to;
       if (!L.changed) return;
+      // an alignment column is drawn again at its new place and width on every frame (its
+      // picture is quick to paint; stretched, its residues would blur until the release)
+      if (L.type === 'msa' && window.tmMsa && tmMsa.liveResize && !(lift && lift.twins.has(L.el))) {
+        if (L.mode === 'move') clearMove(L.el);
+        if (L.mode !== 'live') { setTransform(L.el, L.wasT); L.keep.forEach(function (el) { keepShape(el, 1); }); L.mode = 'live'; }
+        if (tmMsa.liveResize(L.index, p)) return;
+      }
       var split = lift && lift.twins.has(L.el);
       if (split && !lift.twins.get(L.el).length) return;   // all of it is in canvases
       if (Math.abs(kk - 1) < 1e-9) {
