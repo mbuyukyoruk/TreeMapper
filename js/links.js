@@ -22,7 +22,7 @@
     try { text = await tmSession.fetchText(url); }
     catch (e) { setStatus('Could not fetch ' + url + ': ' + explain(e)); return null; }
     var name = nameOf(url);
-    if (window.tmSession && (/\.treemapper$/i.test(name) || /"format"\s*:\s*"treemapper-session"/.test(text.slice(0, 400)))) { await tmSession.load(text); return 'session'; }
+    if (window.tmSession && (/\.treemapper(-report\.json)?$/i.test(name) || /"format"\s*:\s*"treemapper-(session|report)"/.test(text.slice(0, 400)))) { await tmSession.load(text); return 'session'; }
     try { return await tmIntake.text(text, name, 'From URL: ' + url, url); }
     catch (e) { console.error(e); setStatus('Could not load ' + name + ': ' + e.message); return null; }
   }
