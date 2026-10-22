@@ -10030,6 +10030,7 @@ function drawTreeBody(){
       }
       
               // Draw metadata bars for each leaf
+        const syntenyRows = new Map();   // each row's bars (synteny.js)
         leaves.forEach(d => {
         const key = normalizeAccession(d.data.name);
           const recs = preparedMeta.byIdAll && preparedMeta.byIdAll.get(key);
@@ -10098,7 +10099,7 @@ function drawTreeBody(){
               const y = d.x - (dynamicBarH / 2);
               const og = orientCol ? (parseInt(r[orientCol], 10) || 0) : 0;
               const showArrow = dfGeneOrientation.get(gname);
-              geneLabelQueue.push({ x, w, y, h: dynamicBarH, gname: String(gname || ''), color: color(gname || '') });
+              geneLabelQueue.push({ x, w, y, h: dynamicBarH, gname: String(gname || ''), color: color(gname || ''), og });
               
               // Build dynamic tooltip from all available columns
               const tooltipContent = buildDataframeTooltip(r, preparedMeta, columnIndices);
@@ -10253,6 +10254,7 @@ function drawTreeBody(){
           });
         });
         if (window.tmGeneExtras && geneLabelQueue.length) { try { tmGeneExtras.drawBarLabels(dataframeId, leafG, geneLabelQueue); } catch (e) { console.warn(e); } }
+        syntenyRows.set(d, { g: leafG, bars: geneLabelQueue });
         
         // Draw operon strokes if operon mode is enabled (behind bars)
         if (dataframe.operonState && dataframe.operonState.get('master')) {
@@ -10302,6 +10304,7 @@ function drawTreeBody(){
           }
         }
       });
+        if (window.tmSynteny && syntenyRows.size) { try { tmSynteny.draw(dataframeId, { g: spanG, rows: syntenyRows }); } catch (e) { console.warn(e); } }
       };
       
        
@@ -16710,6 +16713,16 @@ function createNewDataframeCard(metadata) {
         <p class="ht-hint">A schematic row above this panel, in its bp coordinates. One item per line: <code>start end label [colour] [box|arrow|line]</code>, e.g. <code>-300 0 ncRNA #9ca3af line</code>.</p>
         <textarea class="ht-text pro-textarea" rows="3" spellcheck="false" placeholder="-300 0 ncRNA #9ca3af line&#10;-150 -110 motif #555555 box&#10;0 400 DRT9 #b9a7d9 arrow"></textarea>
         <div class="pro-row pro-sub"><label>Font size</label><span class="pro-num-wrap"><input type="number" class="pro-num ht-font" min="6" max="24" step="1" value="11"><span class="pro-unit">px</span></span></div>
+      </div>
+      <div class="pro-card-section">
+        <div class="pro-card-head"><span class="pro-section-title">Synteny</span></div>
+        <label class="pro-row"><span>Links between rows</span><input type="checkbox" class="sy-links pro-switch"></label>
+        <div class="sy-sub pro-flat" hidden>
+          <div class="pro-row pro-sub"><label>Opacity</label><span class="pro-num-wrap"><input type="number" class="pro-num sy-opacity" min="5" max="100" step="5" value="35"><span class="pro-unit">%</span></span></div>
+        </div>
+        <p class="sy-hint">A ribbon in the gene's colour joins the same gene in neighbouring rows, so conserved neighbourhoods read as bands.</p>
+        <label class="pro-row"><span>Collapse identical neighbourhoods</span><input type="checkbox" class="sy-collapse pro-switch"></label>
+        <p class="sy-hint">Rows whose genes repeat the row above (same order and orientation) are drawn as a thin line; the first row of the run says × N.</p>
       </div>
       <div class="pro-card-section">
         <div class="pro-card-head"><span class="pro-section-title">Grid lines</span></div>
