@@ -577,16 +577,6 @@
     var obj = layerObject(L, card);
     var geneOrder = obj && Array.isArray(obj.geneOrder) ? obj.geneOrder.slice() : null;
     var axisTitle = obj ? obj.axisTitle : null;
-    // a dataframe's alignment (align by gene, its type, the group rules) lives on the layer
-    // object, not only in its controls: carried over as data and put back after the reload
-    var oldNum = cardNumber(card);
-    // (the layer object's fields are what the drawing uses; the first card's old globals only as a fallback)
-    var align = (L.type === 'dataframe' && obj) ? {
-      on: !!(obj.alignByGeneEnabled !== undefined ? obj.alignByGeneEnabled : (oldNum === 1 && typeof alignByGeneEnabled !== 'undefined' ? alignByGeneEnabled : false)),
-      gene: String((obj.alignGeneName !== undefined ? obj.alignGeneName : (oldNum === 1 && typeof alignGeneName !== 'undefined' ? alignGeneName : '')) || ''),
-      type: String((obj.alignType !== undefined ? obj.alignType : (oldNum === 1 && typeof alignType !== 'undefined' ? alignType : 'left')) || 'left'),
-      rules: Array.isArray(obj.alignRules) ? JSON.parse(JSON.stringify(obj.alignRules)) : []
-    } : null;
     var wasOpen = card.open;
     var widths = call(function () { return panelWidths.slice(); }), count = call(function () { return panelCount; });
     replacing = true;
@@ -632,22 +622,7 @@
         });
       }
       if (obj2 && axisTitle) obj2.axisTitle = axisTitle;
-      if (obj2 && align) restoreAlignment(card2, obj2, align);
       card2.open = wasOpen;
-    }
-    function restoreAlignment(card2, obj2, al) {
-      var id2 = cardNumber(card2), meta = obj2.meta, genes = new Set();
-      call(function () { var gc = getDataframeColumnIndices(meta).geneCol; (meta.rows || []).forEach(function (r) { genes.add(String(r[gc])); }); });
-      var gene = genes.has(al.gene) ? al.gene : '';   // the aligned gene may have been deleted
-      obj2.alignByGeneEnabled = al.on; obj2.alignGeneName = gene; obj2.alignType = al.type; obj2.alignRules = al.rules;
-      if (id2 === 1) call(function () { alignByGeneEnabled = al.on; alignGeneName = gene; alignType = al.type; });
-      // (the controls inside a reloaded card keep the number it was loaded with: found in the card)
-      var cb = card2.querySelector('input[id^="metaAlignEnable"]'), sl = card2.querySelector('select[id^="metaAlignGene"]');
-      if (cb) cb.checked = al.on;
-      if (sl) { sl.value = gene; sl.disabled = !al.on; }
-      card2.querySelectorAll('input[name^="metaAlignType"]').forEach(function (r) { r.checked = r.value === al.type; r.disabled = !al.on; });
-      call(function () { if (typeof ALIGNMENT_OPTIMIZATIONS !== 'undefined' && ALIGNMENT_OPTIMIZATIONS.cache) { ALIGNMENT_OPTIMIZATIONS.cache.clear(); ALIGNMENT_OPTIMIZATIONS.lastProcessedFrame = null; } });
-      if (window.tmAlignRules) call(function () { tmAlignRules.refresh(id2); });
     }
     var card2 = null, error = null, restored = null;
     try {

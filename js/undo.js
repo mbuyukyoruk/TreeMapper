@@ -238,9 +238,6 @@
     if (s.kind === 'ctl') {
       if (!applyCtl(s, true)) { notify(); return undo(); }   // its control is gone (card removed): skip the step
       redoStack.push(s);
-    } else if (s.kind === 'data') {
-      if (!applyData(s, true)) { notify(); return undo(); }
-      redoStack.push(s);
     } else {
       redoStack.push(snapshot(s.label, s.id));
       restore(s);
@@ -255,9 +252,6 @@
     if (!s) return false;
     if (s.kind === 'ctl') {
       if (!applyCtl(s, false)) { notify(); return redo(); }
-      undoStack.push(s);
-    } else if (s.kind === 'data') {
-      if (!applyData(s, false)) { notify(); return redo(); }
       undoStack.push(s);
     } else {
       undoStack.push(snapshot(s.label, s.id));
@@ -388,24 +382,8 @@
     if (id === 'rootEnable' || id === 'rootMode') setTimeout(readRootUi, 0);
   });
 
-  // ---------------------------------------------------------- a layer's data replaced
-  // A step holds the table before and after (feature-select.js: rows deleted); undo and redo
-  // load the layer again through tmSession.replaceLayerData, which keeps the card's settings
-  // and gives a new card (remembered for the next step). The reload is asynchronous.
-  function pushData(step) {
-    if (suspended || !step || !step.card) return;
-    push({ kind: 'data', label: step.label || 'data change', card: step.card, before: step.before, after: step.after, at: Date.now() });
-  }
-  function applyData(s, back) {
-    if (!s.card || !s.card.isConnected || !window.tmSession || typeof tmSession.replaceLayerData !== 'function') return false;
-    var text = back ? s.before : s.after, card = s.card;
-    applying = true;
-    Promise.resolve(tmSession.replaceLayerData(card, text)).then(function (r) { if (r && r.ok && r.card) s.card = r.card; }).catch(function () {}).then(function () { applying = false; });
-    return true;
-  }
-
   window.tmUndo = {
-    undo: undo, redo: redo, begin: begin, pushData: pushData,
+    undo: undo, redo: redo, begin: begin,
     canUndo: function () { prune(); return undoStack.length > 0; },
     canRedo: function () { prune(); return redoStack.length > 0; },
     undoLabel: function () { return undoStack.length ? undoStack[undoStack.length - 1].label : ''; },
