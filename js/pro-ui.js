@@ -128,6 +128,8 @@
     var mini = leftMinimized();
     CARD_BOXES.forEach(function (id) {
       var box = $(id); if (!box) return;
+      // a section without cards takes no room (its margin would open a gap between the neighbours' cards)
+      var sec = box.closest('.card-section'); if (sec) sec.toggleAttribute('data-empty', !box.querySelector(':scope > details'));
       Array.prototype.forEach.call(box.children, function (card) {
         var sum = card.tagName === 'DETAILS' && card.querySelector(':scope > summary'); if (!sum) return;
         var t = card.querySelector('.pro-card-title'), name = t ? t.textContent.trim() : '';
