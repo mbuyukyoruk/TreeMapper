@@ -3025,6 +3025,10 @@ function anyAxisTitle() {
 function axisTitleBand() {
   return (geometry !== 'radial' && (axisTitleButtonsOn() || anyAxisTitle())) ? AXIS_TITLE_BAND : 0;
 }
+// room above the axis row for a dataframe's header track (gene-extras.js)
+function headerTrackBand() {
+  try { return (geometry !== 'radial' && window.tmGeneExtras) ? tmGeneExtras.headerBand() : 0; } catch (e) { return 0; }
+}
 // draws the title (or the + button) of one axis into its axis group
 function renderAxisTitle(g, key, widthPx) {
   if (!g || g.empty() || !key) return;
@@ -3219,7 +3223,7 @@ function axisRowGap(leafSep) { return Math.max(18, Math.min((leafSep || 0) * 0.4
 // top / bottom: what the tips, bars and (top) axis row need without long titles.
 function fitClearances(top, bottom, labelPx, below, leafSep) {
   const gap = axisRowGap(leafSep);   // the row's distance from the first / last tip
-  const band = axisTitleBand();      // axis titles (units) beyond the numbers
+  const band = axisTitleBand() + headerTrackBand();      // axis titles (units) beyond the numbers, and a header track
   if (!below) return { top: Math.max(top + (gap - 18) + band, gap + heatmapTitleReach(false) + 4), bottom };
   const rowNeed = gap + Math.max(24 + band, heatmapTitleReach(true)) + 4;       // ticks and numbers (+ titles), or the heatmap titles
   return { top: calcLegendTopPad(labelPx, false, false), bottom: Math.max(bottom, top + (gap - 18), rowNeed) };
@@ -6108,7 +6112,7 @@ function drawTreeBody(){
     // expanded view with the axes on top: room above the first tip for the axis row
     // and its titles, the same as below the last tip when the axes are below
     if (!axesBelow && geometry !== 'radial') {
-      vTop = Math.max(margin.top, axisRowGap(leafSep) + Math.max(24 + axisTitleBand(), heatmapTitleReach(false)) + 4);
+      vTop = Math.max(margin.top, axisRowGap(leafSep) + Math.max(24 + axisTitleBand() + headerTrackBand(), heatmapTitleReach(false)) + 4);
       window.currentVTop = vTop;
     }
   }
@@ -9914,6 +9918,7 @@ function drawTreeBody(){
         const expandedDfVmax = dfVmax + marginAmount;
         
         let panelScale = d3.scaleLinear().domain([expandedDfVmin, expandedDfVmax]).range([0, panelWidth - margin.right]);
+        if (window.tmGeneExtras) { try { tmGeneExtras.drawHeader(dataframeId, { g: spanG, panelX, panelWidth, panelScale, axisRow, margin }); } catch (e) { console.warn(e); } }
         
       const leafPositions = leaves.map(d => d.x).sort((a, b) => a - b);
       
@@ -10041,6 +10046,7 @@ function drawTreeBody(){
           
           // Group by gene
         const byGene = new Map();
+        const geneLabelQueue = [];   // this row's bars, for the gene names (gene-extras.js)
         const columnIndicesRect = getDataframeColumnIndices(preparedMeta);
         const geneColRect = columnIndicesRect.geneCol;
           recs.forEach(r => {
@@ -10084,6 +10090,7 @@ function drawTreeBody(){
               const y = d.x - (dynamicBarH / 2);
               const og = orientCol ? (parseInt(r[orientCol], 10) || 0) : 0;
               const showArrow = dfGeneOrientation.get(gname);
+              geneLabelQueue.push({ x, w, y, h: dynamicBarH, gname: String(gname || ''), color: color(gname || '') });
               
               // Build dynamic tooltip from all available columns
               const tooltipContent = buildDataframeTooltip(r, preparedMeta, columnIndices);
@@ -10237,6 +10244,7 @@ function drawTreeBody(){
             }
           });
         });
+        if (window.tmGeneExtras && geneLabelQueue.length) { try { tmGeneExtras.drawBarLabels(dataframeId, leafG, geneLabelQueue); } catch (e) { console.warn(e); } }
         
         // Draw operon strokes if operon mode is enabled (behind bars)
         if (dataframe.operonState && dataframe.operonState.get('master')) {
@@ -14862,7 +14870,10 @@ function updateMetadataLegend() {
     .map(([gene, visible]) => gene)
     .sort((a, b) => a.localeCompare(b)); // Sort alphabetically
   
+  const orientedGenes = new Set();
+  for (const [, df] of dataframes) { const o = df.geneOrientation || geneOrientation; if (o) o.forEach((on, gname) => { if (on) orientedGenes.add(String(gname)); }); }
   let legendHTML = gradientLegendParts.join('') + sortedVisibleGenes.map(gene => {
+    const arrow = orientedGenes.has(String(gene)) ? ' legend-arrow' : '';
     const colors = allGeneColors.get(gene);
     if (!colors || colors.size === 0) {
       // Fallback to single color if no colors found
@@ -14879,7 +14890,7 @@ function updateMetadataLegend() {
       const color = Array.from(colors)[0];
     return `
       <div class="legend-item" data-legend-color="${color}" data-legend-type="gene">
-        <div class="legend-color" style="background-color: ${color};"></div>
+        <div class="legend-color${arrow}" style="background-color: ${color};"></div>
         <span>${gene}</span>
       </div>
     `;
@@ -14887,7 +14898,7 @@ function updateMetadataLegend() {
       // Multiple colors - display as gradient or multiple color boxes
       const colorArray = Array.from(colors);
       const colorBoxes = colorArray.map(color =>
-        `<div class="legend-color" style="background-color: ${color};" data-color="${color}"></div>`
+        `<div class="legend-color${arrow}" style="background-color: ${color};" data-color="${color}"></div>`
       ).join('');
       
       return `
@@ -15413,7 +15424,7 @@ function updateMetadataLegend() {
   if (legendOrderByLayer) {
     const esc = (v) => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const item = (type, name, color, attrs) => attrs
-      ? `<div class="legend-item" data-legend-color="${esc(color)}" data-legend-type="${type}"><div class="legend-color" style="background-color: ${esc(color)};"></div><span>${esc(name)}</span></div>`
+      ? `<div class="legend-item" data-legend-color="${esc(color)}" data-legend-type="${type}"><div class="legend-color${type === 'gene' && orientedGenes.has(String(name)) ? ' legend-arrow' : ''}" style="background-color: ${esc(color)};"></div><span>${esc(name)}</span></div>`
       : `<div class="legend-item"><div class="legend-color" style="background-color: ${esc(color)};"></div><span>${esc(name)}</span></div>`;
     const sub = (label) => `<div class="legend-subtitle">${esc(label)}</div>`;
     // the layers of one type, in card order: [id, data, card title]
@@ -16676,6 +16687,23 @@ function createNewDataframeCard(metadata) {
         </div>
       </div>
       <div class="pro-card-section">
+        <div class="pro-card-head"><span class="pro-section-title">Gene labels</span></div>
+        <label class="pro-row"><span>Gene names on the bars</span><input type="checkbox" class="gl-on pro-switch"></label>
+        <div class="gl-sub pro-flat" hidden>
+          <div class="pro-row pro-sub"><span>Place</span><span class="pro-radio-seg" role="radiogroup" aria-label="Label place">
+            <label><input type="radio" name="glPlace${dataframeId}" class="gl-place" value="inside" checked><span>Inside</span></label>
+            <label><input type="radio" name="glPlace${dataframeId}" class="gl-place" value="above"><span>Above</span></label></span></div>
+          <div class="pro-row pro-sub"><label>Font size</label><span class="pro-num-wrap"><input type="number" class="pro-num gl-font" min="5" max="24" step="1" value="10"><span class="pro-unit">px</span></span></div>
+          <label class="pro-row pro-sub"><span>Only where the name fits</span><input type="checkbox" class="gl-fit pro-switch" checked></label>
+        </div>
+      </div>
+      <div class="pro-card-section">
+        <div class="pro-card-head"><span class="pro-section-title">Header track</span></div>
+        <p class="ht-hint">A schematic row above this panel, in its bp coordinates. One item per line: <code>start end label [colour] [box|arrow|line]</code>, e.g. <code>-300 0 ncRNA #9ca3af line</code>.</p>
+        <textarea class="ht-text pro-textarea" rows="3" spellcheck="false" placeholder="-300 0 ncRNA #9ca3af line&#10;-150 -110 motif #555555 box&#10;0 400 DRT9 #b9a7d9 arrow"></textarea>
+        <div class="pro-row pro-sub"><label>Font size</label><span class="pro-num-wrap"><input type="number" class="pro-num ht-font" min="6" max="24" step="1" value="11"><span class="pro-unit">px</span></span></div>
+      </div>
+      <div class="pro-card-section">
         <div class="pro-card-head"><span class="pro-section-title">Grid lines</span></div>
         <label class="pro-row"><span>Major grid lines</span><input type="checkbox" id="showMajorGrid${dataframeId}" class="major-grid-checkbox pro-switch"></label>
         <label class="pro-row pro-sub"><span>Dashed</span><input type="checkbox" id="dashedMajorGrid${dataframeId}" class="major-grid-dashed-checkbox pro-switch"></label>
@@ -17500,6 +17528,7 @@ function wireGeneControlsForDataframe(dataframeId, df) {
     cb.addEventListener('change', ev => {
       const gname = ev.target.getAttribute('data-gene');
       df.geneOrientation.set(gname, ev.target.checked);
+      updateMetadataLegend();   // the legend icon follows (an arrow for a gene drawn with its orientation)
         
         if (root) {
           drawTree();
@@ -24847,7 +24876,16 @@ function buildExportSvgSource(){
           rect.setAttribute('stroke', ringColor);
           rect.setAttribute('stroke-width', '1');
           rect.setAttribute('rx', '2');
-          legendGroup.appendChild(rect);
+          if (colorBox.classList && colorBox.classList.contains('legend-arrow')) {
+            // a gene drawn with its orientation: an arrow in place of the box
+            const bx = currentX, by = currentY - boxSize + 3, tip = boxSize * 0.45;
+            const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            arrowPath.setAttribute('d', `M${bx},${by} L${bx + boxSize - tip},${by} L${bx + boxSize},${by + boxSize / 2} L${bx + boxSize - tip},${by + boxSize} L${bx},${by + boxSize} Z`);
+            arrowPath.setAttribute('fill', bgColor);
+            arrowPath.setAttribute('stroke', ringColor);
+            arrowPath.setAttribute('stroke-width', '1');
+            legendGroup.appendChild(arrowPath);
+          } else legendGroup.appendChild(rect);
           
           // Draw label text
           const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
