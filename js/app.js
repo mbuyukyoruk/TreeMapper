@@ -7478,7 +7478,7 @@ function drawTreeBody(){
             const key = normalizeAccession(d.data.name);
             const value = heatmapData.accessionToValue.get(key);
             
-            if (!value || !heatmapData.valueVisibility.get(value)) {
+            if (!heatmapValueShown(heatmapData, value)) {
               return;
             }
             
@@ -7491,7 +7491,7 @@ function drawTreeBody(){
               .startAngle(angle - arcSpan / 2)
               .endAngle(angle + arcSpan / 2);
             
-            const color = heatmapData.valueColors.get(value);
+            const color = heatmapColorOf(heatmapData, value);
             
             heatmapGroup.append('path')
               .attr('class', 'radial-heatmap-arc')
@@ -10592,11 +10592,11 @@ function drawTreeBody(){
         const key = normalizeAccession(d.data.name);
         const value = heatmapData.accessionToValue.get(key);
         
-        if (!value || !heatmapData.valueVisibility.get(value)) {
+        if (!heatmapValueShown(heatmapData, value)) {
           return;
         }
         
-        const color = heatmapData.valueColors.get(value);
+        const color = heatmapColorOf(heatmapData, value);
         rectanglesDrawn++;
         
         const dx = 0; // No offset needed
@@ -14904,6 +14904,7 @@ function updateMetadataLegend() {
   
   // Create separate heatmap legend items
   let heatmapLegendHTML = '';
+  let gradientHeatmapHTML = '';
   let hasVisibleHeatmapValues = false;
   
   // Collect all unique heatmap values and their colors (similar to gene legend logic)
@@ -14921,6 +14922,10 @@ function updateMetadataLegend() {
       // Get heatmap values present in visible accessions
       const valuesInVisible = getHeatmapValuesInVisibleAccessions(heatmapData);
       
+      if (window.tmHeatScale && tmHeatScale.isGradient(heatmapData)) {
+        if (valuesInVisible.size) { hasVisibleHeatmapValues = true; gradientHeatmapHTML += tmHeatScale.legendHTML(heatmapData, (document.getElementById(`heatmapTitle${heatmapId}`) || {}).textContent || `Heatmap ${heatmapId}`); }
+        return;
+      }
       if (heatmapData.uniqueValues && heatmapData.valueVisibility && heatmapData.valueColors) {
         const visibleValues = heatmapData.uniqueValues.filter(value => 
           heatmapData.valueVisibility.get(value) && valuesInVisible.has(value)
@@ -14995,7 +15000,7 @@ function updateMetadataLegend() {
   }
   
   // Set heatmap legend items
-  heatmapLegendItems.innerHTML = heatmapLegendHTML;
+  heatmapLegendItems.innerHTML = gradientHeatmapHTML + heatmapLegendHTML;
   
   // Show/hide heatmap legend title based on whether there are visible heatmap values
   const legendTitles = metadataLegend.querySelectorAll('.legend-title');
@@ -15439,6 +15444,7 @@ function updateMetadataLegend() {
       inCardOrder(containerId, prefix, map).forEach(([id, d, label]) => {
         if (d.hasMatchingData === false || !d.uniqueValues || !d.valueVisibility || !d.valueColors) return;
         const present = presentFn(d);
+        if (type === 'heatmap' && window.tmHeatScale && tmHeatScale.isGradient(d)) { if (present.size) html += sub(label) + tmHeatScale.legendHTML(d, ''); return; }
         const vals = d.uniqueValues.filter(v => d.valueVisibility.get(v) && present.has(String(v)));
         if (vals.length) html += sub(label) + vals.map(v => item(type, v, d.valueColors.get(v) || '#ccc', attrs)).join('');
       });
@@ -18141,6 +18147,16 @@ async function handleHeatmapFile(f){
   }catch(e){ setStatus('Heatmap parse error: '+e.message); console.error(e); }
 }
 
+// a heatmap cell's colour and whether it is drawn: a numeric column on its gradient
+// (heatmap-scale.js), else the value's own colour and visibility
+function heatmapColorOf(hm, value) {
+  return (window.tmHeatScale && tmHeatScale.isGradient(hm)) ? tmHeatScale.colorFor(hm, value) : hm.valueColors.get(value);
+}
+function heatmapValueShown(hm, value) {
+  if (!value) return false;
+  if (window.tmHeatScale && tmHeatScale.isGradient(hm)) return true;
+  return !!hm.valueVisibility.get(value);
+}
 function populateHeatmapCard(heatmapId, metadata) {
   // Store the heatmap data
   if (!heatmaps) {
@@ -18203,20 +18219,28 @@ function populateHeatmapCard(heatmapId, metadata) {
   
   // Assign colors to unique values using intelligent color assignment
   const sortedValues = Array.from(uniqueValues).sort(naturalCompare);
-  const assignedColors = assignColors(sortedValues, 'heatmap', heatmapId);
-  sortedValues.forEach((value, index) => {
-    if (!hm.valueVisibility.has(value)) {
-      hm.valueVisibility.set(value, true); // Default to visible
-    }
-    if (!hm.valueColors.has(value)) {
-      hm.valueColors.set(value, assignedColors.get(value));
-    }
-  });
+  const gradient = !!(window.tmHeatScale && tmHeatScale.isGradient(hm));
+  if (!gradient) {
+    const assignedColors = assignColors(sortedValues, 'heatmap', heatmapId);
+    sortedValues.forEach((value, index) => {
+      if (!hm.valueVisibility.has(value)) {
+        hm.valueVisibility.set(value, true); // Default to visible
+      }
+      if (!hm.valueColors.has(value)) {
+        hm.valueColors.set(value, assignedColors.get(value));
+      }
+    });
+  }
   
   // Populate the heatmap data display with value list
   const heatmapDiv = document.getElementById(`heatmapData${heatmapId}`);
   
-  if (heatmapDiv) {
+  if (heatmapDiv && gradient && hm.hasMatchingData !== false) {
+    tmHeatScale.renderControls(heatmapId, hm);
+  } else if (heatmapDiv) {
+    heatmapDiv.classList.remove('hs-box');
+    const head = heatmapDiv.previousElementSibling && heatmapDiv.previousElementSibling.querySelector('.pro-section-title');
+    if (head) head.textContent = 'Values';
     // Check if this heatmap has matching accessions - if not, show warning message
     if (hm.hasMatchingData === false) {
       // Show no matching accessions message
@@ -18231,7 +18255,8 @@ function populateHeatmapCard(heatmapId, metadata) {
         </div>
       `;
     } else if (sortedValues.length > 0) {
-      heatmapDiv.innerHTML = `
+      const canGradient = window.tmHeatScale && tmHeatScale.stats(hm).numeric;
+      heatmapDiv.innerHTML = (canGradient ? `<div class="hs-mode pro-row"><span>Scale</span><span class="pro-radio-seg" role="radiogroup" aria-label="Heatmap scale"><label><input type="radio" name="hsMode${heatmapId}" class="hs-mode-radio" value="gradient"><span>Gradient</span></label><label><input type="radio" name="hsMode${heatmapId}" class="hs-mode-radio" value="categories" checked><span>Categories</span></label></span></div>` : '') + `
         ${sortedValues.map(value => {
           const checked = hm.valueVisibility.get(value) ? 'checked' : '';
           const color = hm.valueColors.get(value) || '#ccc';
@@ -24659,7 +24684,7 @@ function buildExportSvgSource(){
             t.textContent = content;
             legendGroup.appendChild(t);
           };
-          addText(currentX, '0%');
+          addText(currentX, item.getAttribute('data-lo-label') || '0%');
           const gradientRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
           gradientRect.setAttribute('x', currentX + 26);
           gradientRect.setAttribute('y', currentY - 13);
@@ -24670,8 +24695,8 @@ function buildExportSvgSource(){
           gradientRect.setAttribute('stroke-width', '1');
           gradientRect.setAttribute('rx', '3');
           legendGroup.appendChild(gradientRect);
-          addText(currentX + 152, '100%');
-          addText(currentX + 190, item.getAttribute('data-gradient-label') || '');
+          addText(currentX + 152, item.getAttribute('data-hi-label') || '100%');
+          addText(currentX + 152 + 8 * Math.max(4, (item.getAttribute('data-hi-label') || '100%').length), item.getAttribute('data-gradient-label') || '');
           
           currentY += lineHeight;
           maxLegendX = Math.max(maxLegendX, currentX + columnWidth);
