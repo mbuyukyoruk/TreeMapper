@@ -768,6 +768,20 @@
     };
   }
 
+  // ------------------------------------------------- dragging a layer card
+  // A layer card is dragged by its handle (or its header), never by a press in its body:
+  // a press on the body makes the card not draggable, so dragging over its text selects
+  // the text instead of lifting the card; a press on the handle makes it draggable again.
+  // (A press on a gene row keeps the row's own drag.)
+  // (the state is set at each press, not restored at release: changing it while a selection
+  // is being made would drop the selection)
+  document.addEventListener('pointerdown', function (e) {
+    var t = e.target; if (!t || !t.closest || e.button !== 0) return;
+    var card = t.closest('.sidepanel details[draggable]'); if (!card) return;
+    var byHandle = !!(t.closest('.drag-handle') || (t.closest('summary') && !t.closest('button, input, select, textarea, a')));
+    card.setAttribute('draggable', byHandle ? 'true' : 'false');
+  }, true);
+
   // ---------------------------------------------------------------- sessions
   if ($('proSaveSession') && window.tmSession) $('proSaveSession').addEventListener('click', function () { tmSession.save(); });
   // dropping a .treemapper file on the canvas opens it (before the app's own tree drop handler)
