@@ -1310,3 +1310,12 @@ html.pro .legend-gradient { display: flex; align-items: center; gap: 6px; }
 html.pro .hs-leg-bar { display: inline-block; width: 96px; height: 12px; border-radius: 6px; border: 1px solid var(--border); flex: none; }
 html.pro .hs-leg-lo, html.pro .hs-leg-hi { font-family: var(--pro-mono); font-size: 11px; color: var(--text); }
 html.pro .hs-leg-label { color: var(--muted); font-size: 12px; margin-left: 2px; }
+
+/* legend cap and filter (legend-tools.js) */
+html.pro .lt-filter { margin: 0 0 8px; }
+html.pro .lt-filter[hidden] { display: none; }
+html.pro #metadataLegend .legend-item[hidden] { display: none; }
+html.pro #metadataLegend .legend-subtitle[hidden] { display: none; }
+html.pro #metadataLegend .lt-more { align-self: flex-start; margin: 3px 0 2px 2px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--accent); font: 600 11.5px var(--pro-font); cursor: pointer; }
+html.pro #metadataLegend .lt-more:hover { background: var(--pro-hover); }
+html.pro #metadataLegend .lt-count { border: 0; background: none; color: var(--muted); font-weight: 400; cursor: default; }
