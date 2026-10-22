@@ -267,6 +267,7 @@ html.pro body.pro-left-minimized .pro-left-toggle .pro-ico { transform: rotate(1
 /* only the cards: no style groups, headings or lists, whichever tab was open */
 html.pro body.pro-left-minimized .sidepanel > :not(.pro-tabs):not(.card-section) { display: none !important; }
 html.pro body.pro-left-minimized .sidepanel > .card-section { display: block !important; margin-bottom: 6px; }
+html.pro body.pro-left-minimized .sidepanel > .card-section[data-empty] { display: none !important; }   /* no cards: no room (pro-ui.js marks it) */
 html.pro body.pro-left-minimized .card-container { gap: 6px; }
 html.pro body.pro-left-minimized .card-container > details { border-radius: 10px; box-shadow: none; }
 html.pro body.pro-left-minimized .card-container > details[open] { border-color: var(--border); box-shadow: none; }
@@ -315,6 +316,7 @@ html.pro .sidebar-divider-visual, html.pro .sidebar-divider { display: none !imp
 html.pro .section-header h4 { display: none !important; }
 html.pro .card-container { gap: 8px; min-height: 0; opacity: 1; }
 html.pro .card-section { margin-bottom: 8px; }
+html.pro .sidepanel > .card-section[data-empty] { display: none !important; }   /* a section without cards: no margin between its neighbours' cards */
 html.pro .card-container > details {
   --pro-type: var(--accent);
   position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; margin: 0; overflow: hidden;
