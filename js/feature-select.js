@@ -160,8 +160,10 @@
     var tb = $('proSelectGenes');
     if (tb) {
       var ls = layerNames(), set = ls.filter(function (l) { return restrict.has(l.id); });
+      // an icon only: the names are in the tooltip, never in the toolbar's flow
       var text = !set.length ? 'all genes' : set.length === 1 ? restrictLabel(set[0].id) + (ls.length > 1 ? ' in ' + set[0].name : '') : set.length + ' layers set';
-      tb.querySelector('span').textContent = 'Select: ' + text; tb.title = 'Genes a drag over a dataframe column selects — ' + text; tb.setAttribute('aria-label', 'Select: ' + text); tb.classList.toggle('is-set', set.length > 0);
+      var short = !set.length ? 'all genes' : set.length === 1 ? ((restrict.get(set[0].id) || new Set()).size + ' gene' + ((restrict.get(set[0].id) || new Set()).size === 1 ? '' : 's') + (ls.length > 1 ? ' in ' + set[0].name : '')) : set.length + ' layers set';
+      tb.querySelector('span').textContent = 'Select genes: ' + short; tb.title = 'Genes a drag over a dataframe column selects: ' + text; tb.setAttribute('aria-label', 'Select genes: ' + short); tb.classList.toggle('is-set', set.length > 0);
     }
     var fb = $('featGenes'); if (fb && sel.id != null) fb.querySelector('span').textContent = 'Genes: ' + restrictLabel(sel.id);
   }
