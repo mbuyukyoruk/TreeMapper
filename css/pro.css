@@ -1428,3 +1428,6 @@ html.pro .lk-body { display: flex; flex-direction: column; gap: 12px; }
 html.pro .lk-body .ds-muted { margin: 0; }
 html.pro input.lk-url { width: 100%; box-sizing: border-box; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: 13px var(--pro-font); }
 html.pro input.lk-url:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }
+
+/* the search hit the arrow keys are on */
+#svg text.label.search-current { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
