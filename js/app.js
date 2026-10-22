@@ -1383,7 +1383,8 @@ function stealableLeft(toIdx, widths) {
 
 // room the group labels need at the right of the panels (group-marks.js), rectangular layout
 function groupMarksReserve() {
-  try { return (window.tmGroupMarks && geometry !== 'radial') ? (tmGroupMarks.reserve() || 0) : 0; } catch (e) { return 0; }
+  // (also the room a comparison tree takes, tangle.js)
+  try { return geometry === 'radial' ? 0 : ((window.tmGroupMarks ? tmGroupMarks.reserve() || 0 : 0) + (window.tmTangle ? tmTangle.reserve() || 0 : 0)); } catch (e) { return 0; }
 }
 function normalizeWidths() {
   const container = document.getElementById('panelsContainer');
@@ -4994,6 +4995,7 @@ function updateSearchHighlights() {
         return (highlightedAccessions && highlightedAccessions.has(acc)) ? 0.2 : 0;
       });
   }catch(_){/* best-effort */}
+  if (window.tmTangle) { try { tmTangle.refreshSelection(); } catch (e) {} }   // comparison-tree connectors
   svg.selectAll('text.label')
     .style('background', null)
     .style('font-weight', d => {
@@ -12243,6 +12245,8 @@ function drawTreeBody(){
   setStatus('Ready');
   // group separators and labels (group-marks.js), on top of everything drawn
   if (window.tmGroupMarks) { try { tmGroupMarks.draw({ isRadial, leaves }); } catch (e) { console.warn(e); } }
+  // a second tree for comparison (tangle.js), to the right of everything
+  if (window.tmTangle) { try { tmTangle.draw({ isRadial, leaves }); } catch (e) { console.warn(e); } }
   
   // Update Add Data button visibility
   updateAddDataframeButtonVisibility();
