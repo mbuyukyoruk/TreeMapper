@@ -3029,7 +3029,7 @@ function anyAxisTitle() {
 function axisTitleBand() {
   return (geometry !== 'radial' && (axisTitleButtonsOn() || anyAxisTitle())) ? AXIS_TITLE_BAND : 0;
 }
-// room above the axis row for a dataframe's header track (gene-extras.js)
+// room beyond the tips, on the side away from the axis row, for a dataframe's header track (gene-extras.js)
 function headerTrackBand() {
   try { return (geometry !== 'radial' && window.tmGeneExtras) ? tmGeneExtras.headerBand() : 0; } catch (e) { return 0; }
 }
@@ -3227,10 +3227,11 @@ function axisRowGap(leafSep) { return Math.max(18, Math.min((leafSep || 0) * 0.4
 // top / bottom: what the tips, bars and (top) axis row need without long titles.
 function fitClearances(top, bottom, labelPx, below, leafSep) {
   const gap = axisRowGap(leafSep);   // the row's distance from the first / last tip
-  const band = axisTitleBand() + headerTrackBand();      // axis titles (units) beyond the numbers, and a header track
-  if (!below) return { top: Math.max(top + (gap - 18) + band, gap + heatmapTitleReach(false) + 4), bottom };
+  const band = axisTitleBand();      // axis titles (units) beyond the numbers
+  const track = headerTrackBand();   // a dataframe's header track: on the side away from the axis row
+  if (!below) return { top: Math.max(top + (gap - 18) + band, gap + heatmapTitleReach(false) + 4), bottom: bottom + track };
   const rowNeed = gap + Math.max(24 + band, heatmapTitleReach(true)) + 4;       // ticks and numbers (+ titles), or the heatmap titles
-  return { top: calcLegendTopPad(labelPx, false, false), bottom: Math.max(bottom, top + (gap - 18), rowNeed) };
+  return { top: calcLegendTopPad(labelPx, false, false) + track, bottom: Math.max(bottom, top + (gap - 18), rowNeed) };
 }
 
 // How many ticks an axis of this width can show without its numbers running into each
@@ -6117,7 +6118,10 @@ function drawTreeBody(){
     // expanded view with the axes on top: room above the first tip for the axis row
     // and its titles, the same as below the last tip when the axes are below
     if (!axesBelow && geometry !== 'radial') {
-      vTop = Math.max(margin.top, axisRowGap(leafSep) + Math.max(24 + axisTitleBand() + headerTrackBand(), heatmapTitleReach(false)) + 4);
+      vTop = Math.max(margin.top, axisRowGap(leafSep) + Math.max(24 + axisTitleBand(), heatmapTitleReach(false)) + 4);
+      window.currentVTop = vTop;
+    } else if (geometry !== 'radial') {
+      vTop = margin.top + headerTrackBand();   // the header track sits above the first tip when the axes are below
       window.currentVTop = vTop;
     }
   }
@@ -16714,7 +16718,7 @@ function createNewDataframeCard(metadata) {
       </div>
       <div class="pro-card-section">
         <div class="pro-card-head"><span class="pro-section-title">Header track</span></div>
-        <p class="ht-hint">A schematic row above this panel, in its bp coordinates. One item per line: <code>start end label [colour] [box|arrow|line]</code>, e.g. <code>-300 0 ncRNA #9ca3af line</code>.</p>
+        <p class="ht-hint">A schematic row for this panel, in its bp coordinates, drawn on the side away from the axis (below the last tip, or above the first when the axes are below). One item per line: <code>start end label [colour] [box|arrow|line]</code>, e.g. <code>-300 0 ncRNA #9ca3af line</code>.</p>
         <textarea class="ht-text pro-textarea" rows="3" spellcheck="false" placeholder="-300 0 ncRNA #9ca3af line&#10;-150 -110 motif #555555 box&#10;0 400 DRT9 #b9a7d9 arrow"></textarea>
         <div class="pro-row pro-sub"><label>Font size</label><span class="pro-num-wrap"><input type="number" class="pro-num ht-font" min="6" max="24" step="1" value="11"><span class="pro-unit">px</span></span></div>
       </div>
