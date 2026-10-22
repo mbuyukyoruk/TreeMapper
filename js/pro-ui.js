@@ -341,7 +341,7 @@
   // a node is selected; here they all sit in one Reset menu in the canvas
   // toolbar instead (the buttons themselves are kept, hidden, and clicked).
   var resetBox = $('proReset'), resetBtn = $('proResetBtn'), resetCount = $('proResetCount'), resetMenu = $('proResetMenu');
-  var restoreBtn = $('proRestoreDropped'), restoreCount = $('proRestoreCount'), sources = $('proResetSources');
+  var sources = $('proResetSources');   // (dropped tips are restored from the Reset menu, with their number on its badge)
   var I_UNDO = '<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>';
   var RESET_ITEMS = [
     { id: 'restoreDroppedNodes', label: 'Restore dropped tips', icon: '<path d="M12 5v14M5 12h14"/>' },
@@ -379,8 +379,6 @@
     var items = activeItems(), n = items.filter(function (i) { return !i.sep && !i.all; }).length;
     resetBox.hidden = !items.length;
     resetCount.textContent = n; resetCount.hidden = !n;
-    var d = droppedCount();
-    restoreBtn.hidden = !d; restoreCount.textContent = d;
     if (openPop && openPop.el === resetMenu) { if (items.length) renderResetMenu(items); else closePop(); }
   }
   function renderResetMenu(items) {
@@ -411,7 +409,6 @@
       var its = Array.prototype.slice.call(resetMenu.querySelectorAll('.pro-menu-item')), i = its.indexOf(document.activeElement);
       its[(i + (e.key === 'ArrowDown' ? 1 : its.length - 1)) % its.length].focus(); e.preventDefault();
     });
-    restoreBtn.addEventListener('click', function () { var s = $('restoreDroppedNodes'); if (s) s.click(); setTimeout(refreshReset, 0); });
   }
   var srcObserver = new MutationObserver(function () { refreshReset(); });
   function watchSource(el) { srcObserver.observe(el, { attributes: true, attributeFilter: ['style'], childList: true, characterData: true, subtree: true }); }

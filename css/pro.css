@@ -738,7 +738,7 @@ html.pro .pro-canvas-toolbar .pro-copy-btn svg { width: 14px; height: 14px; }
 /* Reset group */
 html.pro .pro-reset { display: flex; align-items: center; gap: 6px; flex: none; }
 html.pro .pro-reset[hidden], html.pro .pro-reset-sources, html.pro .pro-reset [hidden] { display: none !important; }
-html.pro button.pro-reset-btn, html.pro button.pro-restore-btn {
+html.pro button.pro-reset-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 9px 0 10px; margin: 0; box-sizing: border-box;
   border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text);
   font: 500 12.5px var(--pro-font); cursor: pointer; white-space: nowrap;
@@ -751,12 +751,6 @@ html.pro .pro-count {
   background: var(--pro-primary); color: var(--pro-accent-text); font: 700 10.5px var(--pro-mono);
 }
 html.pro .pro-count[hidden] { display: none; }
-html.pro button.pro-restore-btn {
-  border-color: rgba(217, 119, 6, .35); background: rgba(245, 158, 11, .10); color: #B45309; font-weight: 600; padding: 0 12px 0 9px;
-}
-html.pro[data-theme="dark"] button.pro-restore-btn { color: #FBBF24; border-color: rgba(251, 191, 36, .35); background: rgba(251, 191, 36, .10); }
-html.pro button.pro-restore-btn:hover { background: rgba(245, 158, 11, .18); }
-html.pro button.pro-restore-btn b { font-variant-numeric: tabular-nums; }
 
 /* canvas: the drawing surface sits on a faint dot grid */
 html.pro .canvas {
