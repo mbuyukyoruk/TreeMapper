@@ -36,7 +36,7 @@
     'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin', 'axesBelow', 'axisTitleButtons', 'trackWidth', 'metaColumn',
     'groupMarksSourceWanted', 'groupMarksManual', 'groupMarksLines', 'groupMarksDashed', 'groupMarksWidth', 'groupMarksColor', 'groupMarksLabels', 'groupMarksFont',
     'labelTextSourceWanted', 'labelItalic', 'labelColorSourceWanted',
-    'tangleTree', 'tangleName', 'tangleOrder', 'tangleShow', 'tangleWidth'];
+    'tangleName', 'tangleTree', 'tangleShow', 'tangleOrderMode', 'tangleUnique', 'tangleGuides', 'tangleLinks'];   // the name before the tree: the tree's load reads it
   var ROOT_IDS = ['rootEnable', 'rootMode'];
 
   function $(id) { return document.getElementById(id); }
@@ -406,6 +406,7 @@
       if (st.__layout === 'radial' && $('btnRadial') && geometry !== 'radial') $('btnRadial').click();
       if (st.__layout === 'rect' && $('btnRect') && geometry === 'radial') $('btnRect').click();
       SETTING_IDS.forEach(function (id) { var el = $(id); if (el && id in st) call(function () { writeCtl(el, st[id], true); }); });
+      if (window.tmTangle && tmTangle.panelWanted()) call(function () { tmTangle.relayout(); });   // the comparison tree's panel
       if (st.__supportTab) { var t = document.querySelector('.bootstrap-tab[data-tab="' + st.__supportTab + '"]'); if (t && !t.classList.contains('active')) t.click(); }
       call(function () { treeAxisTitle = st.__treeAxisTitle || ''; });
       if (window.tmLegendOrder) tmLegendOrder.set(!!st.__legendByLayer);
