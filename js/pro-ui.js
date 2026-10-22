@@ -1005,7 +1005,7 @@
       return;
     }
     if (mod && !e.altKey && (k === 'o' || k === 'O')) { e.preventDefault(); openTree(); return; }
-    if (mod && !e.altKey && (k === 'z' || k === 'Z' || k === 'y' || k === 'Y') && !typing(e.target) && window.tmUndo) {
+    if (mod && !e.altKey && (k === 'z' || k === 'Z' || k === 'y' || k === 'Y') && !textEntry(e.target) && window.tmUndo) {   // not while text is typed; a switch, select or slider keeps the shortcut
       var redoKey = k === 'y' || k === 'Y' || e.shiftKey;
       if (redoKey ? tmUndo.redo() : tmUndo.undo()) e.preventDefault();
       return;

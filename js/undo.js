@@ -235,8 +235,13 @@
     prune();
     var s = undoStack.pop();
     if (!s) return false;
-    redoStack.push(snapshot(s.label, s.id));
-    restore(s);
+    if (s.kind === 'ctl') {
+      if (!applyCtl(s, true)) { notify(); return undo(); }   // its control is gone (card removed): skip the step
+      redoStack.push(s);
+    } else {
+      redoStack.push(snapshot(s.label, s.id));
+      restore(s);
+    }
     call(function () { setStatus('Undid ' + s.label); });
     notify();
     return true;
@@ -245,10 +250,93 @@
     prune();
     var s = redoStack.pop();
     if (!s) return false;
-    undoStack.push(snapshot(s.label, s.id));
-    restore(s);
+    if (s.kind === 'ctl') {
+      if (!applyCtl(s, false)) { notify(); return redo(); }
+      undoStack.push(s);
+    } else {
+      undoStack.push(snapshot(s.label, s.id));
+      restore(s);
+    }
     call(function () { setStatus('Redid ' + s.label); });
     notify();
+    return true;
+  }
+
+  // ---------------------------------------------------------- card and style settings
+  // A change of a control in the side panel (layer cards, Style) is one step: the value
+  // before is noted when the control is pressed or focused, the step recorded on its
+  // change event. Undo writes the old value back and fires the control's events, so the
+  // app applies it as if the user had set it. Quick repeated changes of one control (a
+  // spinner, a slider) merge into one step; a step whose control has left the page is skipped.
+  var prev = new Map(), applying = false, MERGE_MS = 1200;
+  function readCtl(el) {
+    if (el.tagName === 'BUTTON') return el.getAttribute('aria-pressed') === 'true';
+    if (el.type === 'checkbox' || el.type === 'radio') return el.checked;
+    return el.value;
+  }
+  function writeCtl(el, v) {
+    if (el.tagName === 'BUTTON') { if (readCtl(el) !== v) el.click(); return; }
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v; else el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  function controlOf(t) {
+    if (!t || !t.closest) return null;
+    var el = t.closest('input, select, textarea, button[aria-pressed]');
+    if (!el) { var lab = t.closest('label'); if (lab) el = (lab.htmlFor && document.getElementById(lab.htmlFor)) || lab.querySelector('input, select, textarea'); }
+    if (!el || !el.closest('.sidepanel') || el.disabled) return null;
+    if (el.id === 'rootEnable' || el.id === 'rootMode') return null;   // re-rooting: recorded as a tree step above
+    if (el.type === 'file' || el.type === 'search' || el.type === 'button' || el.type === 'submit' || el.classList.contains('pro-search') || el.closest('[data-session-skip], [data-no-undo]')) return null;
+    if ((el.tagName === 'INPUT' && (el.type === 'text' || !el.type) || el.tagName === 'TEXTAREA') && !el.closest('.sidepanel details')) return null;   // free text outside cards (search boxes) is the browser's own undo
+    return el;
+  }
+  function groupOf(el) { return (el.type === 'radio' && el.name) ? Array.prototype.slice.call(document.querySelectorAll('input[type="radio"][name="' + el.name + '"]')) : null; }
+  function valueOf(el) { var g = groupOf(el); if (g) { var on = g.filter(function (r) { return r.checked; })[0]; return on ? on.value : null; } return readCtl(el); }
+  function labelOf(el) {
+    var t = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+    if (!t) { var lab = el.closest('label') || (el.id ? document.querySelector('label[for="' + el.id + '"]') : null); if (lab) t = (lab.querySelector('span') || lab).textContent; }
+    if (!t) { var row = el.closest('.pro-row, .pro-field, .pro-list-row'); if (row) t = row.textContent; }
+    t = String(t || el.id || el.name || 'setting').replace(/\s+/g, ' ').trim();
+    if (t.length > 32) t = t.slice(0, 30) + '…';
+    return t;
+  }
+  function keyOf(el) { return groupOf(el) ? 'radio:' + el.name : el; }
+  // the last value seen of every control in the side panel (so a change made from a script
+  // or the keyboard, with no press or focus first, still has its value before)
+  var last = new Map();
+  function remember(el) { last.set(keyOf(el), valueOf(el)); }
+  function scan(n) { if (controlOf(n)) remember(n); if (n.querySelectorAll) Array.prototype.forEach.call(n.querySelectorAll('input, select, textarea, button[aria-pressed]'), function (el) { if (controlOf(el)) remember(el); }); }
+  var side = document.querySelector('.sidepanel');
+  if (side) {
+    scan(side);
+    new MutationObserver(function (muts) { muts.forEach(function (m) { Array.prototype.forEach.call(m.addedNodes, function (n) { if (n.nodeType === 1) scan(n); }); }); }).observe(side, { childList: true, subtree: true });
+  }
+  function note(el) { if (!prev.has(el)) prev.set(el, { v: valueOf(el), t: Date.now() }); }
+  ['pointerdown', 'focusin', 'keydown'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { if (suspended || applying) return; var el = controlOf(e.target); if (el) note(el); }, true);
+  });
+  document.addEventListener('input', function (e) { if (suspended || applying) return; var el = controlOf(e.target); if (el) note(el); }, true);   // a change made by script / a drag without pointerdown
+  document.addEventListener('change', function (e) {
+    var el = controlOf(e.target); if (!el) return;
+    var key = keyOf(el), p = prev.get(el); prev.delete(el);
+    var after = valueOf(el), before = p ? p.v : (last.has(key) ? last.get(key) : (el.type === 'checkbox' ? !el.checked : null));
+    last.set(key, after);
+    if (suspended || applying) return;
+    if (before === null || before === after) return;
+    var top = undoStack[undoStack.length - 1];
+    if (top && top.kind === 'ctl' && top.key === key && Date.now() - top.at < MERGE_MS) { top.after = after; top.at = Date.now(); if (top.before === after) { undoStack.pop(); } notify(); return; }
+    push({ kind: 'ctl', key: key, el: el, name: el.name, before: before, after: after, label: labelOf(el), at: Date.now() });
+  });
+  function applyCtl(s, back) {
+    var el = s.el, v = back ? s.before : s.after;
+    if (s.name && el.type === 'radio') {
+      var r = document.querySelector('input[type="radio"][name="' + s.name + '"][value="' + String(v).replace(/"/g, '\\"') + '"]');
+      if (!r || !r.isConnected) return false;
+      applying = true; try { r.checked = true; r.dispatchEvent(new Event('input', { bubbles: true })); r.dispatchEvent(new Event('change', { bubbles: true })); } finally { applying = false; }
+      return true;
+    }
+    if (!el || !el.isConnected) return false;
+    applying = true; try { writeCtl(el, v); } finally { applying = false; }
     return true;
   }
 
