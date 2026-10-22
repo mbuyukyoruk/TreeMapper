@@ -34,7 +34,8 @@
     'bootstrapTextPosition', 'bootstrapVerticalShift', 'bootstrapScaleFactor', 'bootstrapRounding', 'bootstrapScientific',
     'bootstrapPercent', 'bootstrapShowAll', 'bootstrapColorMin', 'bootstrapColorMidToggle', 'bootstrapColorMid',
     'bootstrapColorMax', 'branchStrokeWidth', 'dataMargin', 'axesBelow', 'axisTitleButtons', 'trackWidth', 'metaColumn',
-    'groupMarksSourceWanted', 'groupMarksManual', 'groupMarksLines', 'groupMarksDashed', 'groupMarksWidth', 'groupMarksColor', 'groupMarksLabels', 'groupMarksFont'];
+    'groupMarksSourceWanted', 'groupMarksManual', 'groupMarksLines', 'groupMarksDashed', 'groupMarksWidth', 'groupMarksColor', 'groupMarksLabels', 'groupMarksFont',
+    'labelTextSourceWanted', 'labelItalic', 'labelColorSourceWanted'];
   var ROOT_IDS = ['rootEnable', 'rootMode'];
 
   function $(id) { return document.getElementById(id); }
