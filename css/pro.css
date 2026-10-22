@@ -1294,3 +1294,19 @@ html.pro .pro-gen-method .pro-radio-seg { align-self: flex-start; }
 html.pro .pro-gen-hint { font-size: 11.5px; color: var(--muted); }
 html.pro .pro-modal #treeGenerateSection .file-upload-card { padding: 0; }
 html.pro .pro-radio-seg span { white-space: nowrap; }
+
+/* numeric heatmap colour scale (heatmap-scale.js) */
+html.pro .hs-box { display: flex; flex-direction: column; gap: 6px; padding: 2px 0; }
+html.pro .hs-bar { height: 14px; border-radius: 7px; border: 1px solid var(--border); }
+html.pro .hs-range { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: var(--text); font-family: var(--pro-mono); }
+html.pro .hs-note { font-family: var(--pro-font); color: var(--muted); font-size: 11px; }
+html.pro .hs-colours { display: inline-flex; align-items: center; gap: 6px; }
+html.pro .hs-minmax { display: inline-flex; align-items: center; gap: 4px; }
+html.pro .hs-minmax .pro-num { width: 72px; }
+html.pro .hs-dash { color: var(--muted); }
+html.pro .hs-muted { color: var(--muted); font-weight: 400; }
+html.pro .hs-hint { margin: 0; font-size: 11px; line-height: 1.4; color: var(--pro-faint, var(--muted)); }
+html.pro .legend-gradient { display: flex; align-items: center; gap: 6px; }
+html.pro .hs-leg-bar { display: inline-block; width: 96px; height: 12px; border-radius: 6px; border: 1px solid var(--border); flex: none; }
+html.pro .hs-leg-lo, html.pro .hs-leg-hi { font-family: var(--pro-mono); font-size: 11px; color: var(--text); }
+html.pro .hs-leg-label { color: var(--muted); font-size: 12px; margin-left: 2px; }
