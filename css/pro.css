@@ -1338,3 +1338,6 @@ html.pro .ht-hint code { font: 11px var(--pro-mono); background: var(--pro-panel
 html.pro .pro-textarea { width: 100%; box-sizing: border-box; min-height: 56px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: 12px var(--pro-mono); resize: vertical; }
 html.pro .pro-textarea:focus { outline: none; border-color: var(--accent); }
 html.pro #metadataLegend .legend-color.legend-arrow { clip-path: polygon(0 0, 62% 0, 100% 50%, 62% 100%, 0 100%); border-radius: 0; }
+
+/* tip labels from data (label-style.js) */
+html.pro .ls-hint { margin: 2px 0 6px; font-size: 11.5px; line-height: 1.4; color: var(--muted); }

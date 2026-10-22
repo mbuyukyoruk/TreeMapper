@@ -748,7 +748,8 @@ function applyTruncation(leavesSel, fontSize) {
   freshNodes.forEach((tn) => {
     const d = tn.__data__;
     // Always get the original full name from data, not from the potentially truncated textContent
-    const full = displayAccession(d && d.data ? (d.data.name || '') : '');
+    let full = displayAccession(d && d.data ? (d.data.name || '') : '');
+    if (window.tmLabelStyle) full = tmLabelStyle.text(d, full);
     if (full.length > longestLength) {
       longestLength = full.length;
       longestAccession = full;
@@ -786,7 +787,8 @@ function applyTruncation(leavesSel, fontSize) {
       // Apply final truncation to all labels
       freshNodes.forEach((tn) => {
         const d = tn.__data__;
-        const full = displayAccession(d && d.data ? (d.data.name || '') : '');
+        let full = displayAccession(d && d.data ? (d.data.name || '') : '');
+        if (window.tmLabelStyle) full = tmLabelStyle.text(d, full);
         tn.setAttribute('data-full-label', full);
         
         if (full.length > testLength) {
@@ -800,7 +802,8 @@ function applyTruncation(leavesSel, fontSize) {
       // Show full text
       freshNodes.forEach((tn) => {
         const d = tn.__data__;
-        const full = displayAccession(d && d.data ? (d.data.name || '') : '');
+        let full = displayAccession(d && d.data ? (d.data.name || '') : '');
+        if (window.tmLabelStyle) full = tmLabelStyle.text(d, full);
         tn.setAttribute('data-full-label', full);
         tn.textContent = full;
       });
@@ -5018,7 +5021,7 @@ function updateSearchHighlights() {
       if (highlightedAccessions.size > 0 && highlightedAccessions.has(d.data.name)) {
         return '#ff6b35';
       }
-      return null;
+      return window.tmLabelStyle ? tmLabelStyle.fillFor(d) : null;   // a colour from data (label-style.js), else the text colour
     });
   
   svg.selectAll('.links path')
@@ -7191,6 +7194,8 @@ function drawTreeBody(){
         const name = d.data.name || '';
         const displayName = d.data._displayName;
         textContent.set(d, displayName ? displayAccession(displayName) : displayAccession(name));
+        // labels from data (label-style.js): another text, a colour, italics
+        if (window.tmLabelStyle) { textContent.set(d, tmLabelStyle.text(d, textContent.get(d))); labelStyles.set(d, tmLabelStyle.style(d, labelStyles.get(d))); }
       });
       
       // Batch create all text elements with pre-calculated values
@@ -7202,7 +7207,8 @@ function drawTreeBody(){
         .text(d => textContent.get(d))
         .style('display', d => labelStyles.get(d).display)
         .style('fill', d => labelStyles.get(d).fill)
-        .style('font-weight', d => labelStyles.get(d).fontWeight);
+        .style('font-weight', d => labelStyles.get(d).fontWeight)
+        .style('font-style', d => labelStyles.get(d).fontStyle || null);
       
       // Event delegation optimization: Single listener for all labels
       if (!window.labelEventDelegationAdded) {
@@ -9475,6 +9481,7 @@ function drawTreeBody(){
           const name = d.data.name || '';
           const displayName = d.data._displayName;
           textContent.set(d, displayName ? displayAccession(displayName) : displayAccession(name));
+          if (window.tmLabelStyle) { textContent.set(d, tmLabelStyle.text(d, textContent.get(d))); labelStyles.set(d, tmLabelStyle.style(d, labelStyles.get(d))); }
         });
         
         // Calculate optimal font size based on circumference (similar to rectangular layout)
@@ -9579,6 +9586,7 @@ function drawTreeBody(){
             .text(text)
             .style('fill', styles.fill)
             .style('font-weight', styles.fontWeight)
+            .style('font-style', styles.fontStyle || null)
             .style('font-size', optimalFontSize + 'px')
             .style('pointer-events', 'auto')
             .style('cursor', 'pointer')

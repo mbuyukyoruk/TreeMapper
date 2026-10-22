@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610220715" rel="stylesheet">
-<link href="css/styles.css?v=202610220715" rel="stylesheet">
-<link href="css/pro.css?v=202610220715" rel="stylesheet">
+<link href="css/tailwind.css?v=202610220725" rel="stylesheet">
+<link href="css/styles.css?v=202610220725" rel="stylesheet">
+<link href="css/pro.css?v=202610220725" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -138,6 +138,18 @@
         <div class="section pro-group">
           <label class="pro-row"><span>Hide accession labels</span><input autocomplete="off" type="checkbox" id="hideLabels" class="pro-switch"></label>
           <label class="pro-row"><span>Guide lines to labels</span><input autocomplete="off" type="checkbox" id="labelGuides" class="pro-switch"></label>
+          <div class="pro-row">
+            <label for="labelTextSource">Label text</label>
+            <select autocomplete="off" id="labelTextSource" class="pro-select"><option value="">Accession</option></select>
+          </div>
+          <input type="hidden" id="labelTextSourceWanted" value="">
+          <p class="ls-hint">A layer's value can be the label: load a two-column table (accession, name) as a highlight or clade-group layer and pick it here; switch that layer's own display off in its card if you only want the names. Tips without a value keep their accession.</p>
+          <label class="pro-row"><span>Italic</span><input autocomplete="off" type="checkbox" id="labelItalic" class="pro-switch"></label>
+          <div class="pro-row">
+            <label for="labelColorSource">Colour by</label>
+            <select autocomplete="off" id="labelColorSource" class="pro-select"><option value="">(none)</option></select>
+          </div>
+          <input type="hidden" id="labelColorSourceWanted" value="">
         </div>
       </details>
 
@@ -485,7 +497,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610220715"></script>
+      <script src="js/drag-fastpath.js?v=202610220725"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -747,21 +759,22 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610220715"></script>
-<script src="js/tree-core.js?v=202610220715"></script>
-<script src="js/app.js?v=202610220715"></script>
-<script src="js/msa.js?v=202610220715"></script>
-<script src="js/align-rules.js?v=202610220715"></script>
-<script src="js/heatmap-scale.js?v=202610220715"></script>
-<script src="js/legend-tools.js?v=202610220715"></script>
-<script src="js/group-marks.js?v=202610220715"></script>
-<script src="js/gene-extras.js?v=202610220715"></script>
-<script src="js/drag-live.js?v=202610220715"></script>
-<script src="js/session.js?v=202610220715"></script>
-<script src="js/undo.js?v=202610220715"></script>
-<script src="js/data-editor.js?v=202610220715"></script>
-<script src="js/pro-ui.js?v=202610220715"></script>
-<script src="js/select-tool.js?v=202610220715"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610220725"></script>
+<script src="js/tree-core.js?v=202610220725"></script>
+<script src="js/app.js?v=202610220725"></script>
+<script src="js/msa.js?v=202610220725"></script>
+<script src="js/align-rules.js?v=202610220725"></script>
+<script src="js/heatmap-scale.js?v=202610220725"></script>
+<script src="js/legend-tools.js?v=202610220725"></script>
+<script src="js/group-marks.js?v=202610220725"></script>
+<script src="js/gene-extras.js?v=202610220725"></script>
+<script src="js/label-style.js?v=202610220725"></script>
+<script src="js/drag-live.js?v=202610220725"></script>
+<script src="js/session.js?v=202610220725"></script>
+<script src="js/undo.js?v=202610220725"></script>
+<script src="js/data-editor.js?v=202610220725"></script>
+<script src="js/pro-ui.js?v=202610220725"></script>
+<script src="js/select-tool.js?v=202610220725"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {
