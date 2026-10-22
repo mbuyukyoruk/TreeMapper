@@ -273,7 +273,8 @@ html.pro body.pro-left-minimized .card-container > details[open] { border-color:
 html.pro body.pro-left-minimized .card-container > details > :not(summary) { display: none !important; }
 html.pro body.pro-left-minimized .card-container > details > summary.df-summary,
 html.pro body.pro-left-minimized .sidepanel .card-container summary[id] {
-  flex-direction: column; justify-content: center; gap: 3px; min-height: 52px; padding: 6px 0; border-bottom: 0; background: none; cursor: grab;
+  /* one fixed tile height, with or without a number under the badge, so the rail's spacing is even */
+  flex-direction: column; justify-content: center; gap: 3px; height: 54px; box-sizing: border-box; padding: 4px 0; border-bottom: 0; background: none; cursor: grab;
 }
 html.pro body.pro-left-minimized .sidepanel .card-container summary[id]::before { display: none; }
 html.pro body.pro-left-minimized .card-container > details > summary > :not(.pro-card-badge):not(.drag-handle) { display: none !important; }
