@@ -105,6 +105,7 @@ const MIN_PANEL_WIDTH = 80;
 const MIN_TREE_PANEL_WIDTH = 120;
 const MIN_DATAFRAME_PANEL_WIDTH = 120;
 const MIN_MSA_PANEL_WIDTH = 80;   // an alignment column
+const MIN_COMPARE_PANEL_WIDTH = 120;   // the comparison tree (tangle.js)
 const MIN_HEATMAP_PANEL_WIDTH = 20;
 const MAX_HEATMAP_PANEL_WIDTH = 40;
 const MIN_CHART_PANEL_WIDTH = 40;
@@ -819,13 +820,16 @@ function applyTruncation(leavesSel, fontSize) {
 let panelTypeCountsCache = null;
 // number of alignment cards (their panels follow the charts)
 function msaPanelCount() { return document.querySelectorAll('.msa-panel').length; }
+// the comparison tree (tangle.js) is the last panel while it is shown
+function comparePanelCount() { try { return (window.tmTangle && tmTangle.panelWanted()) ? 1 : 0; } catch (e) { return 0; } }
 function panelTypeCounts() {
   if (panelTypeCountsCache && isDragging) return panelTypeCountsCache;
   const c = {
     dataframeCount: document.querySelectorAll('.dataframe-panel').length,
     chartCount: document.querySelectorAll('.chart-panel').length,
     heatmapCount: document.querySelectorAll('.heatmap-panel').length,
-    msaCount: document.querySelectorAll('.msa-panel').length
+    msaCount: document.querySelectorAll('.msa-panel').length,
+    compareCount: comparePanelCount()
   };
   panelTypeCountsCache = isDragging ? c : null;
   return c;
@@ -840,8 +844,8 @@ function getMaxPanelWidth(panelIndex) {
   if (panelIndex === 0) return Infinity; // Tree panel has no max width
   
   // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const { dataframeCount, chartCount, heatmapCount, msaCount } = panelTypeCounts();
-  const needsPlaceholder = dataframeCount === 0 && chartCount === 0 && msaCount === 0;
+  const { dataframeCount, chartCount, heatmapCount, msaCount, compareCount } = panelTypeCounts();
+  const needsPlaceholder = dataframeCount === 0 && chartCount === 0 && msaCount === 0 && !compareCount;
   
   // Calculate heatmap start index (after labels, before placeholder)
   const heatmapStartIndex = 2;
@@ -876,8 +880,8 @@ function getMinPanelWidth(panelIndex) {
   if (panelIndex === 0) return MIN_TREE_PANEL_WIDTH;
   
   // Check if we need a placeholder panel (when no dataframes AND no charts exist)
-  const { dataframeCount, chartCount, heatmapCount, msaCount } = panelTypeCounts();
-  const needsPlaceholder = dataframeCount === 0 && chartCount === 0 && msaCount === 0;
+  const { dataframeCount, chartCount, heatmapCount, msaCount, compareCount } = panelTypeCounts();
+  const needsPlaceholder = dataframeCount === 0 && chartCount === 0 && msaCount === 0 && !compareCount;
   
   // Calculate heatmap start index (after labels, before placeholder)
   const heatmapStartIndex = 2;
@@ -902,6 +906,8 @@ function getMinPanelWidth(panelIndex) {
   if (panelIndex >= chartStartIndex + chartCount && panelIndex < chartStartIndex + chartCount + msaCount) {
     return MIN_MSA_PANEL_WIDTH;
   }
+  // the comparison tree is last
+  if (panelIndex === chartStartIndex + chartCount + msaCount && panelTypeCounts().compareCount) return MIN_COMPARE_PANEL_WIDTH;
   
   // All other panels are dataframe panels
   return MIN_DATAFRAME_PANEL_WIDTH;
@@ -984,9 +990,10 @@ function initializePanels() {
     const dataframePanelCount = dataframePanels.length;
     const chartPanelCount = chartPanels.length;
     const msaPanelCountNow = msaPanelCount();
+    const comparePanelCountNow = comparePanelCount();
     
     // Check if we need a placeholder panel
-    const needsPlaceholder = dataframePanelCount === 0 && chartPanelCount === 0 && msaPanelCountNow === 0;
+    const needsPlaceholder = dataframePanelCount === 0 && chartPanelCount === 0 && msaPanelCountNow === 0 && !comparePanelCountNow;
     
     // Allocate fixed width for heatmap panels (20-40px each)
     const heatmapPanelWidth = Math.min(MAX_HEATMAP_PANEL_WIDTH, Math.max(MIN_HEATMAP_PANEL_WIDTH, Math.floor(remainingWidth * 0.1)));
@@ -1008,7 +1015,7 @@ function initializePanels() {
     
     // CRITICAL: Use panelCount to determine the actual number of panels that should exist
     // This ensures consistency when panels are being added/removed
-    const expectedPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCountNow;
+    const expectedPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCountNow + comparePanelCountNow;
     
     // If panelCount doesn't match expected, adjust the counts to match panelCount
     let adjustedDataframePanelCount = dataframePanelCount;
@@ -1031,7 +1038,7 @@ function initializePanels() {
     }
     
     // Add dataframe, chart and alignment panel widths (treated equally)
-    const totalDataframeAndChartCount = adjustedDataframePanelCount + adjustedChartPanelCount + msaPanelCountNow;
+    const totalDataframeAndChartCount = adjustedDataframePanelCount + adjustedChartPanelCount + msaPanelCountNow + comparePanelCountNow;
     if (totalDataframeAndChartCount > 0) {
       const widthPerPanel = Math.floor(remainingForDataframesAndCharts / totalDataframeAndChartCount);
       const extraWidth = remainingForDataframesAndCharts % totalDataframeAndChartCount;
@@ -1055,6 +1062,7 @@ function initializePanels() {
       }
       // and the alignments after the charts
       for (let i = 0; i < msaPanelCountNow; i++) panelWidths.push(widthPerPanel);
+      if (comparePanelCountNow) panelWidths.push(widthPerPanel);   // the comparison tree, last
     }
   
   }
@@ -1087,7 +1095,7 @@ function createPanels() {
   const dataframePanels = Array.from(document.querySelectorAll('.dataframe-panel'));
   const chartPanels = Array.from(document.querySelectorAll('.chart-panel'));
   const msaCountNow = msaPanelCount();
-  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0 && msaCountNow === 0;
+  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0 && msaCountNow === 0 && !comparePanelCount();
   
   // Add heatmap panels after labels (before placeholder)
   const heatmapPanels = Array.from(document.querySelectorAll('.heatmap-panel'));
@@ -1122,6 +1130,12 @@ function createPanels() {
   for (let i = 0; i < msaCountNow; i++) {
     dynamicPanelTypes.push(`msa${i + 1}`);
     dynamicPanelLabels.push(`Alignment ${i + 1}`);
+    dynamicPanelColors.push('panel-chart');
+  }
+  // the comparison tree (tangle.js), last
+  if (comparePanelCount()) {
+    dynamicPanelTypes.push('compare1');
+    dynamicPanelLabels.push('Comparison tree');
     dynamicPanelColors.push('panel-chart');
   }
   
@@ -1383,8 +1397,7 @@ function stealableLeft(toIdx, widths) {
 
 // room the group labels need at the right of the panels (group-marks.js), rectangular layout
 function groupMarksReserve() {
-  // (also the room a comparison tree takes, tangle.js)
-  try { return geometry === 'radial' ? 0 : ((window.tmGroupMarks ? tmGroupMarks.reserve() || 0 : 0) + (window.tmTangle ? tmTangle.reserve() || 0 : 0)); } catch (e) { return 0; }
+  try { return geometry === 'radial' ? 0 : (window.tmGroupMarks ? tmGroupMarks.reserve() || 0 : 0); } catch (e) { return 0; }
 }
 function normalizeWidths() {
   const container = document.getElementById('panelsContainer');
@@ -1509,7 +1522,7 @@ function getPanelPositions() {
   const panelCounts = panelTypeCounts();   // (only the numbers are needed)
   const dataframePanels = { length: panelCounts.dataframeCount };
   const chartPanels = { length: panelCounts.chartCount };
-  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0 && panelCounts.msaCount === 0;
+  const needsPlaceholder = dataframePanels.length === 0 && chartPanels.length === 0 && panelCounts.msaCount === 0 && !panelCounts.compareCount;
   
   // Add heatmap panels after labels (before placeholder)
   const heatmapPanels = { length: panelCounts.heatmapCount };
@@ -1540,6 +1553,10 @@ function getPanelPositions() {
   for (let i = 0; i < panelCounts.msaCount; i++) {
     dynamicPanelTypes.push(`msa${i + 1}`);
     dynamicPanelLabels.push(`Alignment ${i + 1}`);
+  }
+  if (panelCounts.compareCount) {
+    dynamicPanelTypes.push('compare1');
+    dynamicPanelLabels.push('Comparison tree');
   }
   
   for (let i = 0; i < panelCount; i++) {
@@ -3410,19 +3427,20 @@ function updatePanelSystemAfterDeletion() {
   const remainingHeatmapCount = remainingHeatmapPanels.length;
   const remainingChartCount = remainingChartPanels.length;
   const remainingMsaCount = msaPanelCount();
+  const remainingCompareCount = comparePanelCount();
   
   // Check if we need a placeholder panel (when no dataframes, charts or alignments exist)
-  const needsPlaceholder = remainingDataframeCount === 0 && remainingChartCount === 0 && remainingMsaCount === 0;
+  const needsPlaceholder = remainingDataframeCount === 0 && remainingChartCount === 0 && remainingMsaCount === 0 && remainingCompareCount === 0;
   
   // Calculate new panel count: Tree + Labels + Placeholder(if needed) + Heatmaps + Dataframes + Charts + Alignments
-  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + remainingHeatmapCount + remainingDataframeCount + remainingChartCount + remainingMsaCount;
+  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + remainingHeatmapCount + remainingDataframeCount + remainingChartCount + remainingMsaCount + remainingCompareCount;
   
   // Update panel count
   window.panelCount = newPanelCount;
   panelCount = newPanelCount; // Also update the local variable
   
   // CRITICAL: Force panel count to be exactly what we expect
-  if (remainingDataframeCount === 1 && remainingHeatmapCount === 0 && remainingChartCount === 0 && remainingMsaCount === 0) {
+  if (remainingDataframeCount === 1 && remainingHeatmapCount === 0 && remainingChartCount === 0 && remainingMsaCount === 0 && remainingCompareCount === 0) {
     window.panelCount = 3;
     panelCount = 3; // Also update the local variable
   } else if (needsPlaceholder) {
@@ -5662,7 +5680,7 @@ function resetEventDelegation() {
 const layerReuse = {
   container: null,
   byKey: new Map(),                 // 'dataframe:1' -> { el, sig }
-  epoch: { dataframe: 0, heatmap: 0, chart: 0, msa: 0 },   // per type
+  epoch: { dataframe: 0, heatmap: 0, chart: 0, msa: 0, compare: 0 },   // per type
   keyEpoch: new Map(),                               // per layer ('dataframe:1')
   scope: null, scopeTimer: 0,
   blockRan: false, layoutSig: '', visited: null, lastEl: null,
@@ -5702,7 +5720,7 @@ function layerReuseBegin(keepTree) {
   layerReuse.container = c;
   // what may have changed: unless the action declared a narrower scope, every layer
   const scope = layerReuse.disabled ? null : layerReuse.scope;
-  if (!scope || scope === 'all') { layerReuse.epoch.dataframe++; layerReuse.epoch.heatmap++; layerReuse.epoch.chart++; layerReuse.epoch.msa++; }
+  if (!scope || scope === 'all') { layerReuse.epoch.dataframe++; layerReuse.epoch.heatmap++; layerReuse.epoch.chart++; layerReuse.epoch.msa++; layerReuse.epoch.compare++; }
   else if (scope in layerReuse.epoch) layerReuse.epoch[scope]++;
   else if (scope.indexOf(':') > 0) layerReuse.keyEpoch.set(scope, (layerReuse.keyEpoch.get(scope) || 0) + 1);
   layerReuse.blockRan = false;
@@ -12117,6 +12135,14 @@ function drawTreeBody(){
         if (panel) tmMsa.drawRect(msaId, { panel, leaves, leafSep, barH: currentBarH, axisY: axisRow.y, below: axisRow.below, g });
       }));
     }
+    // the comparison tree (js/tangle.js): the last column, a data layer like the others, so a
+    // splitter drag moves and resizes it live and its drawing is reused when nothing changed
+    if (window.tmTangle && tmTangle.panelWanted()) {
+      [1].forEach(layerIteration('compare', () => getComparePanelDimensions(), (id) => {
+        const panel = getComparePanelDimensions();
+        if (panel) tmTangle.draw({ panel, leaves, g, axisY: axisRow.y, below: axisRow.below });
+      }));
+    }
     
     layerReuseBlockEnd();
   } 
@@ -12250,7 +12276,6 @@ function drawTreeBody(){
   // group separators and labels (group-marks.js), on top of everything drawn
   if (window.tmGroupMarks) { try { tmGroupMarks.draw({ isRadial, leaves }); } catch (e) { console.warn(e); } }
   // a second tree for comparison (tangle.js), to the right of everything
-  if (window.tmTangle) { try { tmTangle.draw({ isRadial, leaves }); } catch (e) { console.warn(e); } }
   
   // Update Add Data button visibility
   updateAddDataframeButtonVisibility();
@@ -16541,7 +16566,7 @@ function addDataframe() {
   const needsPlaceholder = currentDataframePanelCount === 0 && chartPanelCount === 0 && false; // Never need placeholder when adding dataframe
   
   // Calculate new panel count: Tree + Labels + Placeholder(if needed) + Heatmaps + Dataframes + Charts
-  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCount();
+  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCount() + comparePanelCount();
     
   // CRITICAL: Only update panelCount if it's not already correct
   if (panelCount !== newPanelCount) {
@@ -21270,10 +21295,10 @@ function addChart() {
   const chartPanelCount = chartPanels.length;
   
   // Check if we need a placeholder panel (when no dataframes, charts or alignments exist)
-  const needsPlaceholder = dataframePanelCount === 0 && chartPanelCount === 0 && msaPanelCount() === 0;
+  const needsPlaceholder = dataframePanelCount === 0 && chartPanelCount === 0 && msaPanelCount() === 0 && !comparePanelCount();
   
   // Calculate new panel count: Tree + Labels + Placeholder(if needed) + Heatmaps + Dataframes + Charts + Alignments
-  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCount();
+  const newPanelCount = 2 + (needsPlaceholder ? 1 : 0) + heatmapPanelCount + dataframePanelCount + chartPanelCount + msaPanelCount() + comparePanelCount();
   
   // Update panel count
   window.panelCount = newPanelCount;
@@ -21383,6 +21408,7 @@ function addChart() {
   }, 0);
 }
 
+function getComparePanelDimensions() { return getPanelByType('compare1') || null; }
 function getMsaPanelDimensions(msaIndex = 0) {
   const positions = getPanelPositions();
   const panels = positions.filter(p => /^msa\d+$/.test(p.type));

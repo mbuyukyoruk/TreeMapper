@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610221555" rel="stylesheet">
-<link href="css/styles.css?v=202610221555" rel="stylesheet">
-<link href="css/pro.css?v=202610221555" rel="stylesheet">
+<link href="css/tailwind.css?v=202610221650" rel="stylesheet">
+<link href="css/styles.css?v=202610221650" rel="stylesheet">
+<link href="css/pro.css?v=202610221650" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -267,16 +267,25 @@
       <details id="tangleSection">
         <summary>Compare trees</summary>
         <div class="section pro-group">
-          <p class="tg-hint">A second tree drawn mirrored to the right, a line joining each shared tip to its place in the main tree (a tanglegram), with the Robinson–Foulds distance over the shared tips.</p>
+          <p class="tg-hint">A second tree drawn mirrored in its own panel at the right (its width set with the panel splitter, like any panel), a line joining each shared tip to its row in the main tree (a tanglegram), with the Robinson–Foulds distance over the shared tips.</p>
           <label class="pro-file" for="tangleFile">
             <span class="pro-file-ctl"><span class="pro-btn pro-file-btn">Choose tree…</span><span class="pro-file-name">Newick (.nwk, .tree)</span></span>
             <input autocomplete="off" id="tangleFile" type="file" accept=".nwk,.newick,.tree,.txt,.nexus,.nxs" class="pro-sr-only">
           </label>
-          <input type="hidden" id="tangleTree" value=""><input type="hidden" id="tangleName" value=""><input type="hidden" id="tangleOrder" value="">
+          <input type="hidden" id="tangleTree" value=""><input type="hidden" id="tangleName" value="">
           <p class="tg-report" id="tangleReport">No second tree loaded.</p>
           <label class="pro-row"><span>Show comparison</span><input autocomplete="off" type="checkbox" id="tangleShow" class="pro-switch" checked></label>
-          <div class="pro-row pro-sub"><label for="tangleWidth">Width</label><span class="pro-num-wrap"><input autocomplete="off" type="number" id="tangleWidth" min="80" max="800" step="10" value="260" class="pro-num"><span class="pro-unit">px</span></span></div>
-          <div class="tg-actions"><button type="button" class="pro-btn" id="tangleMatch" title="Rotate the second tree's clades so its tips follow the main tree's order as far as possible">Match order</button><button type="button" class="pro-btn" id="tangleRemove">Remove</button></div>
+          <div class="pro-row"><label for="tangleOrderMode">Order tips</label>
+            <select autocomplete="off" id="tangleOrderMode" class="pro-select">
+              <option value="loaded">As loaded</option>
+              <option value="match" selected>Match the main tree</option>
+              <option value="increasing">Increasing</option>
+              <option value="decreasing">Decreasing</option>
+            </select></div>
+          <label class="pro-row"><span>Remove redundant tips</span><input autocomplete="off" type="checkbox" id="tangleUnique" class="pro-switch"></label>
+          <label class="pro-row"><span>Guide lines to tips</span><input autocomplete="off" type="checkbox" id="tangleGuides" class="pro-switch" checked></label>
+          <label class="pro-row"><span>Lines to the main tree</span><input autocomplete="off" type="checkbox" id="tangleLinks" class="pro-switch" checked></label>
+          <div class="tg-actions"><button type="button" class="pro-btn" id="tangleRemove">Remove the second tree</button></div>
         </div>
       </details>
 
@@ -513,7 +522,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610221555"></script>
+      <script src="js/drag-fastpath.js?v=202610221650"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -790,32 +799,32 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610221555"></script>
-<script src="js/tree-core.js?v=202610221555"></script>
-<script src="js/app.js?v=202610221555"></script>
-<script src="js/msa.js?v=202610221555"></script>
-<script src="js/align-rules.js?v=202610221555"></script>
-<script src="js/heatmap-scale.js?v=202610221555"></script>
-<script src="js/legend-tools.js?v=202610221555"></script>
-<script src="js/group-marks.js?v=202610221555"></script>
-<script src="js/gene-extras.js?v=202610221555"></script>
-<script src="js/label-style.js?v=202610221555"></script>
-<script src="js/synteny.js?v=202610221555"></script>
-<script src="js/distances.js?v=202610221555"></script>
-<script src="js/align-tree.js?v=202610221555"></script>
-<script src="js/tangle.js?v=202610221555"></script>
-<script src="js/drag-live.js?v=202610221555"></script>
-<script src="js/session.js?v=202610221555"></script>
-<script src="js/col-map.js?v=202610221555"></script>
-<script src="js/intake.js?v=202610221555"></script>
-<script src="js/links.js?v=202610221555"></script>
-<script src="js/report.js?v=202610221555"></script>
-<script src="js/undo.js?v=202610221555"></script>
-<script src="js/data-editor.js?v=202610221555"></script>
-<script src="js/pro-ui.js?v=202610221555"></script>
-<script src="js/export-presets.js?v=202610221555"></script>
-<script src="js/select-tool.js?v=202610221555"></script>
-<script src="js/range-select.js?v=202610221555"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610221650"></script>
+<script src="js/tree-core.js?v=202610221650"></script>
+<script src="js/app.js?v=202610221650"></script>
+<script src="js/msa.js?v=202610221650"></script>
+<script src="js/align-rules.js?v=202610221650"></script>
+<script src="js/heatmap-scale.js?v=202610221650"></script>
+<script src="js/legend-tools.js?v=202610221650"></script>
+<script src="js/group-marks.js?v=202610221650"></script>
+<script src="js/gene-extras.js?v=202610221650"></script>
+<script src="js/label-style.js?v=202610221650"></script>
+<script src="js/synteny.js?v=202610221650"></script>
+<script src="js/distances.js?v=202610221650"></script>
+<script src="js/align-tree.js?v=202610221650"></script>
+<script src="js/tangle.js?v=202610221650"></script>
+<script src="js/drag-live.js?v=202610221650"></script>
+<script src="js/session.js?v=202610221650"></script>
+<script src="js/col-map.js?v=202610221650"></script>
+<script src="js/intake.js?v=202610221650"></script>
+<script src="js/links.js?v=202610221650"></script>
+<script src="js/report.js?v=202610221650"></script>
+<script src="js/undo.js?v=202610221650"></script>
+<script src="js/data-editor.js?v=202610221650"></script>
+<script src="js/pro-ui.js?v=202610221650"></script>
+<script src="js/export-presets.js?v=202610221650"></script>
+<script src="js/select-tool.js?v=202610221650"></script>
+<script src="js/range-select.js?v=202610221650"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {

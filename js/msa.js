@@ -1437,13 +1437,15 @@
   function relayoutPanels() {
     var heat = document.querySelectorAll('.heatmap-panel').length, df = document.querySelectorAll('.dataframe-panel').length;
     var ch = document.querySelectorAll('.chart-panel').length, al = msaPanelCount();
-    var ph = df === 0 && ch === 0 && al === 0;
-    panelCount = 2 + (ph ? 1 : 0) + heat + df + ch + al;
+    var cmp = typeof comparePanelCount === 'function' ? comparePanelCount() : 0;
+    var ph = df === 0 && ch === 0 && al === 0 && !cmp;
+    panelCount = 2 + (ph ? 1 : 0) + heat + df + ch + al + cmp;
     window.panelCount = panelCount;
     initializePanels();
     call(function () { updatePanelHeights(); });
     if (window.radialPanelSystem && geometry === 'radial' && typeof window.radialPanelSystem.sync === 'function') call(function () { window.radialPanelSystem.sync(); });
   }
+  window.tmRelayoutPanels = relayoutPanels;   // also used by the comparison tree (tangle.js)
   async function handleMsaFile(f) {
     var text;
     try { text = await readFileAsText(f); } catch (e) { setStatus('Alignment: the file could not be read'); return null; }
