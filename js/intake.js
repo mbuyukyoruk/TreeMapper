@@ -36,6 +36,7 @@
   function sniff(text, name) {
     var t = String(text || ''), s = t.trim(), n = String(name || '');
     if (/\.treemapper$/i.test(n) || (s[0] === '{' && /"format"\s*:\s*"treemapper-session"/.test(s.slice(0, 400)))) return { kind: 'session', sure: true, why: 'a TreeMapper session' };
+    if (/\.treemapper-report\.json$/i.test(n) || (s[0] === '{' && /"format"\s*:\s*"treemapper-report"/.test(s.slice(0, 400)))) return { kind: 'session', sure: true, why: 'a TreeMapper problem report (its session is opened)' };
     if (/\.(nwk|newick|tree|nexus|nxs|tre)$/i.test(n) || /^#NEXUS/i.test(s) || (s[0] === '(' && /\)\s*[^()]*;?\s*$/.test(s))) return { kind: 'tree', sure: true, why: /^#NEXUS/i.test(s) ? 'a NEXUS tree' : 'a Newick tree' };
     if (s[0] === '>' || /^CLUSTAL/i.test(s) || /^# STOCKHOLM/i.test(s) || /\.(fa|fasta|fas|faa|fna|afa|aln|clustal|sto|stk|stockholm|phy|phylip)$/i.test(n)) return { kind: 'msa', sure: true, why: s[0] === '>' ? 'a FASTA alignment' : 'a sequence alignment' };
     if (/^\s*\d+\s+\d+\s*\n/.test(t) && /^[^\s]+\s+[A-Za-z\-.]{10,}/m.test(t)) return { kind: 'msa', sure: true, why: 'a PHYLIP alignment' };
