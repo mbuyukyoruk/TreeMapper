@@ -1385,3 +1385,10 @@ html.pro .tg-report { margin: 6px 0; font-size: 12px; line-height: 1.45; color: 
 html.pro .tg-actions { display: flex; gap: 8px; margin-top: 6px; }
 html.pro .sidepanel .tg-actions button { width: auto; flex: 1 1 auto; height: 28px; font-size: 12px; }
 html.pro #tangleSection .pro-file { margin-bottom: 4px; }
+
+/* Generate tree → Source: loaded alignment */
+html.pro .pro-modal #treeGenerateSection #genTableSection .pro-gen-intro, html.pro .pro-modal #atSection .pro-gen-intro { margin-top: 14px; }
+html.pro .pro-modal #atSection .pro-field { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+html.pro .pro-modal #atSection select.pro-select { width: 100%; height: 30px; }
+html.pro .pro-modal #atSection input.pro-input { width: 120px; height: 30px; padding: 0 8px; border: 1px solid var(--pro-border); border-radius: 6px; background: var(--pro-surface, #fff); color: inherit; font: inherit; font-size: 13px; }
+html.pro .pro-modal #atSection input.pro-input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }

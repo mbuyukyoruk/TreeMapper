@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610220742" rel="stylesheet">
-<link href="css/styles.css?v=202610220742" rel="stylesheet">
-<link href="css/pro.css?v=202610220742" rel="stylesheet">
+<link href="css/tailwind.css?v=202610220748" rel="stylesheet">
+<link href="css/styles.css?v=202610220748" rel="stylesheet">
+<link href="css/pro.css?v=202610220748" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -513,7 +513,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610220742"></script>
+      <script src="js/drag-fastpath.js?v=202610220748"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -748,12 +748,26 @@
 
         <!-- Generate tree from gene content section -->
         <div id="treeGenerateSection" class="file-input-section" style="display: none;">
+          <div class="pro-gen-method">
+            <span class="pro-file-label">Source</span>
+            <span class="pro-radio-seg" role="radiogroup" aria-label="Tree source">
+              <label><input autocomplete="off" type="radio" name="genSource" value="table" id="genSourceTable" checked><span>Gene / domain table</span></label>
+              <label title="Needs an alignment layer in the side panel"><input autocomplete="off" type="radio" name="genSource" value="alignment" id="genSourceAlignment" disabled><span>Loaded alignment</span></label>
+            </span>
+          </div>
+          <div id="genTableSection">
           <p class="pro-gen-intro">A table with one row per gene (or domain) per genome: a molecule / accession column and a gene column. Genomes are compared by the genes they share (Jaccard distance) and a tree is built from those distances.</p>
           <label class="pro-file" for="geneDataFile">
             <span class="pro-file-label">Gene / domain table (.csv or .tsv)</span>
             <span class="pro-file-ctl"><span class="pro-btn pro-file-btn">Choose file…</span><span class="pro-file-name" id="geneDataFileName">No file chosen</span></span>
             <input autocomplete="off" id="geneDataFile" type="file" accept=".csv,.tsv,.txt" class="pro-sr-only">
           </label>
+          </div>
+          <div id="atSection" hidden>
+            <p class="pro-gen-intro">The sequences of an alignment layer are compared site by site (p-distance: the share of differing sites where both have a residue; gaps are left out) and a tree is built from those distances. Bootstrap replicates resample the columns and label each clade with the percentage of replicates that contain it.</p>
+            <label class="pro-field"><span class="pro-file-label">Alignment</span><select id="atAlignment" class="pro-select" data-session-skip></select></label>
+            <label class="pro-field"><span class="pro-file-label">Bootstrap replicates <span class="pro-gen-hint">(0 for none; 100–1000 is usual)</span></span><input autocomplete="off" type="number" id="atReplicates" class="pro-input" min="0" max="5000" step="1" value="100" data-session-skip></label>
+          </div>
 
           <div class="pro-gen-method">
             <span class="pro-file-label">Method</span>
@@ -775,26 +789,27 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610220742"></script>
-<script src="js/tree-core.js?v=202610220742"></script>
-<script src="js/app.js?v=202610220742"></script>
-<script src="js/msa.js?v=202610220742"></script>
-<script src="js/align-rules.js?v=202610220742"></script>
-<script src="js/heatmap-scale.js?v=202610220742"></script>
-<script src="js/legend-tools.js?v=202610220742"></script>
-<script src="js/group-marks.js?v=202610220742"></script>
-<script src="js/gene-extras.js?v=202610220742"></script>
-<script src="js/label-style.js?v=202610220742"></script>
-<script src="js/synteny.js?v=202610220742"></script>
-<script src="js/distances.js?v=202610220742"></script>
-<script src="js/tangle.js?v=202610220742"></script>
-<script src="js/drag-live.js?v=202610220742"></script>
-<script src="js/session.js?v=202610220742"></script>
-<script src="js/undo.js?v=202610220742"></script>
-<script src="js/data-editor.js?v=202610220742"></script>
-<script src="js/pro-ui.js?v=202610220742"></script>
-<script src="js/export-presets.js?v=202610220742"></script>
-<script src="js/select-tool.js?v=202610220742"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610220748"></script>
+<script src="js/tree-core.js?v=202610220748"></script>
+<script src="js/app.js?v=202610220748"></script>
+<script src="js/msa.js?v=202610220748"></script>
+<script src="js/align-rules.js?v=202610220748"></script>
+<script src="js/heatmap-scale.js?v=202610220748"></script>
+<script src="js/legend-tools.js?v=202610220748"></script>
+<script src="js/group-marks.js?v=202610220748"></script>
+<script src="js/gene-extras.js?v=202610220748"></script>
+<script src="js/label-style.js?v=202610220748"></script>
+<script src="js/synteny.js?v=202610220748"></script>
+<script src="js/distances.js?v=202610220748"></script>
+<script src="js/align-tree.js?v=202610220748"></script>
+<script src="js/tangle.js?v=202610220748"></script>
+<script src="js/drag-live.js?v=202610220748"></script>
+<script src="js/session.js?v=202610220748"></script>
+<script src="js/undo.js?v=202610220748"></script>
+<script src="js/data-editor.js?v=202610220748"></script>
+<script src="js/pro-ui.js?v=202610220748"></script>
+<script src="js/export-presets.js?v=202610220748"></script>
+<script src="js/select-tool.js?v=202610220748"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {
