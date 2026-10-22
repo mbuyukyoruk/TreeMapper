@@ -1421,3 +1421,10 @@ html.pro .it-row { min-height: 16px; }
 html.pro .it-sniff { font-size: 12.5px; color: var(--muted); }
 html.pro .it-kinds { display: flex; flex-direction: column; gap: 6px; }
 html.pro .it-seg { flex-wrap: wrap; align-self: flex-start; }
+
+/* From URL dialog */
+html.pro .lk-card { width: 520px; max-width: calc(100vw - 32px); }
+html.pro .lk-body { display: flex; flex-direction: column; gap: 12px; }
+html.pro .lk-body .ds-muted { margin: 0; }
+html.pro input.lk-url { width: 100%; box-sizing: border-box; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: 13px var(--pro-font); }
+html.pro input.lk-url:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .15); }

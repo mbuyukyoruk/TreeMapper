@@ -42,6 +42,11 @@
   function $(id) { return document.getElementById(id); }
   function call(fn) { try { return fn(); } catch (e) { console.warn('[session]', e); return undefined; } }
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  async function fetchText(url) {
+    var r = await fetch(url, { mode: 'cors' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text();
+  }
   function readFile(f) {
     if (f && typeof f.text === 'function') return f.text();
     return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsText(f); });
@@ -57,7 +62,7 @@
     window[name] = async function (f) {
       var text = null, src = null;
       try { text = await readFile(f); } catch (e) {}
-      if (text !== null) { src = { name: (f && f.name) || 'file', text: text }; onText(src); }
+      if (text !== null) { src = { name: (f && f.name) || 'file', text: text }; if (f && f.url) src.url = String(f.url); onText(src); }
       try { return await orig.apply(this, arguments); }
       finally { if (src && after) { await Promise.resolve(); after(src); } }
     };
@@ -199,10 +204,16 @@
   }
 
   // ------------------------------------------------------------------ save
-  function collect() {
+  // opts.link: sources fetched from a URL are saved as the URL alone (fetched again on open)
+  function linked(src, opts) {
+    var out = { name: src.name, text: src.text };
+    if (src.url) { out.url = src.url; if (opts && opts.link) delete out.text; }
+    return out;
+  }
+  function collect(opts) {
     if (!root || !treeSource) throw new Error('Load a tree first.');
     var R = makeRefs(), ref = R.ref;
-    var s = { format: FORMAT, version: VERSION, savedAt: new Date().toISOString(), tree: treeSource };
+    var s = { format: FORMAT, version: VERSION, savedAt: new Date().toISOString(), tree: linked(treeSource, opts) };
 
     var settings = {};
     SETTING_IDS.concat(ROOT_IDS).forEach(function (id) { var el = $(id); if (el) settings[id] = readCtl(el); });
@@ -222,8 +233,8 @@
         if (card.tagName !== 'DETAILS') return;
         var src = cardSource.get(card);
         if (!src) return;   // not loaded from a file (should not happen)
-        var entry = { type: L.type, name: src.name, text: src.text, open: card.open,
-          controls: describe(card).map(function (c) { return [c.d, readCtl(c.el)]; }) };
+        var entry = linked(src, opts); entry.type = L.type; entry.open = card.open;
+        entry.controls = describe(card).map(function (c) { return [c.d, readCtl(c.el)]; });
         var obj = layerObject(L, card);
         if (obj && Array.isArray(obj.geneOrder) && obj.geneOrder.length) entry.geneOrder = obj.geneOrder.slice();
         if (obj && obj.axisTitle) entry.axisTitle = obj.axisTitle;   // the axis title (unit) of this layer
@@ -284,9 +295,16 @@
     return s;
   }
 
-  function save() {
+  function hasUrlSources() {
+    if (treeSource && treeSource.url) return true;
+    var any = false;
+    LAYERS.forEach(function (L) { var box = $(L.container); if (!box) return; Array.prototype.forEach.call(box.children, function (card) { var src = cardSource.get(card); if (src && src.url) any = true; }); });
+    return any;
+  }
+  function save(opts) {
     var s;
-    try { s = collect(); } catch (e) { alert('Cannot save the session: ' + e.message); return; }
+    if (!opts && hasUrlSources()) opts = { link: confirm('Some of the data was fetched from URLs.\n\nOK: save the URLs (a small session; the data is fetched again when it is opened).\nCancel: save copies of the data in the session.') };
+    try { s = collect(opts); } catch (e) { alert('Cannot save the session: ' + e.message); return; }
     var base = (treeSource && treeSource.name || 'tree').replace(/\.[^.]+$/, '');
     var name = prompt('Save session as:', base + '.treemapper');
     if (name === null) return;
@@ -329,16 +347,28 @@
       var text = typeof fileOrText === 'string' ? fileOrText : await readFile(fileOrText);
       s = JSON.parse(text);
     } catch (e) { alert('This file is not a TreeMapper session.'); return; }
-    if (!s || s.format !== FORMAT || !s.tree || typeof s.tree.text !== 'string') { alert('This file is not a TreeMapper session.'); return; }
+    if (!s || s.format !== FORMAT || !s.tree || (typeof s.tree.text !== 'string' && typeof s.tree.url !== 'string')) { alert('This file is not a TreeMapper session.'); return; }
     if (s.version > VERSION) { alert('This session was saved by a newer version of TreeMapper.'); return; }
     if (root && !confirm('Open this session? The current tree and data will be replaced.')) return;
 
     busy = true;
+    // linked data: fetch what the session holds only as a URL
+    var fetchProblems = [];
+    async function fill(src, what) {
+      if (!src || typeof src.text === 'string' || typeof src.url !== 'string') return;
+      call(function () { setStatus('Fetching ' + what + '…'); });
+      try { src.text = await fetchText(src.url); }
+      catch (e) { fetchProblems.push(what + ' could not be fetched from ' + src.url + ' (' + e.message + ')'); }
+    }
+    await fill(s.tree, 'the tree');
+    for (var li = 0; li < (s.layers || []).length; li++) await fill(s.layers[li], 'the ' + s.layers[li].type + ' ' + (s.layers[li].name || ''));
+    if (typeof s.tree.text !== 'string') { busy = false; alert('Could not open the session: ' + fetchProblems[0]); call(function () { setStatus('Could not open the session'); }); return; }
+    s.layers = (s.layers || []).filter(function (l) { return typeof l.text === 'string'; });
     if (window.tmUndo) tmUndo.suspend(true);
     var origConfirm = window.confirm, origAlert = window.alert, origDraw = window.drawTree, needDraw = false;
     window.confirm = function () { return true; };
     window.alert = function (m) { console.warn('[session]', m); };
-    var problems = [], T0 = performance.now(), timings = {};
+    var problems = fetchProblems.slice(), T0 = performance.now(), timings = {};
     function mark(n) { var t = performance.now(); timings[n] = Math.round(t - T0); T0 = t; }
     // while replaying, redraws and legend rebuilds are deferred to one at the end
     var origLegend = window.updateMetadataLegend, origCladeApply = window.applyCladeColorsToTree, cladeApplyNeeded = false;
@@ -364,7 +394,8 @@
 
       mark('clear');
       // 2. tree
-      await window.handleTreeFile(new File([s.tree.text], s.tree.name || 'tree.nwk'));
+      var treeFile = new File([s.tree.text], s.tree.name || 'tree.nwk'); if (s.tree.url) treeFile.url = s.tree.url;
+      await window.handleTreeFile(treeFile);
       await wait(50);
       if (!root) throw new Error('the tree could not be loaded');
 
@@ -408,7 +439,8 @@
         if (!L || typeof window[L.loader] !== 'function') { problems.push('unknown layer type ' + lay.type); continue; }
         var box = $(L.container), before = new Set(box ? box.children : []);
         stubDraw();   // the loaders redraw the whole tree when they finish; one redraw at the end is enough
-        try { await window[L.loader](new File([lay.text], lay.name || (lay.type + '.csv'))); }
+        var layFile = new File([lay.text], lay.name || (lay.type + '.csv')); if (lay.url) layFile.url = lay.url;   // kept, so the session can be saved with links again
+        try { await window[L.loader](layFile); }
         finally { realDraw(); }
         await wait(80);
         var card = null;
@@ -640,6 +672,7 @@
     replaceLayerData: replaceLayerData,
     isSessionFile: function (f) { return !!f && /\.treemapper$/i.test(f.name || ''); },
     canSave: function () { return !!(root && treeSource); },
+    hasUrlSources: hasUrlSources, fetchText: fetchText,
     // true while a session is being opened or a layer's data replaced (loaders then skip their dialogs)
     isLoading: function () { return !!(busy || replacing); }
   };

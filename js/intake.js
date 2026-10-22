@@ -53,12 +53,13 @@
     }
     return { kind: 'heatmap', sure: false, why: tb.header.length + ' columns (a heatmap, or another layer type)' };
   }
-  function load(kind, text, name) {
+  function load(kind, text, name, url) {
     var k = kindOf(kind); if (!k) return Promise.reject(new Error('unknown type ' + kind));
     if (k.key === 'session') return Promise.resolve(window.tmSession && tmSession.load(text));
     var fn = window[k.loader]; if (typeof fn !== 'function') return Promise.reject(new Error(k.loader + ' is missing'));
     var fname = name && /\.[a-z0-9]+$/i.test(name) ? name : (name || 'pasted') + '.' + k.ext;
-    return Promise.resolve(fn(new File([text], fname, { type: 'text/plain' })));
+    var f = new File([text], fname, { type: 'text/plain' }); if (url) f.url = url;   // remembered by sessions
+    return Promise.resolve(fn(f));
   }
   // ------------------------------------------------------------------ dialog
   var modal = null, resolveFn = null, state = null;
@@ -120,12 +121,12 @@
     (opts.readOnly ? $('itAdd') : ta).focus();
     return new Promise(function (res) { resolveFn = res; });
   }
-  async function intakeText(text, name, source) {
+  async function intakeText(text, name, source, url) {
     var s = sniff(text, name);
-    if (s.sure && s.kind) { await load(s.kind, text, name); return s.kind; }
+    if (s.sure && s.kind) { await load(s.kind, text, name, url); return s.kind; }
     var r = await ask({ title: 'Add ' + (name || 'data'), source: source || (name ? 'Dropped file: ' + name : ''), text: text, name: name, readOnly: true, kind: s.kind });
     if (!r) { setStatus('Not added: ' + (name || 'pasted data')); return null; }
-    await load(r.kind, r.text, name);
+    await load(r.kind, r.text, name, url);
     return r.kind;
   }
   function readText(f) { if (f && typeof f.text === 'function') return f.text(); return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsText(f); }); }

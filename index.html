@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610221403" rel="stylesheet">
-<link href="css/styles.css?v=202610221403" rel="stylesheet">
-<link href="css/pro.css?v=202610221403" rel="stylesheet">
+<link href="css/tailwind.css?v=202610221411" rel="stylesheet">
+<link href="css/styles.css?v=202610221411" rel="stylesheet">
+<link href="css/pro.css?v=202610221411" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -513,7 +513,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610221403"></script>
+      <script src="js/drag-fastpath.js?v=202610221411"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -532,6 +532,7 @@
           <div class="pro-empty-actions">
             <button type="button" class="pro-btn pro-btn-primary pro-btn-lg" id="proEmptyOpen">Open file</button>
             <button type="button" class="pro-btn pro-btn-lg" id="proEmptyGenerate">Generate from gene content</button>
+            <button type="button" class="pro-btn pro-btn-lg" id="proEmptyUrl" title="Fetch a tree or a session from a web address">From URL…</button>
           </div>
           <p class="pro-empty-note"><svg class="pro-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Runs entirely in your browser. Files never leave your computer.</p>
         </div>
@@ -789,29 +790,30 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610221403"></script>
-<script src="js/tree-core.js?v=202610221403"></script>
-<script src="js/app.js?v=202610221403"></script>
-<script src="js/msa.js?v=202610221403"></script>
-<script src="js/align-rules.js?v=202610221403"></script>
-<script src="js/heatmap-scale.js?v=202610221403"></script>
-<script src="js/legend-tools.js?v=202610221403"></script>
-<script src="js/group-marks.js?v=202610221403"></script>
-<script src="js/gene-extras.js?v=202610221403"></script>
-<script src="js/label-style.js?v=202610221403"></script>
-<script src="js/synteny.js?v=202610221403"></script>
-<script src="js/distances.js?v=202610221403"></script>
-<script src="js/align-tree.js?v=202610221403"></script>
-<script src="js/tangle.js?v=202610221403"></script>
-<script src="js/drag-live.js?v=202610221403"></script>
-<script src="js/session.js?v=202610221403"></script>
-<script src="js/col-map.js?v=202610221403"></script>
-<script src="js/intake.js?v=202610221403"></script>
-<script src="js/undo.js?v=202610221403"></script>
-<script src="js/data-editor.js?v=202610221403"></script>
-<script src="js/pro-ui.js?v=202610221403"></script>
-<script src="js/export-presets.js?v=202610221403"></script>
-<script src="js/select-tool.js?v=202610221403"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610221411"></script>
+<script src="js/tree-core.js?v=202610221411"></script>
+<script src="js/app.js?v=202610221411"></script>
+<script src="js/msa.js?v=202610221411"></script>
+<script src="js/align-rules.js?v=202610221411"></script>
+<script src="js/heatmap-scale.js?v=202610221411"></script>
+<script src="js/legend-tools.js?v=202610221411"></script>
+<script src="js/group-marks.js?v=202610221411"></script>
+<script src="js/gene-extras.js?v=202610221411"></script>
+<script src="js/label-style.js?v=202610221411"></script>
+<script src="js/synteny.js?v=202610221411"></script>
+<script src="js/distances.js?v=202610221411"></script>
+<script src="js/align-tree.js?v=202610221411"></script>
+<script src="js/tangle.js?v=202610221411"></script>
+<script src="js/drag-live.js?v=202610221411"></script>
+<script src="js/session.js?v=202610221411"></script>
+<script src="js/col-map.js?v=202610221411"></script>
+<script src="js/intake.js?v=202610221411"></script>
+<script src="js/links.js?v=202610221411"></script>
+<script src="js/undo.js?v=202610221411"></script>
+<script src="js/data-editor.js?v=202610221411"></script>
+<script src="js/pro-ui.js?v=202610221411"></script>
+<script src="js/export-presets.js?v=202610221411"></script>
+<script src="js/select-tool.js?v=202610221411"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {
