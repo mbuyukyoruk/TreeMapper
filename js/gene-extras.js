@@ -1,4 +1,4 @@
-// Dataframe extras (loaded after app.js): gene names on the bars, and a header track above
+// Dataframe extras (loaded after app.js): gene names on the bars, and a header track on the side away from the axis row (a diagram of the region) above
 // the panel (a schematic row of boxes, arrows and lines in the panel's own bp coordinates,
 // e.g. "ncRNA" line, motif boxes and a gene arrow, as drawn by hand on figures).
 //
@@ -7,7 +7,7 @@
 // line, e.g. "-300 0 ncRNA #9ca3af line". Rectangular layout only.
 (function () {
   'use strict';
-  var HEADER_H = 34;   // the band kept free above the axis row for the track
+  var HEADER_H = 34, HEADER_GAP = 8;   // the band kept free for the track, and its distance from the tips
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function card(id) { return document.getElementById('dataframeCard' + id); }
   function q(id, sel) { var c = card(id); return c ? c.querySelector(sel) : null; }
@@ -70,21 +70,32 @@
     if (typeof dataframes === 'undefined' || !dataframes) return false;
     var any = false; dataframes.forEach(function (df, id) { if (headerItems(id).length) any = true; }); return any;
   }
-  function headerBand() { return anyHeader() ? HEADER_H : 0; }
-  // drawn into the panel's group, above the axis row (below the last tip when the axes are below)
+  // names that would overlap step to further rows: the room reserved grows with them (the
+  // rows are known once the track is laid out; a change of that need redraws once)
+  var extraRows = {};
+  function headerBand() {
+    if (!anyHeader()) return 0;
+    var extra = 0; Object.keys(extraRows).forEach(function (k) { if (dataframes.has(+k)) extra = Math.max(extra, extraRows[k]); });
+    return HEADER_H + HEADER_GAP + extra;
+  }
+  // drawn into the panel's group on the side away from the axis row, so its shapes and names
+  // never sit on the axis numbers and titles: below the last tip when the axes are on top,
+  // above the first tip when the axes are below
   function drawHeader(id, ctx) {
     var items = headerItems(id); if (!items.length || !ctx || !ctx.panelScale) return;
     var font = +((q(id, '.ht-font') || {}).value) || 11;
-    // above the axis numbers and the axis-title band (or below them when the axes are below)
-    var titleBand = (typeof axisTitleBand === 'function') ? axisTitleBand() : 0;
-    var y0 = ctx.axisRow.below ? ctx.axisRow.y + 22 + titleBand : ctx.axisRow.y - 22 - titleBand - HEADER_H + 6;   // the track's top
-    var H = 12, G = ctx.g.append('g').attr('class', 'header-track').attr('data-dataframe', id);
-    var x0 = ctx.panelX, right = ctx.panelX + ctx.panelWidth - (ctx.margin ? ctx.margin.right : 0), labelBoxes = [];
+    var tipsY = (typeof root !== 'undefined' && root) ? root.leaves().map(function (d) { return d.x; }).filter(Number.isFinite) : [];
+    var atBottom = !ctx.axisRow.below;
+    var y0 = atBottom ? (tipsY.length ? Math.max.apply(null, tipsY) : ctx.axisRow.y) + HEADER_GAP + 4 : (tipsY.length ? Math.min.apply(null, tipsY) : ctx.axisRow.y) - HEADER_GAP - HEADER_H;   // the track's top
+    var H = 12, G = ctx.g.append('g').attr('class', 'header-track' + (atBottom ? ' header-track-bottom' : '')).attr('data-dataframe', id);
+    var x0 = ctx.panelX, right = ctx.panelX + ctx.panelWidth - (ctx.margin ? ctx.margin.right : 0), labelBoxes = [], rows = 0;
+    var ex = extraRows[id] || 0;
+    if (!atBottom) y0 -= ex;   // above the tips: the band grows upward for the extra name rows (names above the shapes); below: downward (names below)
     items.forEach(function(it) {
       var xa = x0 + ctx.panelScale(it.start), xb = x0 + ctx.panelScale(it.end);
       var xl = Math.max(x0, Math.min(xa, xb)), xr = Math.min(right, Math.max(xa, xb));
       if (xr <= xl) return;
-      var yc = y0 + 10 + H / 2;
+      var yc = atBottom ? y0 + 2 + H / 2 : y0 + ex + 16 + H / 2;
       if (it.shape === 'line') {
         G.append('line').attr('x1', xl).attr('x2', xr).attr('y1', yc).attr('y2', yc).attr('stroke', it.colour).attr('stroke-width', 3).attr('stroke-linecap', 'round');
       } else if (it.shape === 'arrow' || it.shape === 'rarrow' || it.shape === 'larrow') {
@@ -100,9 +111,12 @@
         var tw = textWidth(it.label, font), cx = (xl + xr) / 2, box = { l: cx - tw / 2 - 3, r: cx + tw / 2 + 3, row: 0 };
         while (labelBoxes.some(function (q) { return q.row === box.row && box.l < q.r && box.r > q.l; })) box.row++;
         labelBoxes.push(box);
-        G.append('text').attr('x', cx).attr('y', y0 + 4 - box.row * (font + 2)).attr('text-anchor', 'middle').attr('dominant-baseline', 'auto').attr('font-size', font).attr('font-weight', '600').attr('fill', 'var(--tree)').text(it.label);
+        rows = Math.max(rows, box.row);
+        G.append('text').attr('x', cx).attr('y', atBottom ? y0 + H + 5 + font + box.row * (font + 2) : y0 + ex + 12 - box.row * (font + 2)).attr('text-anchor', 'middle').attr('dominant-baseline', 'auto').attr('font-size', font).attr('font-weight', '600').attr('fill', 'var(--tree)').text(it.label);
       }
     });
+    var need = rows * (font + 2);
+    if ((extraRows[id] || 0) !== need) { extraRows[id] = need; if (typeof drawTree === 'function') setTimeout(function () { drawTree(); }, 0); }
   }
 
   // ---------------------------------------------------------------- card
@@ -116,7 +130,7 @@
     if (!t.classList.contains('gl-on') && !t.classList.contains('gl-place') && !t.classList.contains('gl-font') && !t.classList.contains('gl-fit') && !t.classList.contains('ht-text') && !t.classList.contains('ht-font')) return;
     var c = t.closest('[id^="dataframeCard"]'); var m = c && /(\d+)$/.exec(c.id); if (!m) return;
     var sub = c.querySelector('.gl-sub'); if (sub) sub.hidden = !(c.querySelector('.gl-on') || {}).checked;
-    // the header track changes the room above the axis row: a full redraw
+    // the header track changes the room beyond the tips: a full redraw
     if (t.classList.contains('ht-text')) { if (typeof root !== 'undefined' && root) drawTree(); return; }
     redraw(+m[1]);
   });
