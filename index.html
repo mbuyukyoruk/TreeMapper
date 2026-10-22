@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610220631" rel="stylesheet">
-<link href="css/styles.css?v=202610220631" rel="stylesheet">
-<link href="css/pro.css?v=202610220631" rel="stylesheet">
+<link href="css/tailwind.css?v=202610220707" rel="stylesheet">
+<link href="css/styles.css?v=202610220707" rel="stylesheet">
+<link href="css/pro.css?v=202610220707" rel="stylesheet">
 </head>
 <body class="pro">
 <div class="pro-app">
@@ -226,6 +226,29 @@
             <label for="scaleStrokeWidth">Line width</label>
             <span class="pro-num-wrap"><input autocomplete="off" type="number" id="scaleStrokeWidth" min="0.1" step="0.1" value="2" class="pro-num"><span class="pro-unit">px</span></span>
           </div>
+        </div>
+      </details>
+
+      <details id="groupMarksSection">
+        <summary>Group marks</summary>
+        <div class="section pro-group">
+          <div class="pro-row">
+            <label for="groupMarksSource">Groups from</label>
+            <select autocomplete="off" id="groupMarksSource" class="pro-select"><option value="">(none)</option><option value="manual">Selected clades</option></select>
+          </div>
+          <input type="hidden" id="groupMarksSourceWanted" value="">
+          <p class="gm-hint">A line where one group of tips ends and the next begins, and a label per group, drawn with the tree. Groups come from a heatmap, highlight or clade-group layer, or from clades you pick.</p>
+          <div id="groupMarksManualBox" class="pro-flat" hidden>
+            <button type="button" id="groupMarksAdd" class="pro-btn gm-add">Add selected clade</button>
+            <div id="groupMarksManualList" class="gm-list"></div>
+            <input type="hidden" id="groupMarksManual" value="">
+          </div>
+          <label class="pro-row"><span>Separator lines</span><input autocomplete="off" type="checkbox" id="groupMarksLines" class="pro-switch" checked></label>
+          <label class="pro-row pro-sub"><span>Dashed</span><input autocomplete="off" type="checkbox" id="groupMarksDashed" class="pro-switch" checked></label>
+          <div class="pro-row pro-sub"><label for="groupMarksWidth">Line width</label><span class="pro-num-wrap"><input autocomplete="off" type="number" id="groupMarksWidth" min="0.5" step="0.5" value="1" class="pro-num"><span class="pro-unit">px</span></span></div>
+          <div class="pro-row pro-sub"><label for="groupMarksColor">Colour</label><input autocomplete="off" type="color" id="groupMarksColor" value="#6b7280" class="pro-color"></div>
+          <label class="pro-row"><span>Group labels</span><input autocomplete="off" type="checkbox" id="groupMarksLabels" class="pro-switch" checked></label>
+          <div class="pro-row pro-sub"><label for="groupMarksFont">Font size</label><span class="pro-num-wrap"><input autocomplete="off" type="number" id="groupMarksFont" min="6" max="40" step="1" value="12" class="pro-num"><span class="pro-unit">px</span></span></div>
         </div>
       </details>
 
@@ -462,7 +485,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610220631"></script>
+      <script src="js/drag-fastpath.js?v=202610220707"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -724,19 +747,20 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610220631"></script>
-<script src="js/tree-core.js?v=202610220631"></script>
-<script src="js/app.js?v=202610220631"></script>
-<script src="js/msa.js?v=202610220631"></script>
-<script src="js/align-rules.js?v=202610220631"></script>
-<script src="js/heatmap-scale.js?v=202610220631"></script>
-<script src="js/legend-tools.js?v=202610220631"></script>
-<script src="js/drag-live.js?v=202610220631"></script>
-<script src="js/session.js?v=202610220631"></script>
-<script src="js/undo.js?v=202610220631"></script>
-<script src="js/data-editor.js?v=202610220631"></script>
-<script src="js/pro-ui.js?v=202610220631"></script>
-<script src="js/select-tool.js?v=202610220631"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610220707"></script>
+<script src="js/tree-core.js?v=202610220707"></script>
+<script src="js/app.js?v=202610220707"></script>
+<script src="js/msa.js?v=202610220707"></script>
+<script src="js/align-rules.js?v=202610220707"></script>
+<script src="js/heatmap-scale.js?v=202610220707"></script>
+<script src="js/legend-tools.js?v=202610220707"></script>
+<script src="js/group-marks.js?v=202610220707"></script>
+<script src="js/drag-live.js?v=202610220707"></script>
+<script src="js/session.js?v=202610220707"></script>
+<script src="js/undo.js?v=202610220707"></script>
+<script src="js/data-editor.js?v=202610220707"></script>
+<script src="js/pro-ui.js?v=202610220707"></script>
+<script src="js/select-tool.js?v=202610220707"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {

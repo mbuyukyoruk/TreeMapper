@@ -923,7 +923,7 @@ function initializePanels() {
   const svg = document.getElementById('svg');
   if (!canvas || !svg) return;
   
-  const availableWidth = svg.clientWidth;
+  const availableWidth = svg.clientWidth - groupMarksReserve();
   
   const hideLabelsEl = document.getElementById('hideLabels');
   const hideLabels = hideLabelsEl && hideLabelsEl.checked;
@@ -1264,7 +1264,7 @@ function drag(e) {
       const svg = document.getElementById('svg');
       if (!svg) return;
       
-      const availableWidth = svg.clientWidth - (panelCount - 1) * SPLITTER_WIDTH;
+      const availableWidth = svg.clientWidth - (panelCount - 1) * SPLITTER_WIDTH - groupMarksReserve();
 
   const newWidths = [...startWidths];
 
@@ -1378,6 +1378,10 @@ function stealableLeft(toIdx, widths) {
   return sum;
 }
 
+// room the group labels need at the right of the panels (group-marks.js), rectangular layout
+function groupMarksReserve() {
+  try { return (window.tmGroupMarks && geometry !== 'radial') ? (tmGroupMarks.reserve() || 0) : 0; } catch (e) { return 0; }
+}
 function normalizeWidths() {
   const container = document.getElementById('panelsContainer');
   if (!container) return;
@@ -1386,7 +1390,7 @@ function normalizeWidths() {
   if (!svg) return;
   
   const totalSplitterWidth = (panelCount - 1) * SPLITTER_WIDTH;
-  const availableWidth = svg.clientWidth - totalSplitterWidth;
+  const availableWidth = svg.clientWidth - totalSplitterWidth - groupMarksReserve();
   
   // one width per panel: the width code of each panel kind does not know every other
   // kind (an alignment panel added after the charts gets the width of the others)
@@ -9441,6 +9445,11 @@ function drawTreeBody(){
         });
       }
       
+      // group separators and labels on the rings (group-marks.js)
+      if (window.tmGroupMarks && window.radialPanelSystem) {
+        try { tmGroupMarks.drawRadial({ group: labelGroup, leaves: leavesSel.data(), rings: window.radialPanelSystem.getRings() }); } catch (e) { console.warn(e); }
+      }
+      
       // Draw label text (only if labels are not hidden and label panel exists)
       if (!hideLabels && hasLabelRing) {
         // Draw labels starting from the inner edge of the label ring (with small margin)
@@ -12213,6 +12222,8 @@ function drawTreeBody(){
   // Update status
   const nLeaves = leaves.length, nNodes = root.descendants().length;
   setStatus('Ready');
+  // group separators and labels (group-marks.js), on top of everything drawn
+  if (window.tmGroupMarks) { try { tmGroupMarks.draw({ isRadial, leaves }); } catch (e) { console.warn(e); } }
   
   // Update Add Data button visibility
   updateAddDataframeButtonVisibility();
@@ -16512,7 +16523,7 @@ function addDataframe() {
   if (!svg) return;
   
   const totalSplitterWidth = (panelCount - 1) * SPLITTER_WIDTH;
-  const availableWidth = svg.clientWidth - totalSplitterWidth;
+  const availableWidth = svg.clientWidth - totalSplitterWidth - groupMarksReserve();
   const OLD_TREE_WIDTH = 160;
   const hideLabelsEl = document.getElementById('hideLabels');
   const hideLabels = hideLabelsEl && hideLabelsEl.checked;
@@ -18523,7 +18534,7 @@ function addHeatmap() {
   if (!svg) return;
   
   const totalSplitterWidth = (panelCount - 1) * SPLITTER_WIDTH;
-  const availableWidth = svg.clientWidth - totalSplitterWidth;
+  const availableWidth = svg.clientWidth - totalSplitterWidth - groupMarksReserve();
   const OLD_TREE_WIDTH = 160;
   const hideLabelsEl = document.getElementById('hideLabels');
   const hideLabels = hideLabelsEl && hideLabelsEl.checked;
@@ -21214,7 +21225,7 @@ function addChart() {
   if (!svg) return;
   
   const totalSplitterWidth = (panelCount - 1) * SPLITTER_WIDTH;
-  const availableWidth = svg.clientWidth - totalSplitterWidth;
+  const availableWidth = svg.clientWidth - totalSplitterWidth - groupMarksReserve();
   const OLD_TREE_WIDTH = 160;
   const hideLabelsEl = document.getElementById('hideLabels');
   const hideLabels = hideLabelsEl && hideLabelsEl.checked;
