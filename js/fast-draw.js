@@ -19,7 +19,8 @@
 
   // ---- a redraw begins: is this a large rectangular tree?
   F.begin = function (leaves, isRadial) {
-    F.active = !isRadial && leaves.length >= window.TM_FAST_FROM && window.tmFastDraw !== false;
+    F.active = leaves.length >= window.TM_FAST_FROM && window.tmFastDraw !== false;
+    F.radial = !!isRadial;
     F.cols = new Map();
     // the hovered row is forgotten with the drawing it was found in (the next pointer move finds it again)
     try { if (typeof hoveredBand !== 'undefined') hoveredBand = null; } catch (e) {}
@@ -27,6 +28,7 @@
     const rows = leaves.filter(l => Number.isFinite(l.x)).map(l => ({ y: l.x, leaf: l }));
     rows.sort((a, b) => a.y - b.y);
     F.rows = rows;
+    F.leaves = leaves; F.rowsA = null;   // (the circular layout: rows by angle, made when first needed)
     return true;
   };
   // the tip drawn at y (within tol), or null
@@ -83,12 +85,14 @@
     const G = parent.append('g').attr('class', 'nodes').attr('data-tree-part', '').attr('data-fast', '');
     F.nodesG = G.node();
     // the hit area over the tree: clicks select the nearest marker
+    const pos = opts.pos || (d => [d.y, d.x]);
+    F.nodes.pos = pos;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const d of nodes) { if (d.y < x0) x0 = d.y; if (d.y > x1) x1 = d.y; if (d.x < y0) y0 = d.x; if (d.x > y1) y1 = d.x; }
+    for (const d of nodes) { const [px, py] = pos(d); if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py; }
     const pad = Math.max(opts.tipNodeSize || 2, opts.internalNodeSize || 2) + 6;
     const hit = G.append('rect').attr('class', 'fast-hit fast-hit-tree').attr('x', x0 - pad).attr('y', y0 - pad).attr('width', Math.max(0, x1 - x0) + 2 * pad).attr('height', Math.max(0, y1 - y0) + 2 * pad).attr('fill', 'transparent').attr('stroke', 'none');
     const visible = nodes.filter(d => !look(d).hidden);
-    F.nodes.quad = d3.quadtree().x(d => d.y).y(d => d.x).addAll(visible);
+    F.nodes.quad = d3.quadtree().x(d => pos(d)[0]).y(d => pos(d)[1]).addAll(visible);
     hit.on('click', function (ev) {
       const [px, py] = pointerIn(ev, G.node());
       const tol = (pad + 2) / zoomK();
@@ -118,7 +122,8 @@
       const key = k.fill + '|' + k.stroke + '|' + k.strokeWidth + '|' + shape + '|' + size;
       let g = groups.get(key);
       if (!g) { g = { fill: k.fill, stroke: k.stroke, sw: k.strokeWidth, d: [] }; groups.set(key, g); }
-      g.d.push(markerPath(shape, d.y, d.x, size));
+      const [px, py] = N.pos ? N.pos(d) : [d.y, d.x];
+      g.d.push(markerPath(shape, px, py, size));
     }
     while (G.firstChild) G.removeChild(G.firstChild);
     groups.forEach(g => {
@@ -209,6 +214,80 @@
     groups.forEach(g => { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('class', 'label-highlight-bg'); p.setAttribute('fill', g.fill); p.setAttribute('opacity', g.op); p.setAttribute('d', g.d.join('')); p.setAttribute('pointer-events', 'none'); holder.appendChild(p); });
     G.insertBefore(holder, G.firstChild);
   };
+
+  // ---- a data ring of the circular layout: arcs batched by colour, hover and click by angle and radius
+  // polar(group, opts, item): opts { r0, r1 (the ring), aTol, tooltip(item, leaf), click(item, leaf, ev), vmin, vmax }
+  //   item { a (the row's angle), r0, r1, path (the arc), color | stroke+sw, op?, back?, leaf, ...data }
+  // finishPolar(group): the paths and the hit ring
+  F.polar = function (spanG, opts, item) {
+    const el = spanG.node();
+    let col = F.cols.get(el);
+    if (!col) { col = { spanG, el, opts, groups: new Map(), byRow: new Map(), polar: true }; F.cols.set(el, col); }
+    const key = (item.back ? 'B' : 'A') + (item.stroke ? 'S' + item.stroke + '|' + item.sw : 'F' + item.color) + (item.op != null ? '|' + item.op : '');
+    let g = col.groups.get(key);
+    if (!g) { g = { color: item.color, stroke: item.stroke, sw: item.sw, op: item.op, back: !!item.back, d: [] }; col.groups.set(key, g); }
+    g.d.push(item.path);
+    if (item.leaf) { let r = col.byRow.get(item.leaf); if (!r) { r = []; col.byRow.set(item.leaf, r); } r.push(item); }
+  };
+  // the row at an angle (the circular layout's leaves sorted by their angle)
+  F.rowAtAngle = function (a, tol) {
+    if (!F.rowsA) { F.rowsA = (F.leaves || []).filter(l => Number.isFinite(l.a)).map(l => ({ a: l.a, leaf: l })); F.rowsA.sort((p, q) => p.a - q.a); }
+    const rows = F.rowsA; if (!rows.length) return null;
+    let lo = 0, hi = rows.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (rows[mid].a < a) lo = mid + 1; else hi = mid; }
+    let best = rows[lo];
+    if (lo > 0 && Math.abs(rows[lo - 1].a - a) < Math.abs(best.a - a)) best = rows[lo - 1];
+    // (the first and last rows meet across the seam at 12 o'clock)
+    const seam = rows[0], last = rows[rows.length - 1];
+    if (Math.abs(seam.a + 2 * Math.PI - a) < Math.abs(best.a - a)) best = seam;
+    if (Math.abs(last.a - 2 * Math.PI - a) < Math.abs(best.a - a)) best = last;
+    const da = Math.min(Math.abs(best.a - a), Math.abs(best.a + 2 * Math.PI - a), Math.abs(best.a - 2 * Math.PI - a));
+    return da <= tol ? best.leaf : null;
+  };
+  F.finishPolar = function (spanG) {
+    const el = spanG.node(), col = F.cols.get(el);
+    if (!col) return;
+    F.cols.delete(el);
+    const G = col.spanG, o = col.opts;
+    const ordered = [...col.groups.values()].sort((a, b) => (b.back ? 1 : 0) - (a.back ? 1 : 0));
+    ordered.forEach(g => {
+      const p = G.append('path').attr('class', 'fast-items').attr('d', g.d.join('')).attr('pointer-events', 'none');
+      if (g.stroke) p.attr('fill', 'none').attr('stroke', g.stroke).attr('stroke-width', g.sw); else p.attr('fill', g.color).attr('stroke', 'none');
+      if (g.op != null) p.attr('opacity', g.op);
+    });
+    if (!(o.r1 > o.r0)) return;
+    const ring = d3.arc()({ innerRadius: o.r0, outerRadius: o.r1, startAngle: 0, endAngle: 2 * Math.PI });
+    const hit = G.append('path').attr('class', 'fast-hit fast-hit-ring').attr('d', ring).attr('fill', 'transparent').attr('stroke', 'none');
+    const find = (ev) => {
+      const [px, py] = pointerIn(ev, col.el);
+      const r = Math.hypot(px, py); let a = Math.atan2(px, -py); if (a < 0) a += 2 * Math.PI;   // (d3's arcs: 0 at 12 o'clock, clockwise)
+      const leaf = F.rowAtAngle(a, o.aTol || 0);
+      if (!leaf) return null;
+      const items = col.byRow.get(leaf); if (!items) return null;
+      for (let i = 0; i < items.length; i++) { const it = items[i]; if (it.a0 !== undefined && (a < it.a0 || a > it.a1)) continue; if (r >= it.r0 && r <= it.r1) return { item: it, leaf }; }
+      return null;
+    };
+    hit.on('mousemove', function (ev) {
+      if (typeof isDragging !== 'undefined' && isDragging) return; if (window.__draggingSplitter) return;
+      const h = find(ev);
+      this.style.cursor = h && o.click && !h.item.back ? 'pointer' : '';
+      if (h && o.tooltip) { ev.stopPropagation(); showTip(ev, h.leaf, true, { v: o.tooltip(h.item, h.leaf), vmin: o.vmin, vmax: o.vmax }); } else hideTip();
+    }).on('mouseleave', function () { hideTip(); this.style.cursor = ''; })
+      .on('click', function (ev) { if (!o.click) return; if (typeof isDragging !== 'undefined' && isDragging) return; if (window.__draggingSplitter) return; const h = find(ev); if (!h || h.item.back) return; ev.stopPropagation(); o.click(h.item, h.leaf, ev); });
+  };
+  // an arc with an arrow head (the circular layout's gene bars), as the per-element drawing makes it
+  F.arcArrowPath = function (a, span, r0, r1, og) {
+    const ext = r1 - r0, tip = Math.min(ext * 0.3, 10);
+    const bodyIn = og > 0 ? r0 : r0 + tip, bodyOut = og > 0 ? r1 - tip : r1;
+    const body = d3.arc()({ innerRadius: bodyIn, outerRadius: bodyOut, startAngle: a - span / 2, endAngle: a + span / 2 });
+    const s = a - span / 2, e = a + span / 2, c = (ang, r) => [r * Math.cos(ang - Math.PI / 2), r * Math.sin(ang - Math.PI / 2)];
+    const p1 = c(s, og > 0 ? bodyOut : bodyIn), p2 = c(a, og > 0 ? r1 : r0), p3 = c(e, og > 0 ? bodyOut : bodyIn);
+    return body + 'M' + n2(p1[0]) + ',' + n2(p1[1]) + 'L' + n2(p2[0]) + ',' + n2(p2[1]) + 'L' + n2(p3[0]) + ',' + n2(p3[1]) + 'Z';
+  };
+  F.radialLine = function (a, r0, r1) { const c = (r) => [r * Math.cos(a - Math.PI / 2), r * Math.sin(a - Math.PI / 2)]; const p = c(r0), q = c(r1); return 'M' + n2(p[0]) + ',' + n2(p[1]) + 'L' + n2(q[0]) + ',' + n2(q[1]); };
+  // a selection of the leaves without elements: the circular layout's ring code reads the
+  // leaves through one (each, size, data) and draws into groups of its own
+  F.leafSelection = function (leaves) { return d3.selectAll(leaves.map(l => ({ __data__: l }))); };
 
   window.tmFast = F;
 })();

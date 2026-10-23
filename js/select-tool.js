@@ -67,8 +67,10 @@
       if (!el || !el.isConnected) {
         // a large tree drawn as few elements (js/fast-draw.js): the position from the node's coordinates
         if (!(window.tmFast && tmFast.active)) return;
-        var z = document.getElementById('zoomable'), zm = z && z.getScreenCTM(); if (!zm) return;
-        var sx = zm.a * d.y + zm.c * d.x + zm.e, sy = zm.b * d.y + zm.d * d.x + zm.f;
+        var radialF = (typeof geometry !== 'undefined' && geometry === 'radial');
+        var z = radialF ? document.querySelector('#zoomable g.spin') : document.getElementById('zoomable'), zm = z && z.getScreenCTM(); if (!zm) return;
+        var ux = radialF ? (d.rx || 0) : d.y, uy = radialF ? (d.ry || 0) : d.x;
+        var sx = zm.a * ux + zm.c * uy + zm.e, sy = zm.b * ux + zm.d * uy + zm.f;
         if (collapsed || cartoon) { rects.push({ r: { left: sx - 6, right: sx + 6, top: sy - 6, bottom: sy + 6 }, names: hiddenTips(d, []) }); return; }
         if (d.children && d.children.length) return;
         pts.push({ x: sx, y: sy, name: String(d.data.name) });
