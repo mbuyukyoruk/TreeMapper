@@ -161,6 +161,12 @@
     return 'M' + n2(x + tipW) + ',' + n2(y) + 'h' + n2(bw) + 'v' + n2(h) + 'h' + n2(-bw) + 'z' + 'M' + n2(x) + ',' + n2(y + h / 2) + 'L' + n2(x + tipW) + ',' + n2(y) + 'L' + n2(x + tipW) + ',' + n2(y + h) + 'z';
   };
   F.circlePath = function (cx, cy, r) { return markerPath('circle', cx, cy, r); };
+  // rows left out of a column (synteny's collapsed rows): its paths are made without them
+  F.dropRows = function (spanG, leaves) {
+    const col = F.cols.get(spanG.node()); if (!col) return;
+    col.groups.forEach(g => { g.items = g.items.filter(it => !leaves.has(it.leaf)); g.d = g.items.map(it => it.path || ('M' + n2(it.x) + ',' + n2(it.y) + 'h' + n2(it.w) + 'v' + n2(it.h) + 'h' + n2(-it.w) + 'z')); });
+    leaves.forEach(l => col.byRow.delete(l));
+  };
   F.finish = function (spanG) {
     const el = spanG.node(), col = F.cols.get(el);
     if (!col) return;
@@ -307,7 +313,7 @@
   // ---- labels on a large tree: the rows in view, once a label is legible at this zoom
   // (a label of 16,000 tips is a fraction of a pixel tall: nothing is drawn until the view is
   // zoomed in; then the labels of the rows in view, and half a view above and below)
-  F.LABEL_PX = 5; F.CULL_FROM = 2000; F.allLabels = false; F.culled = false;
+  F.LABEL_PX = 3.5; F.CULL_FROM = 2000;   // (a label 3.5 px tall on screen is the smallest worth drawing) F.allLabels = false; F.culled = false;
   F.labelTips = function (tips, fontPx, svgH) {
     F.culled = false;
     if (F.allLabels || F.radial || tips.length < F.CULL_FROM) return tips;
@@ -365,15 +371,17 @@
     const ps = getPanelPositions(), tree = ps.find(p => p.type === 'tree'); if (!tree) return false;
     const t1 = treeSpanOf(tree), k = t1.s / b.tree.s;
     const m = (k === 1 && t1.a === b.tree.a) ? null : 'matrix(' + k + ',0,0,1,' + (t1.a - b.tree.a * k) + ',0)';
+    let changed = !!m;
     b.parts.forEach(el => { if (m) el.setAttribute('transform', m); else el.removeAttribute('transform'); });
     b.layers.forEach(e => {
       const p = e.panelFn(e.index); if (!p) return;
       const kk = p.width / e.w;
       if (Math.abs(kk - 1) < 1e-9 && p.x === e.x) e.el.removeAttribute('transform');
-      else if (Math.abs(kk - 1) < 1e-9) e.el.setAttribute('transform', 'translate(' + (p.x - e.x) + ',0)');
-      else e.el.setAttribute('transform', 'matrix(' + kk + ',0,0,1,' + (p.x - e.x * kk) + ',0)');
+      else if (Math.abs(kk - 1) < 1e-9) { e.el.setAttribute('transform', 'translate(' + (p.x - e.x) + ',0)'); changed = true; }
+      else { e.el.setAttribute('transform', 'matrix(' + kk + ',0,0,1,' + (p.x - e.x * kk) + ',0)'); changed = true; }
     });
-    try { drawSplittersInSVG(g, lastSplitterContentHeight, dragGeom ? dragGeom.canvasRect : null); updateSplitterLineHeights(); } catch (e) {}
+    // (nothing moved yet, e.g. the press itself: the splitters stay as drawn)
+    if (changed) { try { drawSplittersInSVG(g, lastSplitterContentHeight, dragGeom ? dragGeom.canvasRect : null); updateSplitterLineHeights(); } catch (e) {} }
     return true;
   };
 
