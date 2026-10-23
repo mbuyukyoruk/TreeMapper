@@ -19750,6 +19750,15 @@ function applyCladeColorsToTree() {
   // First, reset all clade colors to ensure clean state
   resetCladeColors();
   
+  // The tips by accession, once: a clade value's accessions are then looked up directly
+  // (not searched for through every tip's text, value after value — minutes on a large tree).
+  const leavesByKey = new Map();
+  root.leaves().forEach(leaf => {
+    const key = normalizeAccession(leaf.data.name);
+    const list = leavesByKey.get(key);
+    if (list) list.push(leaf); else leavesByKey.set(key, [leaf]);
+  });
+  
   // For each clade data
   clades.forEach((cladeData, cladeId) => {
     if (!cladeData.hasMatchingData || !cladeData.accessionToValue || !cladeData.valueColors) return;
@@ -19765,25 +19774,52 @@ function applyCladeColorsToTree() {
       }
     });
     
-    // For each clade value, search and apply color
+    // For each clade value: the paths from its tips to the root take its colour, as one path
+    // set (later values win on shared branches, as before)
     valueToAccessions.forEach((accessions, value) => {
       if (accessions.length === 0) return;
       
       const color = cladeData.valueColors.get(value);
       if (!color) return;
       
-      // Step 1: Pool accessions with same clade value as comma-separated string
-      const accessionString = accessions.join(',');
+      const pathNodes = new Set();
+      const originalLeafNames = new Set();
+      for (const accession of accessions) {
+        const leaves = leavesByKey.get(normalizeAccession(accession));
+        if (!leaves) continue;
+        for (const leaf of leaves) {
+          originalLeafNames.add(leaf.data.name);
+          // Trace path from leaf to root (stopping where a path already traced continues)
+          let current = leaf;
+          while (current && !pathNodes.has(current)) {
+            pathNodes.add(current);
+            current = current.parent;
+          }
+        }
+      }
+      if (originalLeafNames.size === 0) return;
       
-      // Step 2: Use search function to highlight these accessions
-      performSearch(accessionString);
+      colorActionCounter++;
+      pathCounter++;
+      const pathId = `clade_path_${pathCounter}`;
       
-      // Step 3: Apply color path function to color the branches
-      applyCladeColorPath(color);
+      // Store the color for each node in the path
+      pathNodes.forEach(node => {
+        if (!node.permanentColors) {
+          node.permanentColors = new Map();
+        }
+        node.permanentColors.set(pathId, { color: color, ts: colorActionCounter });
+      });
+      
+      // Store the original leaf names for this path (for re-rooting support)
+      if (!window.pathLeafNames) {
+        window.pathLeafNames = new Map();
+      }
+      window.pathLeafNames.set(pathId, originalLeafNames);
     });
   });
   
-  // Clear search state after applying all clade colors to prevent selection from remaining active
+  // Clear search state (as before: the colouring leaves no selection) and restyle once
   clearSearch();
 }
 
