@@ -14911,6 +14911,14 @@ function capLegendHtml(html) {
   let i = 0;
   return html.replace(/<div class="legend-item\b/g, m => (++i > LEGEND_FIRST_ROWS ? '<div hidden class="legend-item' : m));
 }
+// A legend group is rewritten only when its HTML changed: a redraw that leaves the values alone
+// (zoom, resize, a drag) no longer parses 20,000 rows again (a quarter of a second each time).
+function setLegendHtml(el, html) {
+  const capped = capLegendHtml(html);
+  if (el.__legendHtml === capped) return;
+  el.__legendHtml = capped;
+  el.innerHTML = capped;
+}
 function updateMetadataLegend() {
   if (!metadataLegend || !legendItems || !heatmapLegendItems) return;
   
@@ -15192,7 +15200,7 @@ function updateMetadataLegend() {
   }).join('');
   
   // Set gene legend items
-  legendItems.innerHTML = capLegendHtml(legendHTML);
+  setLegendHtml(legendItems, legendHTML);
   
   // Setup interactive legend after updating
   setTimeout(() => setupLegendInteractivity(), 0);
@@ -15301,7 +15309,7 @@ function updateMetadataLegend() {
   }
   
   // Set heatmap legend items
-  heatmapLegendItems.innerHTML = capLegendHtml(gradientHeatmapHTML + heatmapLegendHTML);
+  setLegendHtml(heatmapLegendItems, gradientHeatmapHTML + heatmapLegendHTML);
   
   // Show/hide heatmap legend title based on whether there are visible heatmap values
   const legendTitles = metadataLegend.querySelectorAll('.legend-title');
@@ -15390,7 +15398,7 @@ function updateMetadataLegend() {
   }
   
   // Set chart legend items
-  chartLegendItems.innerHTML = capLegendHtml(chartLegendHTML);
+  setLegendHtml(chartLegendItems, chartLegendHTML);
   
   // Show/hide chart legend title based on whether there are visible chart values
   const chartLegendTitle = legendTitles[4]; // Fifth legend title (index 4)
@@ -15484,7 +15492,7 @@ function updateMetadataLegend() {
   }
   
   // Set highlight legend items
-  highlightLegendItems.innerHTML = capLegendHtml(highlightLegendHTML);
+  setLegendHtml(highlightLegendItems, highlightLegendHTML);
   
   // Show/hide highlight legend title based on whether there are visible highlight values
   const highlightLegendTitle = legendTitles[2]; // Third legend title (index 2)
@@ -15588,7 +15596,7 @@ function updateMetadataLegend() {
   }
   
   // Set clade legend items
-  cladeLegendItems.innerHTML = capLegendHtml(cladeLegendHTML);
+  setLegendHtml(cladeLegendItems, cladeLegendHTML);
   
   // Show/hide clade legend title based on whether there are visible clade values
   const cladeLegendTitle = legendTitles[3]; // Fourth legend title (index 3)
@@ -15737,7 +15745,7 @@ function updateMetadataLegend() {
       ordered(df.geneOrder, genes).forEach(gene => { part += item('gene', gene, (df.geneColors && df.geneColors.get(gene)) || '#ccc', true); });
       if (part) geneHTML += sub(label) + part;
     });
-    legendItems.innerHTML = capLegendHtml(geneHTML);
+    setLegendHtml(legendItems, geneHTML);
     if (geneLegendTitle) geneLegendTitle.style.display = geneHTML ? 'block' : 'none';
     // heatmaps, highlights, clade groups: values in each layer's own order
     const valueLayers = (containerId, prefix, map, type, attrs, presentFn) => {
@@ -15751,9 +15759,9 @@ function updateMetadataLegend() {
       });
       return html;
     };
-    heatmapLegendItems.innerHTML = capLegendHtml(valueLayers('heatmapContainer', 'heatmap', heatmaps, 'heatmap', true, getHeatmapValuesInVisibleAccessions));
-    highlightLegendItems.innerHTML = capLegendHtml(valueLayers('highlightContainer', 'highlight', highlights, 'highlight', false, getHighlightValuesInVisibleAccessions));
-    cladeLegendItems.innerHTML = capLegendHtml(valueLayers('cladeContainer', 'clade', clades, 'clade', false, getCladeValuesInVisibleAccessions));
+    setLegendHtml(heatmapLegendItems, valueLayers('heatmapContainer', 'heatmap', heatmaps, 'heatmap', true, getHeatmapValuesInVisibleAccessions));
+    setLegendHtml(highlightLegendItems, valueLayers('highlightContainer', 'highlight', highlights, 'highlight', false, getHighlightValuesInVisibleAccessions));
+    setLegendHtml(cladeLegendItems, valueLayers('cladeContainer', 'clade', clades, 'clade', false, getCladeValuesInVisibleAccessions));
     // charts: their columns in the chart's own order
     let chartHTML = '';
     inCardOrder('chartContainer', 'chart', charts).forEach(([id, c, label]) => {
@@ -15761,7 +15769,7 @@ function updateMetadataLegend() {
       const cols = c.dataColumns.filter(col => c.valueVisibility.get(col));
       if (cols.length) chartHTML += sub(label) + cols.map(col => item('chart', col, c.valueColors.get(col) || '#ccc', true)).join('');
     });
-    chartLegendItems.innerHTML = capLegendHtml(chartHTML);
+    setLegendHtml(chartLegendItems, chartHTML);
     setTimeout(() => setupLegendInteractivity(), 0);
   }
   if (window.tmMsa) { try { tmMsa.fillLegend(); } catch (e) { console.warn(e); } }
@@ -15802,23 +15810,23 @@ async function readFileAsText(file){
 
 // Add interactive legend functionality
 function setupLegendInteractivity() {
-  const allLegendItems = document.querySelectorAll('.legend-item');
-  
-  allLegendItems.forEach(item => {
-    item.addEventListener('mouseenter', (e) => {
-      const color = item.getAttribute('data-legend-color');
-      const colors = item.getAttribute('data-legend-colors');
-      
-      if (color) {
-        highlightMatchingColors([color]);
-      } else if (colors) {
-        highlightMatchingColors(colors.split(','));
-      }
-    });
-    
-    item.addEventListener('mouseleave', () => {
-      clearColorHighlights();
-    });
+  // one pair of listeners on the legend (the rows are rebuilt often, and there can be thousands)
+  const legend = document.getElementById('metadataLegend');
+  if (!legend || legend.__legendWired) return;
+  legend.__legendWired = true;
+  const itemOf = (e) => e.target && e.target.closest ? e.target.closest('.legend-item') : null;
+  legend.addEventListener('mouseover', (e) => {
+    const item = itemOf(e);
+    if (!item || (e.relatedTarget && item.contains(e.relatedTarget))) return;
+    const color = item.getAttribute('data-legend-color');
+    const colors = item.getAttribute('data-legend-colors');
+    if (color) highlightMatchingColors([color]);
+    else if (colors) highlightMatchingColors(colors.split(','));
+  });
+  legend.addEventListener('mouseout', (e) => {
+    const item = itemOf(e);
+    if (!item || (e.relatedTarget && item.contains(e.relatedTarget))) return;
+    clearColorHighlights();
   });
 }
 
