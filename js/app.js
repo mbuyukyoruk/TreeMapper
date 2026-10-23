@@ -3368,7 +3368,7 @@ function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
   let g = root.select(`#${gId}`);
   
   if (g.empty()) {
-    g = root.append('g').attr('id', gId).attr('data-tree-part', '');   // (part of the tree drawing: stretched with it in a large tree's splitter drag)
+    g = root.append('g').attr('id', gId);
   }
 
   g.attr('transform', `translate(${x0}, ${axisY})`);
