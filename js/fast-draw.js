@@ -29,6 +29,7 @@
     rows.sort((a, b) => a.y - b.y);
     F.rows = rows;
     F.leaves = leaves; F.rowsA = null;   // (the circular layout: rows by angle, made when first needed)
+    F.culled = false;
     return true;
   };
   // the tip drawn at y (within tol), or null
@@ -173,7 +174,7 @@
       const cv = document.createElement('canvas'); cv.width = W; cv.height = Math.min(H, 16000); const ctx = cv.getContext('2d');
       const ky = cv.height / H;
       ordered.forEach(g => { ctx.fillStyle = g.color; if (g.op != null) ctx.globalAlpha = g.op; g.items.forEach(it => ctx.fillRect((it.x - o.x) * S, (it.y - col.y0) * S * ky, Math.max(0.5, it.w * S), Math.max(0.5, it.h * S * ky))); ctx.globalAlpha = 1; });
-      G.append('image').attr('class', 'fast-items fast-picture').attr('x', o.x).attr('y', col.y0).attr('width', o.w).attr('height', col.y1 - col.y0).attr('preserveAspectRatio', 'none').attr('href', cv.toDataURL('image/png')).attr('pointer-events', 'none');
+      G.append('image').attr('class', 'fast-items fast-picture').attr('data-cells', ordered.reduce((a, g) => a + g.items.length, 0)).attr('x', o.x).attr('y', col.y0).attr('width', o.w).attr('height', col.y1 - col.y0).attr('preserveAspectRatio', 'none').attr('href', cv.toDataURL('image/png')).attr('pointer-events', 'none');
       col.pictured = ordered;
     } else
     ordered.forEach(g => {
@@ -250,6 +251,18 @@
     F.cols.delete(el);
     const G = col.spanG, o = col.opts;
     const ordered = [...col.groups.values()].sort((a, b) => (b.back ? 1 : 0) - (a.back ? 1 : 0));
+    // a ring of many colours (a column where every value differs): its arcs painted into one picture
+    if (ordered.length > F.MANY_COLOURS && o.r1 > o.r0 && ordered.every(g => !g.stroke && col.byRow.size)) {
+      const S = 2, R = o.r1, W = Math.max(1, Math.round(2 * R * S)), cv = document.createElement('canvas'); cv.width = W; cv.height = W;
+      const ctx = cv.getContext('2d'); ctx.translate(W / 2, W / 2); ctx.scale(S, S);
+      let n = 0;
+      col.byRow.forEach(items => items.forEach(it => {
+        const a0 = (it.a0 !== undefined ? it.a0 : it.a - (o.aTol || 0) * 0.9) - Math.PI / 2, a1 = (it.a1 !== undefined ? it.a1 : it.a + (o.aTol || 0) * 0.9) - Math.PI / 2;
+        ctx.beginPath(); ctx.arc(0, 0, it.r1, a0, a1); ctx.arc(0, 0, it.r0, a1, a0, true); ctx.closePath();
+        ctx.fillStyle = it.color; if (it.op != null) ctx.globalAlpha = it.op; ctx.fill(); ctx.globalAlpha = 1; n++;
+      }));
+      G.append('image').attr('class', 'fast-items fast-picture').attr('data-cells', n).attr('x', -R).attr('y', -R).attr('width', 2 * R).attr('height', 2 * R).attr('href', cv.toDataURL('image/png')).attr('pointer-events', 'none');
+    } else
     ordered.forEach(g => {
       const p = G.append('path').attr('class', 'fast-items').attr('d', g.d.join('')).attr('pointer-events', 'none');
       if (g.stroke) p.attr('fill', 'none').attr('stroke', g.stroke).attr('stroke-width', g.sw); else p.attr('fill', g.color).attr('stroke', 'none');
@@ -288,6 +301,79 @@
   // a selection of the leaves without elements: the circular layout's ring code reads the
   // leaves through one (each, size, data) and draws into groups of its own
   F.leafSelection = function (leaves) { return d3.selectAll(leaves.map(l => ({ __data__: l }))); };
+
+  // ---- labels on a large tree: the rows in view, once a label is legible at this zoom
+  // (a label of 16,000 tips is a fraction of a pixel tall: nothing is drawn until the view is
+  // zoomed in; then the labels of the rows in view, and half a view above and below)
+  F.LABEL_PX = 5; F.CULL_FROM = 2000; F.allLabels = false; F.culled = false;
+  F.labelTips = function (tips, fontPx, svgH) {
+    F.culled = false;
+    if (F.allLabels || F.radial || tips.length < F.CULL_FROM) return tips;
+    let t; try { t = d3.zoomTransform(document.getElementById('svg')); } catch (e) { return tips; }
+    const k = t.k || 1;
+    F.culled = true; F.drawnAt = [t.x, t.y, t.k];
+    if (fontPx * k < F.LABEL_PX) return [];
+    const y0 = (0 - t.y) / k, y1 = (svgH - t.y) / k, pad = (y1 - y0) * 0.5;
+    return tips.filter(d => d.x >= y0 - pad && d.x <= y1 + pad);
+  };
+  // the circular layout: the tips whose markers lie in the view (half a view around it)
+  F.labelTipsRadial = function (tips, fontPx, spinEl) {
+    F.culled = false;
+    if (F.allLabels || tips.length < F.CULL_FROM || !spinEl) return tips;
+    const svgEl = document.getElementById('svg');
+    let t; try { t = d3.zoomTransform(svgEl); } catch (e) { return tips; }
+    F.culled = true; F.drawnAt = [t.x, t.y, t.k];
+    if (fontPx * (t.k || 1) < F.LABEL_PX) return [];
+    let m; try { m = spinEl.getScreenCTM().inverse().multiply(svgEl.getScreenCTM()); } catch (e) { return tips; }
+    const W = svgEl.clientWidth, H = svgEl.clientHeight;
+    const pts = [[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]);
+    let x0 = Math.min(...pts.map(p => p[0])), x1 = Math.max(...pts.map(p => p[0])), y0 = Math.min(...pts.map(p => p[1])), y1 = Math.max(...pts.map(p => p[1]));
+    const px = (x1 - x0) * 0.5, py = (y1 - y0) * 0.5; x0 -= px; x1 += px; y0 -= py; y1 += py;
+    return tips.filter(d => (d.rx || 0) >= x0 && (d.rx || 0) <= x1 && (d.ry || 0) >= y0 && (d.ry || 0) <= y1);
+  };
+  let relabelT = 0;
+  F.afterZoom = function () {
+    if (!F.active || !F.culled) return;
+    // (a draw's own fit sets the zoom too: nothing to do when the view is the one drawn for)
+    let t; try { t = d3.zoomTransform(document.getElementById('svg')); } catch (e) { return; }
+    if (F.drawnAt && F.drawnAt[0] === t.x && F.drawnAt[1] === t.y && F.drawnAt[2] === t.k) return;
+    clearTimeout(relabelT);
+    relabelT = setTimeout(() => { relabelT = 0; if (F.active && F.culled) drawTree(); }, 150);
+  };
+
+  // ---- a splitter drag: live frames from the few elements (no redraw until the release)
+  // The tree's branches and markers are stretched to the tree column; every data column is
+  // moved, and stretched when its width changed (its cells and bars are drawn in proportion
+  // to the column's width, so a stretch is what a redraw would give); the splitter lines are
+  // drawn again. The release draws everything for real.
+  let dragBase = null;
+  const treeSpanOf = (p) => ({ a: p.x + 48, s: Math.max(1, p.width - 56) });
+  F.dragCapture = function () {
+    dragBase = null;
+    if (!F.active || F.radial || typeof getPanelPositions !== 'function') return;
+    const ps = getPanelPositions(), tree = ps.find(p => p.type === 'tree'); if (!tree) return;
+    const parts = [...document.querySelectorAll('#zoomable [data-tree-part]')];
+    const layers = [];
+    if (typeof layerReuse !== 'undefined' && layerReuse.byKey) layerReuse.byKey.forEach(e => { if (e.el && e.el.isConnected && e.panelFn && Number.isFinite(e.x) && e.w > 0) layers.push(e); });
+    dragBase = { tree: treeSpanOf(tree), parts, layers };
+  };
+  F.dragReady = function () { return !!dragBase; };
+  F.dragFrame = function () {
+    const b = dragBase; if (!b) return false;
+    const ps = getPanelPositions(), tree = ps.find(p => p.type === 'tree'); if (!tree) return false;
+    const t1 = treeSpanOf(tree), k = t1.s / b.tree.s;
+    const m = (k === 1 && t1.a === b.tree.a) ? null : 'matrix(' + k + ',0,0,1,' + (t1.a - b.tree.a * k) + ',0)';
+    b.parts.forEach(el => { if (m) el.setAttribute('transform', m); else el.removeAttribute('transform'); });
+    b.layers.forEach(e => {
+      const p = e.panelFn(e.index); if (!p) return;
+      const kk = p.width / e.w;
+      if (Math.abs(kk - 1) < 1e-9 && p.x === e.x) e.el.removeAttribute('transform');
+      else if (Math.abs(kk - 1) < 1e-9) e.el.setAttribute('transform', 'translate(' + (p.x - e.x) + ',0)');
+      else e.el.setAttribute('transform', 'matrix(' + kk + ',0,0,1,' + (p.x - e.x * kk) + ',0)');
+    });
+    try { drawSplittersInSVG(g, lastSplitterContentHeight, dragGeom ? dragGeom.canvasRect : null); updateSplitterLineHeights(); } catch (e) {}
+    return true;
+  };
 
   window.tmFast = F;
 })();
