@@ -63,8 +63,17 @@
     root.each(function (d) {
       if (!displayed(d)) return;
       var el = (typeof nodeToElement !== 'undefined') ? nodeToElement.get(d) : null;
-      if (!el || !el.isConnected) return;
       var collapsed = d._children && !d.children, cartoon = cart.has(d);
+      if (!el || !el.isConnected) {
+        // a large tree drawn as few elements (js/fast-draw.js): the position from the node's coordinates
+        if (!(window.tmFast && tmFast.active)) return;
+        var z = document.getElementById('zoomable'), zm = z && z.getScreenCTM(); if (!zm) return;
+        var sx = zm.a * d.y + zm.c * d.x + zm.e, sy = zm.b * d.y + zm.d * d.x + zm.f;
+        if (collapsed || cartoon) { rects.push({ r: { left: sx - 6, right: sx + 6, top: sy - 6, bottom: sy + 6 }, names: hiddenTips(d, []) }); return; }
+        if (d.children && d.children.length) return;
+        pts.push({ x: sx, y: sy, name: String(d.data.name) });
+        return;
+      }
       if (collapsed || cartoon) {
         // the whole clade: its marker / triangle
         var r = el.getBoundingClientRect(); var ctm0 = el.getScreenCTM();

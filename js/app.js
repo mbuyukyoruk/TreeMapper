@@ -5091,8 +5091,8 @@ function updateSearchHighlights() {
       return window.tmLabelStyle ? tmLabelStyle.fillFor(d) : null;   // a colour from data (label-style.js), else the text colour
     });
   
-  svg.selectAll('.links path')
-    .style('stroke', d => {
+  // the overlay look of a branch (null: as drawn): the search path, path colours, clade colours
+  const overlayLinkStroke = d => {
       let bestColor = null;
       let bestTs = -1;
       if (d.target && cladeColors && cladeColors.has(d.target)) {
@@ -5116,15 +5116,17 @@ function updateSearchHighlights() {
       }
       
       return null;
-    })
-    .style('stroke-width', d => {
+    };
+  const overlayLinkWidth = d => {
       // Apply current stroke width if any color present (from either system) or temp highlight
       const hasCladeColor = d.target && cladeColors && cladeColors.has(d.target);
       const hasPermanentColor = d.target && d.target.permanentColors && d.target.permanentColors.size > 0;
       const isInSearchPath = highlightedAccessions.size > 0 && d.target && pathNodes.has(d.target);
       
       return (hasCladeColor || hasPermanentColor || isInSearchPath) ? getBranchStrokeWidth() : null;
-    });
+    };
+  if (window.tmFast && tmFast.active) tmFast.restyleLinks(overlayLinkStroke, overlayLinkWidth);   // (a few paths, js/fast-draw.js)
+  else svg.selectAll('.links path').style('stroke', overlayLinkStroke).style('stroke-width', overlayLinkWidth);
   updateLabelGuideEnds();   // bold labels are wider: the guides end before them
   updateColorPathCardVisibility();
 }
@@ -5192,6 +5194,7 @@ function clearCladeSelection() {
 }
 
 function updateHighlightVisuals() {
+  if (window.tmFast && tmFast.active) tmFast.updateMarkers();   // a large tree: the marker paths drawn again (js/fast-draw.js)
   // --- 1. Update ONLY the nodes whose state changed (O(k)) ---
   const curSet = selectedMarkerSet();
 
@@ -6082,6 +6085,7 @@ function drawTreeBody(){
 
   // Compute layout (vertical spacing based on number of leaves)
   const leaves = root.leaves();
+  const fastMode = !!(window.tmFast && tmFast.begin(leaves, geometry === 'radial'));   // large tree: few elements (js/fast-draw.js)
   // --- Spacing control ---
   const mode = spacingModeSel ? spacingModeSel.value : 'equal';
   const expPct = tipSpacingSel ? (+tipSpacingSel.value||0) : 0;
@@ -6666,9 +6670,7 @@ function drawTreeBody(){
     
     // PERF: look the active Bootstrap tab up once per redraw, not once per branch
     const linksBootstrapTab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab') || 'symbol';
-    g.append('g').attr('class','links').attr('data-tree-part', '')
-      .selectAll('path')
-              .data(root.links().filter(d => {
+    const linkData = root.links().filter(d => {
           // Filter out links that belong to cartooned nodes
           // Show links TO cartooned nodes, but hide links FROM cartooned nodes to their children
           if (cartoonedNodes.has(d.source)) return false; // Hide links from cartooned node to children
@@ -6690,11 +6692,9 @@ function drawTreeBody(){
           }
           
           return true;
-        }))
-      .join('path')
-        .attr('d', d => edgeStyle === 'curve' ? curvedLink(d) : rectLink(d))
-        .attr('fill','none')
-        .attr('stroke', d => {
+        });
+    const linkShape = d => edgeStyle === 'curve' ? curvedLink(d) : rectLink(d);
+    const linkStroke = d => {
           // Use stored clade color if available
           if(cladeColors.has(d.target)) {
             return cladeColors.get(d.target);
@@ -6723,8 +6723,8 @@ function drawTreeBody(){
           // written in here as well, and then stayed red after the selection
           // was cleared.)
           return ringCol;
-        })
-        .attr('stroke-width', d => {
+        };
+    const linkWidth = d => {
           // Thicker stroke for colored branches
           if(cladeColors.has(d.target)) {
             return getBranchStrokeWidth() * 1.3;
@@ -6734,7 +6734,19 @@ function drawTreeBody(){
             return getBranchStrokeWidth() * 1.3;
           }
           return getBranchStrokeWidth();
-        })
+        };
+    if (fastMode) {
+      // a large tree: all branches of one colour and width as one path (js/fast-draw.js)
+      tmFast.drawLinks(g, linkData, linkShape, linkStroke, linkWidth);
+    } else
+    g.append('g').attr('class','links').attr('data-tree-part', '')
+      .selectAll('path')
+              .data(linkData)
+      .join('path')
+        .attr('d', linkShape)
+        .attr('fill','none')
+        .attr('stroke', linkStroke)
+        .attr('stroke-width', linkWidth)
         .attr('data-source', d => d.source.data.name)
         .attr('data-target', d => d.target.data.name)
         .attr('class', 'tree-branch');
@@ -6944,7 +6956,7 @@ function drawTreeBody(){
   }
 
   // Draw nodes
-  let nodes;
+  let nodes, fastNodeData = null;
   if(isRadial){
     nodes = gSpin.append('g').attr('class','nodes')
       .selectAll('g.node')
@@ -6952,6 +6964,19 @@ function drawTreeBody(){
       .join('g')
         .attr('class','node')
         .attr('transform', d=> `translate(${d.rx||0},${d.ry||0})`);
+  } else if (fastMode) {
+    // a large tree: markers as a few paths and a hit area for clicks (js/fast-draw.js);
+    // a group per tip only when the labels are shown (the label code draws into them)
+    const shown = root.descendants().filter(d => !d._removedAsDuplicate && !droppedNodes.has(d));
+    const _hl = document.getElementById('hideLabels');
+    const tipGroups = (_hl && _hl.checked) ? [] : shown.filter(d => !d.children && !d._children);
+    nodes = g.append('g').attr('class','nodes').attr('data-tree-part', '')
+      .selectAll('g.node')
+      .data(tipGroups)
+      .join('g')
+        .attr('class','node')
+        .attr('transform', d=> `translate(${d.y},${d.x})`);
+    fastNodeData = shown;
   } else {
     nodes = g.append('g').attr('class','nodes').attr('data-tree-part', '')
       .selectAll('g.node')
@@ -7029,8 +7054,31 @@ function drawTreeBody(){
     nodeStyles.set(d, { fill, stroke, strokeWidth, isInternal });
   });
   
+  if (fastMode && fastNodeData) {
+    const _sel = () => selectedMarkerSet();
+    const lookOf = (d) => {
+      const isInternal = !!(d.children || d._children);
+      const isHighlighted = _sel().has(d);
+      let fill, stroke, strokeWidth, hidden = false;
+      if (isInternal) {
+        if (isHighlighted) { fill = '#ff6b6b'; stroke = '#ff0000'; strokeWidth = '2'; }
+        else if (collapsedNodes.has(d)) { fill = '#ff8c42'; stroke = '#1b2a66'; strokeWidth = '1'; }
+        else if (d._children) { fill = '#8b9dff'; stroke = '#1b2a66'; strokeWidth = '1'; }
+        else { fill = '#cbd5ff'; stroke = '#1b2a66'; strokeWidth = '1'; }
+        if (!showInternal) hidden = true;
+        else if (cartoonedNodes.has(d)) hidden = isDescendantOfCartooned(d);
+        else if (isDescendantOfCartooned(d)) hidden = true;
+      } else {
+        if (isHighlighted) { fill = '#ff6b6b'; stroke = '#ff0000'; strokeWidth = '2'; }
+        else { fill = '#9fb1e1'; stroke = '#1b2a66'; strokeWidth = '1'; }
+        if (!showTipNodes || isDescendantOfCartooned(d)) hidden = true;
+      }
+      return { fill, stroke, strokeWidth, isInternal, hidden };
+    };
+    tmFast.drawNodes(g, fastNodeData, lookOf, { showInternal, showTipNodes, tipNodeSize, internalNodeSize, tipNodeShape, internalNodeShape });
+  }
   // Create nodes with different shapes based on settings
-  nodes.each(function(d) {
+  if (!fastMode) nodes.each(function(d) {
     const node = d3.select(this);
     const styles = nodeStyles.get(d);
     const isInternal = styles.isInternal;
@@ -10130,13 +10178,17 @@ function drawTreeBody(){
       
               // Draw metadata bars for each leaf
         const syntenyRows = new Map();   // each row's bars (synteny.js)
+        // a large tree (js/fast-draw.js): the bars of one gene as one path, the row and bar under the pointer found by position
+        const fastCol = (window.tmFast && tmFast.active) ? { x: panelX, w: panelWidth, rowTol: dynamicBarH / 2, vmin: dfVmin, vmax: dfVmax,
+          tooltip: (it) => buildDataframeTooltip(it.r, preparedMeta, getDataframeColumnIndices(preparedMeta)),
+          click: (it, leaf, ev) => { toggleDataframeFocusGene(dataframeId, it.gname, ev); } } : null;
         leaves.forEach(d => {
         const key = normalizeAccession(d.data.name);
           const recs = preparedMeta.byIdAll && preparedMeta.byIdAll.get(key);
           if (!recs) return;
           
         const dx = 0; // No offset needed since alignment is handled in prepareDataframeForDrawing
-          const leafG = spanG.append('g').attr('transform', `translate(${dx}, 0)`).attr('data-accession', d.data.name);   // the row's tip
+          const leafG = fastCol ? spanG : spanG.append('g').attr('transform', `translate(${dx}, 0)`).attr('data-accession', d.data.name);   // the row's tip (no group per row in fast mode)
           ensureLayerBands(spanG, leaves, panelX, (panelWidth - margin.right), dynamicBarH);   // the column's highlight bands (made when needed)
           
           // Group by gene
@@ -10187,6 +10239,14 @@ function drawTreeBody(){
               const showArrow = dfGeneOrientation.get(gname);
               geneLabelQueue.push({ x, w, y, h: dynamicBarH, gname: String(gname || ''), color: color(gname || ''), og });
               if (window.tmFeatSel) tmFeatSel.bar(dataframeId, { x, w, y, h: dynamicBarH, gene: String(gname || ''), acc: String(d.data.name), row: r });
+              if (fastCol) {
+                const dna = !!(dataframe.operonState && dataframe.operonState.get(gname));
+                const mode = dna ? 'line' : (showArrow ? 'arrow' : 'rect');
+                const col = color(gname || '');
+                tmFast.item(spanG, fastCol, dna ? { x, w, y, h: dynamicBarH, stroke: col, sw: 2, path: tmFast.barPath(x, w, y, dynamicBarH, 'line'), leaf: d, gname, r }
+                  : { x, w, y, h: dynamicBarH, color: col, path: tmFast.barPath(x, w, y, dynamicBarH, mode, og), leaf: d, gname, r });
+                return;
+              }
               
               // Build dynamic tooltip from all available columns
               const tooltipContent = buildDataframeTooltip(r, preparedMeta, columnIndices);
@@ -10373,7 +10433,8 @@ function drawTreeBody(){
             const strokeY = d.x; // Center on the leaf position
             
             // Draw the operon stroke behind bars (insert at beginning of leafG)
-            leafG.insert('line', ':first-child')
+            if (fastCol) tmFast.item(spanG, fastCol, { x: startX, w: endX - startX, y: strokeY - 1.5, h: 3, stroke: 'var(--text)', sw: 3, op: 0.8, back: true, path: 'M' + startX + ',' + strokeY + 'H' + endX, leaf: d, operon: [minStart, maxEnd] });
+            else leafG.insert('line', ':first-child')
               .attr('x1', startX)
               .attr('y1', strokeY)
               .attr('x2', endX)
@@ -10391,7 +10452,8 @@ function drawTreeBody(){
           }
         }
       });
-        if (window.tmSynteny && syntenyRows.size) { try { tmSynteny.draw(dataframeId, { g: spanG, rows: syntenyRows }); } catch (e) { console.warn(e); } }
+        if (fastCol) tmFast.finish(spanG);   // the column's paths and hit area
+        if (!fastCol && window.tmSynteny && syntenyRows.size) { try { tmSynteny.draw(dataframeId, { g: spanG, rows: syntenyRows }); } catch (e) { console.warn(e); } }
       };
       
        
@@ -10723,6 +10785,10 @@ function drawTreeBody(){
         const y = d.x - (dynamicBarH / 2);
         
         
+        if (window.tmFast && tmFast.active) {   // a large tree: all cells of one colour as one path (js/fast-draw.js)
+          tmFast.item(spanG, { x: panelX, w: panelWidth, rowTol: dynamicBarH / 2, vmin: 0, vmax: 1, tooltip: (it, leaf) => `<b>${leaf.data.name}</b><br>${it.value}` }, { x: startX, w: boxWidth, y, h: dynamicBarH, color, leaf: d, value });
+          return;
+        }
         spanG.append('rect')   // (the cell itself: no group per row)
           .attr('data-accession', d.data.name)
           .attr('x', startX)
@@ -10747,6 +10813,7 @@ function drawTreeBody(){
             hideTip(); 
           });
       });
+      if (window.tmFast && tmFast.active) tmFast.finish(spanG);
       
     };    
 
@@ -10925,12 +10992,14 @@ function drawTreeBody(){
        switch(chartData.chartType || 'bar') {
          case 'bar':
            renderBarChart(leaves, chartData, spanG, panelX, panelWidth, chartScale, dynamicBarH);
+           if (window.tmFast && tmFast.active) tmFast.finish(spanG);
            break;
         case 'line':
           renderLineChart(leaves, chartData, spanG, panelX, panelWidth, chartScale, dynamicBarH);
           break;
         case 'dot':
           renderDotChart(leaves, chartData, spanG, panelX, panelWidth, chartScale, dynamicBarH);
+          if (window.tmFast && tmFast.active) tmFast.finish(spanG);
           break;
         case 'box':
           renderBoxChart(leaves, chartData, spanG, panelX, panelWidth, chartScale, dynamicBarH);
@@ -10938,6 +11007,7 @@ function drawTreeBody(){
         default:
            // For now, render as bar chart until individual functions are implemented
            renderBarChart(leaves, chartData, spanG, panelX, panelWidth, chartScale, dynamicBarH);
+           if (window.tmFast && tmFast.active) tmFast.finish(spanG);
        }
       
       // Helper function to render bar chart
@@ -10981,6 +11051,10 @@ function drawTreeBody(){
               const boxWidth = endX - startX;
               const y = d.x - (dynamicBarH / 2) + (index * (barWidth + barSpacing));
               
+              if (window.tmFast && tmFast.active) {   // a large tree: all bars of one colour as one path
+                tmFast.item(spanG, { x: panelX, w: panelWidth, rowTol: dynamicBarH / 2, vmin: chartDomain[0], vmax: chartDomain[1], tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { x: startX, w: boxWidth, y, h: barWidth, color: col.color, leaf: d, column: col.column, value: col.value });
+              } else
+
               spanG.append('rect').attr('data-accession', d.data.name)   // (the bar itself: no group per row)
                 .attr('x', startX)
                 .attr('y', y)
@@ -11015,6 +11089,10 @@ function drawTreeBody(){
               const boxWidth = endX - startX;
               const y = d.x - (dynamicBarH / 2);
               
+              if (window.tmFast && tmFast.active) {   // a large tree: all bars of one colour as one path
+                tmFast.item(spanG, { x: panelX, w: panelWidth, rowTol: dynamicBarH / 2, vmin: chartDomain[0], vmax: chartDomain[1], tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { x: startX, w: boxWidth, y, h: dynamicBarH, color: col.color, leaf: d, column: col.column, value: col.value });
+              } else
+
               spanG.append('rect').attr('data-accession', d.data.name)   // (the bar itself: no group per row)
                 .attr('x', startX)
                 .attr('y', y)
@@ -11049,6 +11127,10 @@ function drawTreeBody(){
               const boxWidth = endX - startX;
               const y = d.x - (dynamicBarH / 2);
               
+              if (window.tmFast && tmFast.active) {   // a large tree: all bars of one colour as one path
+                tmFast.item(spanG, { x: panelX, w: panelWidth, rowTol: dynamicBarH / 2, vmin: chartDomain[0], vmax: chartDomain[1], tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { x: startX, w: boxWidth, y, h: dynamicBarH, color: col.color, leaf: d, column: col.column, value: col.value });
+              } else
+
               spanG.append('rect').attr('data-accession', d.data.name)   // (the bar itself: no group per row)
                 .attr('x', startX)
                 .attr('y', y)
@@ -11267,6 +11349,11 @@ function drawTreeBody(){
               ensureLayerBands(spanG, leaves, panelX, panelWidth, dynamicBarH);   // the column's highlight bands (made when needed)
               
               // Draw circle (dots always shown)
+              if (window.tmFast && tmFast.active) {   // a large tree: all dots of one colour as one path
+                const r0 = chartData.dotSizeDot || 3, cx = panelX + chartScale(value);
+                tmFast.item(spanG, { x: panelX, w: panelWidth, rowTol: dynamicBarH / 2, vmin: chartDomain[0], vmax: chartDomain[1], tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { x: cx - r0, w: 2 * r0, y: leaf.x - r0, h: 2 * r0, color: chartData.valueColors.get(column), path: tmFast.circlePath(cx, leaf.x, r0), leaf, column, value });
+                return;
+              }
               spanG.append('circle').attr('data-accession', leaf.data.name)   // (the dot itself: no group per dot)
                 .attr('cx', panelX + chartScale(value))
                 .attr('cy', leaf.x)
@@ -24459,6 +24546,7 @@ function buildExportSvgSource(){
   
   // 4. Remove highlight boxes that appear on hover (df-leaf-highlight)
   svgClone.querySelectorAll('.df-leaf-highlight').forEach(el => el.remove());
+  svgClone.querySelectorAll('.fast-hit').forEach(el => el.remove());   // (the invisible hit areas of a large tree, js/fast-draw.js)
   
   // 5. Remove label highlight backgrounds only if they're transparent (no highlight data)
   svgClone.querySelectorAll('.label-highlight-bg').forEach(el => {
