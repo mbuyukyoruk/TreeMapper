@@ -1188,6 +1188,7 @@ function createSplitters() {
       splitter.style.marginLeft = -(SPLITTER_HIT_WIDTH - SPLITTER_WIDTH) / 2 + 'px';
       
     splitter.addEventListener('mousedown', startDrag);
+    splitter.addEventListener('mouseenter', () => { if (window.tmFast && tmFast.active && tmFast.dragPrepare) tmFast.dragPrepare(); });   // a large tree: its drag pictures painted now, not at the press
     
     splitter.addEventListener('mouseenter', function() {
       if (window.svgSplitters && window.svgSplitters[i]) {
@@ -1357,6 +1358,20 @@ function drag(e) {
   refreshAllRAF();
 }
 
+// A large tree drawn as few elements (js/fast-draw.js) paints pictures of its branches and
+// markers before a splitter drag; the pointer nearing a splitter starts that, so the pictures
+// are ready when the press comes (WebKit takes a moment to paint 24,000 tips).
+document.addEventListener('mousemove', (e) => {
+  if (!(window.tmFast && tmFast.active && tmFast.dragPrepare) || isDragging || !window.svgSplitters) return;
+  const svgEl = document.getElementById('svg'); if (!svgEl) return;
+  const r = svgEl.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+  for (const sp of window.svgSplitters) {
+    const line = sp && sp.line && sp.line.node ? sp.line.node() : null; if (!line) continue;
+    const lr = line.getBoundingClientRect();
+    if (Math.abs(e.clientX - lr.left) <= 24) { tmFast.dragPrepare(); return; }
+  }
+}, { passive: true });
+
 function endDrag() {
   isDragging = false;
   panelTypeCountsCache = null;
@@ -1364,6 +1379,7 @@ function endDrag() {
   dragGeom = null;
   dragLiveSticky = false; lastPreviewWidths = null;
   if (window.tmDragLive) tmDragLive.reset();
+  if (window.tmFast && tmFast.dragEnd) tmFast.dragEnd();   // a large tree's live frames: the drawing as it was, then the redraw below
   currentSplitter = null;
   document.removeEventListener('mousemove', drag);
   document.removeEventListener('mouseup', endDrag);
@@ -1742,7 +1758,8 @@ function refreshAllRAF() {
 }
 
 function drawSplittersInSVG(g, contentHeight, canvasRect) {
-  g.selectAll('.svg-splitter').remove();
+  // (drawn again on every frame of a large tree's splitter drag: the previous lines, handles and hit areas go)
+  g.selectAll('.svg-splitters, .svg-splitter, .svg-splitter-symbol, .svg-splitter-hit-area').remove();
   
   const svg = document.getElementById('svg');
   if (!svg) return;
@@ -1809,6 +1826,7 @@ function drawSplittersInSVG(g, contentHeight, canvasRect) {
       .attr('fill', 'transparent')
       .style('pointer-events', 'auto')
       .style('cursor', 'col-resize')
+      .on('mouseenter', function() { if (window.tmFast && tmFast.active && tmFast.dragPrepare) tmFast.dragPrepare(); })   // a large tree: its drag pictures painted now, not at the press
       .on('mousedown', function(e) {
         e.preventDefault();
         e.stopPropagation();
@@ -3342,7 +3360,7 @@ function upsertTreeScaleBar(x0, axisY, widthPx, domain) {
   let g = root.select(`#${gId}`);
   
   if (g.empty()) {
-    g = root.append('g').attr('id', gId);
+    g = root.append('g').attr('id', gId).attr('data-tree-part', '');   // (part of the tree drawing: stretched with it in a large tree's splitter drag)
   }
 
   g.attr('transform', `translate(${x0}, ${axisY})`);

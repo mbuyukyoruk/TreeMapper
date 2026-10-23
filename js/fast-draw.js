@@ -22,6 +22,10 @@
     F.active = leaves.length >= window.TM_FAST_FROM && window.tmFastDraw !== false;
     F.radial = !!isRadial;
     F.cols = new Map();
+    F.drawCount = (F.drawCount || 0) + 1;
+    // a drag's pictures belong to the drawing they were painted from; a column the redraw keeps gets its paths back
+    if (F.dragEnd) { F.dragEnd(); dropPictures(); }
+    document.querySelectorAll('[data-fast-hidden]').forEach(p => { p.style.visibility = p.getAttribute('data-fast-hidden') || ''; p.removeAttribute('data-fast-hidden'); });
     // the hovered row is forgotten with the drawing it was found in (the next pointer move finds it again)
     try { if (typeof hoveredBand !== 'undefined') hoveredBand = null; } catch (e) {}
     if (!F.active) { F.rows = null; return false; }
@@ -352,41 +356,285 @@
     relabelT = setTimeout(() => { relabelT = 0; if (F.active && F.culled) drawTree(); }, 150);
   };
 
-  // ---- a splitter drag: live frames from the few elements (no redraw until the release)
-  // The tree's branches and markers are stretched to the tree column; every data column is
-  // moved, and stretched when its width changed (its cells and bars are drawn in proportion
-  // to the column's width, so a stretch is what a redraw would give); the splitter lines are
-  // drawn again. The release draws everything for real.
-  let dragBase = null;
-  const treeSpanOf = (p) => ({ a: p.x + 48, s: Math.max(1, p.width - 56) });
+  // ---- a splitter drag of the rectangular layout: live frames from the few elements
+  // The tree's parts are stretched to the tree column; every data column is moved, and
+  // stretched when its width changed (its cells and bars are drawn in proportion to the
+  // column's width, so a stretch is what a redraw would give). The big paths (branches,
+  // markers, cells, bars, bands) are painted once into a picture per group, while the
+  // splitter is hovered, so a frame moves bitmaps instead of rasterising tens of thousands
+  // of subpaths again (WebKit managed 12 frames a second that way on 24,000 tips). Text is
+  // moved to its new place, never scaled. The release draws everything for real.
+  let dragBase = null, dragPics = null, dragPicsKey = '';
+  // what a group's content spans at the drag's start, and the fixed room on either side of it
+  // in its panel: a redraw keeps that room and stretches the content to what is left, so the
+  // frame does the same (a column's padding, the axis' margins, the tree's own gaps)
+  function spanOf(el, panel) {
+    let bb = null; try { bb = el.getBBox(); } catch (e) {}
+    if (!bb || !(bb.width > 0)) return null;
+    return { a: bb.x, s: bb.width, mL: bb.x - panel.x, mR: panel.x + panel.width - (bb.x + bb.width) };
+  }
+  // the stretch of a span to its panel's new size, as a matrix
+  function stretchOf(span, panel) {
+    if (!span) return null;
+    const s1 = Math.max(1, panel.width - span.mL - span.mR), a1 = panel.x + span.mL, k = s1 / span.s;
+    return { k, tx: a1 - span.a * k };
+  }
+  const HEAVY_D = 1500;   // a path with more data than this (characters) goes into the picture
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function dragGroups() {
+    const groups = [...document.querySelectorAll('#zoomable [data-tree-part]')];
+    if (typeof layerReuse !== 'undefined' && layerReuse.byKey) layerReuse.byKey.forEach(e => { if (e.el && e.el.isConnected && e.panelFn && Number.isFinite(e.x) && e.w > 0) groups.push(e.el); });
+    return groups;
+  }
+  function viewKey() {
+    let t; try { t = d3.zoomTransform(document.getElementById('svg')); } catch (e) { return ''; }
+    return F.drawCount + '|' + t.x + '|' + t.y + '|' + t.k + '|' + (window.devicePixelRatio || 1);
+  }
+  // the group's heavy paths painted into one picture of the part of the group in view, on the
+  // screen's own pixel grid (so the swap from paths to picture shows nothing). The PNG is
+  // written here: the browser's encoder took 0.7 s per picture in WebKit, this takes a few ms
+  // per megabyte (stored blocks, no compression).
+  const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; } return t; })();
+  function pngBlob(cv) {
+    const W = cv.width, H = cv.height, rgba = cv.getContext('2d').getImageData(0, 0, W, H).data;
+    const rowLen = W * 4 + 1, raw = H * rowLen, nBlocks = Math.ceil(raw / 65535), zlen = 2 + raw + nBlocks * 5 + 4;
+    const out = new Uint8Array(8 + 25 + 13 + 16 + 12 + zlen + 12);   // (sRGB and gAMA chunks: the colours decoded as on the page)
+    const u32 = (v, at) => { out[at] = v >>> 24; out[at + 1] = (v >>> 16) & 255; out[at + 2] = (v >>> 8) & 255; out[at + 3] = v & 255; };
+    const crcOf = (from, to) => { let c = 0xFFFFFFFF; for (let i = from; i < to; i++) c = CRC_T[(c ^ out[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+    out.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+    let p = 8;
+    u32(13, p); out.set([73, 72, 68, 82], p + 4); u32(W, p + 8); u32(H, p + 12); out[p + 16] = 8; out[p + 17] = 6; u32(crcOf(p + 4, p + 21), p + 21); p += 25;
+    u32(1, p); out.set([115, 82, 71, 66], p + 4); out[p + 8] = 0; u32(crcOf(p + 4, p + 9), p + 9); p += 13;
+    u32(4, p); out.set([103, 65, 77, 65], p + 4); u32(45455, p + 8); u32(crcOf(p + 4, p + 12), p + 12); p += 16;
+    u32(zlen, p); out.set([73, 68, 65, 84], p + 4); const chunk = p + 4; p += 8;
+    out[p++] = 0x78; out[p++] = 0x01;
+    let a = 1, b = 0, left = 0, remaining = raw, i = 0, mod = 0;
+    for (let y = 0; y < H; y++) {
+      for (let k = -1; k < W * 4; k++) {
+        if (!left) { left = Math.min(65535, remaining); out[p++] = remaining <= 65535 ? 1 : 0; out[p++] = left & 255; out[p++] = left >>> 8; out[p++] = (~left) & 255; out[p++] = ((~left) >>> 8) & 255; }
+        const v = k < 0 ? 0 : rgba[i++];
+        out[p++] = v; a += v; b += a; left--; remaining--;
+        if (++mod === 5000) { a %= 65521; b %= 65521; mod = 0; }
+      }
+    }
+    a %= 65521; b %= 65521;
+    u32(((b << 16) | a) >>> 0, p); p += 4;
+    u32(crcOf(chunk, p), p); p += 4;
+    u32(0, p); out.set([73, 69, 78, 68], p + 4); u32(0xAE426082, p + 8);
+    return new Blob([out], { type: 'image/png' });
+  }
+  const styleAttrs = (st) => {
+    const a = [];
+    const put = (n, v, skip) => { if (v !== undefined && v !== null && v !== '' && v !== skip) a.push(n + '="' + String(v).replace(/"/g, "'") + '"'); };
+    put('fill', st.fill); put('fill-opacity', st.fillOpacity, '1'); put('fill-rule', st.fillRule, 'nonzero');
+    put('stroke', st.stroke, 'none'); if (st.stroke && st.stroke !== 'none') { put('stroke-width', st.strokeWidth); put('stroke-opacity', st.strokeOpacity, '1'); put('stroke-linecap', st.strokeLinecap, 'butt'); put('stroke-linejoin', st.strokeLinejoin, 'miter'); put('stroke-dasharray', st.strokeDasharray, 'none'); put('stroke-miterlimit', st.strokeMiterlimit, '4'); }
+    put('opacity', st.opacity, '1'); put('shape-rendering', st.shapeRendering, 'auto');
+    return a.join(' ');
+  };
+  function paintPicture(el) {
+    const T = {}; let tq = performance.now(); const lap = (n) => { T[n] = Math.round(performance.now() - tq); tq = performance.now(); };
+    const heavy = [...el.querySelectorAll('path')].filter(p => (p.getAttribute('d') || '').length > HEAVY_D);
+    if (!heavy.length) return null;
+    const svgEl = document.getElementById('svg');
+    let ctm, bb; try { ctm = el.getScreenCTM(); bb = el.getBBox(); } catch (e) { return null; }
+    lap('bbox');
+    if (!ctm || !bb || !(ctm.a > 0) || !(ctm.d > 0)) return null;
+    const sr = svgEl.getBoundingClientRect(), inv = ctm.inverse();
+    const dpr = window.devicePixelRatio || 1;
+    // the part in view, in the group's frame, its corners on the screen's device pixels (the
+    // picture then sits on the same pixel grid as the paths it stands in for)
+    const toG = (X, Y) => [(X - ctm.e) / ctm.a, (Y - ctm.f) / ctm.d];
+    const toS = (x, y) => [ctm.a * x + ctm.e, ctm.d * y + ctm.f];
+    const [bx0, by0] = toS(bb.x - 4, bb.y - 4), [bx1, by1] = toS(bb.x + bb.width + 4, bb.y + bb.height + 4);
+    const X0 = Math.floor(Math.max(sr.left, bx0) * dpr) / dpr, X1 = Math.ceil(Math.min(sr.right, bx1) * dpr) / dpr;
+    const Y0 = Math.floor(Math.max(sr.top, by0) * dpr) / dpr, Y1 = Math.ceil(Math.min(sr.bottom, by1) * dpr) / dpr;
+    if (!(X1 > X0 && Y1 > Y0)) return null;
+    let W = Math.round((X1 - X0) * dpr), H = Math.round((Y1 - Y0) * dpr);
+    const area = W * H, MAX_AREA = 12e6; if (area > MAX_AREA) { const q = Math.sqrt(MAX_AREA / area); W = Math.round(W * q); H = Math.round(H * q); }
+    W = Math.max(1, W); H = Math.max(1, H);
+    const [x0, y0] = toG(X0, Y0), [x1, y1] = toG(X1, Y1);
+    const im = document.createElementNS(SVG_NS, 'image');
+    im.setAttribute('class', 'fast-drag-picture'); im.setAttribute('x', x0); im.setAttribute('y', y0); im.setAttribute('width', x1 - x0); im.setAttribute('height', y1 - y0);
+    im.setAttribute('preserveAspectRatio', 'none'); im.setAttribute('pointer-events', 'none'); im.style.display = 'none';
+    const pic = { el, im, heavy, url: null, ready: false, shown: false, T };
+    const done = (href) => { if (pic.dead) return; im.setAttribute('href', href); pic.ready = true; if (pic.wanted) showPicture(el); };
+    heavy[0].parentNode.insertBefore(im, heavy[0]);   // (what is drawn above the first heavy path stays above the picture)
+    // painted on a canvas: the same paths, on the same pixel grid, no document to parse
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d'); if (!ctx) return null;
+    const kx = W / (x1 - x0), ky = H / (y1 - y0);
+    // the paths written to an SVG image and painted by the browser's own SVG renderer: a canvas
+    // painting them itself blends sub-pixel rows differently in WebKit, and the swap would show
+    const parts = [];
+    heavy.forEach(p => {
+      const st = getComputedStyle(p);
+      if (st.display === 'none' || st.visibility === 'hidden' || !(parseFloat(st.opacity) > 0)) return;
+      let rel; try { rel = inv.multiply(p.getScreenCTM()); } catch (e) { return; }
+      const tr = (Math.abs(rel.a - 1) < 1e-9 && Math.abs(rel.d - 1) < 1e-9 && !rel.b && !rel.c && !rel.e && !rel.f) ? '' : ' transform="matrix(' + [rel.a, rel.b, rel.c, rel.d, rel.e, rel.f].join(',') + ')"';
+      parts.push('<path d="' + p.getAttribute('d') + '"' + tr + ' ' + styleAttrs(st) + '/>');
+    });
+    if (!parts.length) { im.remove(); return null; }
+    lap('svg');
+    const svgText = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="' + x0 + ' ' + y0 + ' ' + (x1 - x0) + ' ' + (y1 - y0) + '" preserveAspectRatio="none">' + parts.join('') + '</svg>';
+    const svgUrl = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }));
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(svgUrl); lap('load');
+      if (pic.dead) return;
+      try {
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        cv.getContext('2d').drawImage(img, 0, 0, W, H); lap('paint');
+        const blob = pngBlob(cv); lap('png');
+        pic.url = URL.createObjectURL(blob); done(pic.url);
+      } catch (e) { /* (no picture: the paths stay) */ }
+    };
+    img.onerror = () => { URL.revokeObjectURL(svgUrl); };
+    img.src = svgUrl;
+    return pic;
+  }
+  function dropPictures() {
+    if (dragPics) dragPics.forEach(pic => { pic.dead = true; if (pic.url) { try { URL.revokeObjectURL(pic.url); } catch (e) {} } if (pic.im.parentNode) pic.im.parentNode.removeChild(pic.im); });
+    dragPics = null; dragPicsKey = '';
+    document.querySelectorAll('image.fast-drag-picture').forEach(im => im.remove());
+  }
+  // the pictures made in advance (the splitter hovered), for this drawing and view
+  F.dragPrepare = function () {
+    if (!F.active || F.radial || dragBase) return;
+    const key = viewKey();
+    if (dragPics && dragPicsKey === key) return;
+    dropPictures();
+    const pics = [];
+    // the tree's parts only: WebKit painted 5 frames a second with the branches and markers of 24,000
+    // tips as paths under a transform, while the columns' paths cost it nothing measurable (and a
+    // column's paths stretched are exactly what a redraw gives, a picture of them is not quite)
+    dragGroups().forEach(el => { if (!el.hasAttribute('data-tree-part')) return; const pic = paintPicture(el); if (pic) pics.push(pic); });
+    dragPics = pics; dragPicsKey = key;
+  };
   F.dragCapture = function () {
     dragBase = null;
     if (!F.active || F.radial || typeof getPanelPositions !== 'function') return;
     const ps = getPanelPositions(), tree = ps.find(p => p.type === 'tree'); if (!tree) return;
+    F.dragPrepare();
     const parts = [...document.querySelectorAll('#zoomable [data-tree-part]')];
+    const links = document.querySelector('#zoomable g.links[data-tree-part]');
+    const treeSpan = (links && spanOf(links, tree)) || { a: tree.x + 48, s: Math.max(1, tree.width - 56), mL: 48, mR: 8 };
     const layers = [];
-    if (typeof layerReuse !== 'undefined' && layerReuse.byKey) layerReuse.byKey.forEach(e => { if (e.el && e.el.isConnected && e.panelFn && Number.isFinite(e.x) && e.w > 0) layers.push(e); });
-    dragBase = { tree: treeSpanOf(tree), parts, layers };
+    if (typeof layerReuse !== 'undefined' && layerReuse.byKey) layerReuse.byKey.forEach((e, key) => {
+      if (!(e.el && e.el.isConnected && e.panelFn && Number.isFinite(e.x) && e.w > 0)) return;
+      const content = e.el.firstElementChild;   // (the column's cells, bars or arcs; the axis and title follow it)
+      layers.push({ e, type: String(key).split(':')[0], span: (content && spanOf(content, { x: e.x, width: e.w })) || { a: e.x, s: e.w, mL: 0, mR: 0 }, drawnAt: null });
+    });
+    const baseOf = new Map(); parts.forEach(el => baseOf.set(el, el.getAttribute('transform') || '')); layers.forEach(L => baseOf.set(L.e.el, L.e.el.getAttribute('transform') || ''));
+    dragBase = { tree: treeSpan, parts, layers, texts: new Map(), baseOf };
   };
   F.dragReady = function () { return !!dragBase; };
+  // a group moved or stretched: its picture shown instead of its heavy paths
+  function showPicture(el) {
+    const pic = dragPics && dragPics.find(p => p.el === el); if (!pic || pic.shown) return;
+    if (!dragBase && !pic.preview) return;
+    pic.wanted = true;
+    if (!pic.ready) return;   // (shown as soon as it is: the paths stay until then)
+    pic.heavy.forEach(p => { p.setAttribute('data-fast-hidden', p.style.visibility || ''); p.style.visibility = 'hidden'; });
+    pic.im.style.display = ''; pic.shown = true;
+  }
+  function hidePicture(pic) {
+    pic.wanted = false; pic.preview = false;
+    if (!pic.shown) return;
+    pic.shown = false; pic.im.style.display = 'none';
+    pic.heavy.forEach(p => { p.style.visibility = p.getAttribute('data-fast-hidden') || ''; p.removeAttribute('data-fast-hidden'); });
+  }
+  // (for checks: every picture shown in place of its paths, or the paths back)
+  F.dragPreview = function (on) {
+    if (on) { F.dragPrepare(); if (dragPics) dragPics.forEach(pic => { pic.preview = true; showPicture(pic.el); }); }
+    else if (dragPics) dragPics.forEach(hidePicture);
+  };
+  // the group's "units" (text, axis ticks, the + and - buttons, axis titles, vertical lines)
+  // keep their size: each is moved to where the stretch puts its anchor. Everything else in the
+  // group (cells, bars, bands, the axis line) is drawn in proportion to the column and stretches.
+  const UNIT_GROUP = '.tick, .axis-title, .axis-title-add, .axis-ui';
+  function placeTexts(el, k) {
+    const b = dragBase; if (!b) return;
+    let units = b.texts.get(el);
+    if (!units) {
+      units = [];
+      let inv; try { inv = el.getCTM().inverse(); } catch (e) { inv = null; }
+      const seen = new Set();
+      const add = (t, x, y, tick) => {
+        if (seen.has(t) || t.closest('.svg-splitters')) return;
+        seen.add(t);
+        const base = t.getAttribute('transform') || '';
+        let ax = x, gx = x;
+        try { const own = t.parentNode.getCTM().inverse().multiply(t.getCTM()); ax = own.a * x + own.c * y + own.e; const m = inv.multiply(t.getCTM()); gx = m.a * x + m.c * y + m.e; } catch (e) {}
+        let w = 0; if (tick) { try { const tx = t.querySelector('text'); w = tx ? tx.getBBox().width : 0; } catch (e) {} }
+        units.push({ t, base, ax, gx, axis: tick ? t.parentNode : null, w, vis: t.style.visibility || '' });
+      };
+      el.querySelectorAll(UNIT_GROUP).forEach(g => { if (g.parentNode.closest && g.parentNode.closest(UNIT_GROUP) && el.contains(g.parentNode.closest(UNIT_GROUP))) return; add(g, 0, 0, g.classList.contains('tick')); });
+      el.querySelectorAll('text').forEach(t => { const u = t.parentNode.closest ? t.parentNode.closest(UNIT_GROUP) : null; if (u && el.contains(u)) return; add(t, +t.getAttribute('x') || 0, +t.getAttribute('y') || 0, false); });
+      el.querySelectorAll('line').forEach(l => { const u = l.parentNode.closest ? l.parentNode.closest(UNIT_GROUP) : null; if (u && el.contains(u)) return; const x1 = +l.getAttribute('x1') || 0, x2 = +l.getAttribute('x2') || 0; if (Math.abs(x1 - x2) < 0.01) add(l, x1, +l.getAttribute('y1') || 0, false); });
+      b.texts.set(el, units);
+    }
+    units.forEach(({ t, base, ax, vis }) => {
+      if (k === 1) { if (base) t.setAttribute('transform', base); else t.removeAttribute('transform'); t.style.visibility = vis; }
+      else t.setAttribute('transform', 'translate(' + ax + ',0) scale(' + (1 / k) + ',1) translate(' + (-ax) + ',0)' + (base ? ' ' + base : ''));
+    });
+    if (k === 1) return;
+    // tick numbers that would overlap on the stretched axis are left out (a redraw chooses fewer ticks)
+    const axes = new Map();
+    units.forEach(it => { if (!it.axis) return; let a = axes.get(it.axis); if (!a) { a = []; axes.set(it.axis, a); } a.push(it); });
+    axes.forEach(a => {
+      a.sort((p, q) => p.gx - q.gx);
+      let lastX = -Infinity, lastW = 0;
+      a.forEach(it => {
+        const X = it.gx * k;
+        if (X - lastX < (lastW + it.w) / 2 + 6) it.t.style.visibility = 'hidden';
+        else { it.t.style.visibility = it.vis; lastX = X; lastW = it.w; }
+      });
+    });
+  }
   F.dragFrame = function () {
     const b = dragBase; if (!b) return false;
     const ps = getPanelPositions(), tree = ps.find(p => p.type === 'tree'); if (!tree) return false;
-    const t1 = treeSpanOf(tree), k = t1.s / b.tree.s;
-    const m = (k === 1 && t1.a === b.tree.a) ? null : 'matrix(' + k + ',0,0,1,' + (t1.a - b.tree.a * k) + ',0)';
+    const st = stretchOf(b.tree, tree), k = st.k;
+    const m = (Math.abs(k - 1) < 1e-9 && Math.abs(st.tx) < 1e-9) ? null : 'matrix(' + k + ',0,0,1,' + st.tx + ',0)';
     let changed = !!m;
-    b.parts.forEach(el => { if (m) el.setAttribute('transform', m); else el.removeAttribute('transform'); });
-    b.layers.forEach(e => {
+    // (a group's own transform, e.g. the scale bar's translate, stays underneath the frame's)
+    const setT = (el, t) => { const base = b.baseOf.get(el) || ''; const v = (t ? t + (base ? ' ' + base : '') : base); if (v) el.setAttribute('transform', v); else el.removeAttribute('transform'); };
+    b.parts.forEach(el => {
+      if (m) showPicture(el);
+      setT(el, m);
+      if (k !== 1 || b.texts.has(el)) placeTexts(el, k);
+    });
+    b.layers.forEach((L) => {
+      const { e, span } = L;
       const p = e.panelFn(e.index); if (!p) return;
-      const kk = p.width / e.w;
-      if (Math.abs(kk - 1) < 1e-9 && p.x === e.x) e.el.removeAttribute('transform');
-      else if (Math.abs(kk - 1) < 1e-9) { e.el.setAttribute('transform', 'translate(' + (p.x - e.x) + ',0)'); changed = true; }
-      else { e.el.setAttribute('transform', 'matrix(' + kk + ',0,0,1,' + (p.x - e.x * kk) + ',0)'); changed = true; }
+      // an alignment column is drawn again at its place and width on every frame (its residues
+      // are a picture that stretched would blur; the alignment code draws it in a few ms)
+      if (L.type === 'msa' && window.tmMsa && tmMsa.liveResize) {
+        if (L.drawnAt && L.drawnAt.x === p.x && L.drawnAt.width === p.width) return;
+        if (p.x === e.x && p.width === e.w && !L.drawnAt) return;
+        if (tmMsa.liveResize(e.index, p)) { L.drawnAt = { x: p.x, width: p.width }; changed = true; return; }
+      }
+      const s2 = stretchOf(span, p), kk = s2.k, same = Math.abs(kk - 1) < 1e-9;
+      if (same && Math.abs(s2.tx) < 1e-9) setT(e.el, '');
+      else { showPicture(e.el); setT(e.el, same ? 'translate(' + s2.tx + ',0)' : 'matrix(' + kk + ',0,0,1,' + s2.tx + ',0)'); changed = true; }
+      if (!same || b.texts.has(e.el)) placeTexts(e.el, same ? 1 : kk);
     });
     // (nothing moved yet, e.g. the press itself: the splitters stay as drawn)
     if (changed) { try { drawSplittersInSVG(g, lastSplitterContentHeight, dragGeom ? dragGeom.canvasRect : null); updateSplitterLineHeights(); } catch (e) {} }
     return true;
   };
+  // the release: the groups, their text and their heavy paths as they were (the redraw that
+  // follows replaces most of them; a column kept by the redraw must be whole)
+  F.dragEnd = function () {
+    const b = dragBase; dragBase = null;
+    if (!b) return;
+    const restore = (el) => { const base = b.baseOf.get(el) || ''; if (base) el.setAttribute('transform', base); else el.removeAttribute('transform'); };
+    b.parts.forEach(restore);
+    b.layers.forEach(L => restore(L.e.el));
+    b.texts.forEach(texts => texts.forEach(({ t, base, vis }) => { if (base) t.setAttribute('transform', base); else t.removeAttribute('transform'); t.style.visibility = vis; }));
+    if (dragPics) dragPics.forEach(hidePicture);
+  };
+  F.dragPictures = function () { return dragPics ? dragPics.map(p => ({ ready: p.ready, shown: p.shown, heavy: p.heavy.length, w: +p.im.getAttribute('width'), h: +p.im.getAttribute('height'), T: p.T })) : null; };
 
   // ---- a ring drag of the circular layout: live frames from the few elements
   // The tree's paths scale with its ring; each data ring is painted into a picture with its
