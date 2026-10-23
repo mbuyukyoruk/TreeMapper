@@ -824,11 +824,18 @@ html.pro #cladeToolbar .clade-toolbar-btn.clear-btn { color: var(--pro-hud-muted
 html.pro #cladeToolbar #dropNode span,
 html.pro #cladeToolbar #isolateNodes span,
 html.pro #cladeToolbar #isolateLUCA span,
+html.pro #cladeToolbar #distancesBtn span,
 html.pro #cladeToolbar #clearCladeSelection span { display: none; }
 html.pro #cladeToolbar #dropNode,
 html.pro #cladeToolbar #isolateNodes,
 html.pro #cladeToolbar #isolateLUCA,
+html.pro #cladeToolbar #distancesBtn,
 html.pro #cladeToolbar #clearCladeSelection { width: 30px; padding: 0; justify-content: center; }
+/* narrow canvas: every button icon-only (js/pro-ui.js sets is-compact when the row would not fit) */
+html.pro #cladeToolbar.is-compact .clade-toolbar-btn span { display: none; }
+html.pro #cladeToolbar.is-compact .clade-toolbar-btn { width: 30px; padding: 0; justify-content: center; }
+html.pro #cladeToolbar.is-compact .clade-toolbar-content { gap: 0; padding-left: 2px; }
+html.pro #cladeToolbar.is-compact .clade-toolbar-header { padding: 0 6px 0 4px; }
 html.pro #cladeToolbar #dropNode:hover { background: rgba(248, 113, 113, .16); }
 html.pro #cladeToolbar #dropNode:hover svg { color: #FCA5A5; }
 html.pro #cladeToolbar .clade-toolbar-btn.clear-btn:hover { color: var(--pro-hud-text); background: var(--pro-hud-hover); border-color: transparent; }
