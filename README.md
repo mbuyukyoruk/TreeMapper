@@ -150,8 +150,16 @@ from y (or the angle in the circular layout), the bar from x (or the radius).
 The selection overlay, clade colours and marker colours redraw the few paths.
 Labels are drawn only for the rows in view once a label is at least 3.5 px
 tall on screen; a zoom or pan draws them again; the export draws every label.
-A splitter or ring drag moves and stretches the existing paths (rings are
-painted) and the release draws for real. Everything stays SVG, so zoom,
+A splitter drag shows live frames without a redraw: a column that only moves
+is translated; a column whose width changes has its cells, bars and axis line
+stretched to the new inner width (what a redraw gives), while its text, tick
+marks, axis title and + button are moved, never scaled, and tick numbers that
+would overlap are left out; an alignment column is drawn again at its new
+width on every frame. The tree's branches and markers are painted into a
+picture when the pointer nears a splitter (WebKit painted 5 frames a second
+with 24,000 tips' branches as paths under a transform), so the frames are
+cheap; the release draws everything for real. A ring drag in the circular
+layout paints the rings. Everything stays SVG, so zoom,
 export, sessions, undo and the comparison tree are unchanged. Below the
 threshold the drawing is exactly as before. Test:
 `PAGE=TreeMapper-fast node regress/fastmode.js` in `TreeMapper_tests`.
