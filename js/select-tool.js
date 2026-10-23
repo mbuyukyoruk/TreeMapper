@@ -137,6 +137,9 @@
         return;
       }
     }
+    // a large tree's hit areas (js/fast-draw.js) are let through the page's pointer-down guard so that
+    // splitter drags keep their mouse events; a marquee starting on one must not start a text selection
+    if (e.target.closest && e.target.closest('.fast-hit')) e.preventDefault();
     // a drag that starts over a dataframe column selects that layer's bars (feature-select.js)
     var feat = (window.tmFeatSel && typeof tmFeatSel.layerAtScreenX === 'function') ? tmFeatSel.layerAtScreenX(e.clientX, e.clientY) : null;
     drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false, targets: null, frame: 0, last: null, feat: feat,
