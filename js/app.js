@@ -217,6 +217,7 @@ const zoom = d3.zoom()
   .scaleExtent([0.5, 20])
   .filter(ev => {
     if(ev.type === 'wheel') return false;
+    if(geometry === 'radial') return false;   // the circular layout always shows the fitted figure
     if(!allowPan && (ev.type === 'mousedown' || ev.type === 'touchstart' || ev.type === 'pointerdown')) return false;
     return true;
   })
@@ -302,6 +303,7 @@ let panPending = null, panFrame = 0;
 // view was zoomed in or out (or moved) - otherwise the part zoomed into could not be reached.
 // Fit brings the fitted view back (and panning off).
 function panAllowedNow(){
+  if (geometry === 'radial') return false;   // the circular layout always shows the fitted figure
   if (allowPan) return true;
   const t = d3.zoomTransform(svg.node());
   return Math.abs(t.k - 1) > 0.005 || Math.abs(t.x) > 2 || Math.abs(t.y) > 2;
@@ -332,6 +334,7 @@ function applyPendingPan(){
   svg.call(zoom.transform, d3.zoomIdentity.translate(nx, ny).scale(t.k));
 }
 function panTreeBy(dx, dy){
+  if (geometry === 'radial') return;
   if (!panPending) panPending = { dx: 0, dy: 0 };
   panPending.dx += dx; panPending.dy += dy;
   if (!panFrame) panFrame = requestAnimationFrame(applyPendingPan);
@@ -12865,6 +12868,8 @@ function drawTreeBody(){
   
   // Reapply permanent colors after tree is fully drawn
   reapplyPermanentColors();
+  // the circular layout always shows the fitted figure: its zoom buttons are off
+  try { const zi = document.getElementById('zoomIn'), zo = document.getElementById('zoomOut'); if (zi) zi.disabled = isRadial; if (zo) zo.disabled = isRadial; } catch (e) {}
   // a large tree drawn as few elements: its hit areas would cover the splitters' hit areas (a press
   // on one starts a text selection instead of a drag), so the splitters go on top
   if (fastMode && !isRadial) { try { const sp = g.node().querySelector(':scope > g.svg-splitters'); if (sp) g.node().appendChild(sp); } catch (e) {} }
@@ -24563,6 +24568,7 @@ syncControls();
 })();
 
 function zoomBy(k){
+  if (geometry === 'radial') return;   // the circular layout always shows the fitted figure
   const expansionSlider = document.getElementById('expansion');
   const expansionValue = expansionSlider ? parseInt(expansionSlider.value) || 0 : 0;
   
