@@ -5588,9 +5588,12 @@ function arcPath(p, c){
 function refreshRadialPositions(){
   if(geometry !== 'radial' || !root) return;
   computeRadialAnglesInPlace();
+  if (window.tmFast && tmFast.active) { tmFast.rowsA = null; tmFast.restyleLinks(); tmFast.updateMarkers(); }   // (a large tree: the few paths drawn again)
+  else {
   d3.select('#zoomable').select('.links').selectAll('path').attr('d', d=> arcPath(d.source, d.target));
   d3.select('#zoomable').select('.nodes').selectAll('g.node')
     .attr('transform', d=> `translate(${d.rx||0},${d.ry||0})`);
+  }
   
   // Update radial labels positions
   const radialLabelsGroup = svg.select('.radial-labels');
@@ -6891,9 +6894,7 @@ function drawTreeBody(){
     // radial elbow: arc at parent radius to child angle, then radial line to child radius
     // PERF: look the active Bootstrap tab up once per redraw, not once per branch
     const linksBootstrapTab = document.querySelector('.bootstrap-tab.active')?.getAttribute('data-tab') || 'symbol';
-    gSpin.append('g').attr('class','links')
-      .selectAll('path')
-      .data(root.links().filter(d => {
+    const rLinkData = root.links().filter(d => {
         // Filter out links that belong to cartooned nodes
         // Show links TO cartooned nodes, but hide links FROM cartooned nodes to their children
         if (cartoonedNodes.has(d.source)) return false; // Hide links from cartooned node to children
@@ -6915,11 +6916,9 @@ function drawTreeBody(){
         }
         
         return true;
-      }))
-      .join('path')
-        .attr('d', d=> arcPath(d.source, d.target))
-        .attr('fill','none')
-        .attr('stroke', d => {
+      });
+    const rLinkShape = d => arcPath(d.source, d.target);
+    const rLinkStroke = d => {
           // Use stored clade color if available
           if(cladeColors.has(d.target)) {
             return cladeColors.get(d.target);
@@ -6948,8 +6947,8 @@ function drawTreeBody(){
           // written in here as well, and then stayed red after the selection
           // was cleared.)
           return ringCol;
-        })
-        .attr('stroke-width', d => {
+        };
+    const rLinkWidth = d => {
           // Thicker stroke for colored branches
           if(cladeColors.has(d.target)) {
             return getBranchStrokeWidth() * 1.3;
@@ -6959,7 +6958,19 @@ function drawTreeBody(){
             return getBranchStrokeWidth() * 1.3;
           }
           return getBranchStrokeWidth();
-        })
+        };
+    if (fastMode) {
+      // a large tree: all branches of one colour and width as one path (js/fast-draw.js)
+      tmFast.drawLinks(gSpin, rLinkData, rLinkShape, rLinkStroke, rLinkWidth);
+    } else
+    gSpin.append('g').attr('class','links')
+      .selectAll('path')
+      .data(rLinkData)
+      .join('path')
+        .attr('d', rLinkShape)
+        .attr('fill','none')
+        .attr('stroke', rLinkStroke)
+        .attr('stroke-width', rLinkWidth)
         .attr('data-source', d => d.source.name)
         .attr('data-target', d => d.target.name)
         .attr('class', 'tree-branch');
@@ -6970,7 +6981,12 @@ function drawTreeBody(){
 
   // Draw nodes
   let nodes, fastNodeData = null;
-  if(isRadial){
+  if (isRadial && fastMode) {
+    // a large circular tree: markers as a few paths (js/fast-draw.js); the ring code reads the
+    // leaves through a selection without elements (leavesSel below)
+    fastNodeData = root.descendants().filter(d => !d._removedAsDuplicate && !droppedNodes.has(d));
+    nodes = gSpin.append('g').attr('class','nodes').selectAll('g.node').data([]).join('g');
+  } else if(isRadial){
     nodes = gSpin.append('g').attr('class','nodes')
       .selectAll('g.node')
       .data(root.descendants().filter(d => !d._removedAsDuplicate && !droppedNodes.has(d)))
@@ -7088,7 +7104,7 @@ function drawTreeBody(){
       }
       return { fill, stroke, strokeWidth, isInternal, hidden };
     };
-    tmFast.drawNodes(g, fastNodeData, lookOf, { showInternal, showTipNodes, tipNodeSize, internalNodeSize, tipNodeShape, internalNodeShape });
+    tmFast.drawNodes(isRadial ? gSpin : g, fastNodeData, lookOf, { showInternal, showTipNodes, tipNodeSize, internalNodeSize, tipNodeShape, internalNodeShape, pos: isRadial ? (d => [d.rx || 0, d.ry || 0]) : null });
   }
   // Create nodes with different shapes based on settings
   if (!fastMode) nodes.each(function(d) {
@@ -7249,7 +7265,7 @@ function drawTreeBody(){
 
 
   // Leaf labels
-  const leavesSel = nodes.filter(d=>!d.children && !d._children);
+  const leavesSel = (fastMode && isRadial) ? tmFast.leafSelection(leaves.filter(d => !d._removedAsDuplicate && !droppedNodes.has(d))) : nodes.filter(d=>!d.children && !d._children);
   if(!isRadial){
     const _hideLabels = document.getElementById('hideLabels');
     const hideLabels = !!(_hideLabels && _hideLabels.checked);
@@ -7692,6 +7708,10 @@ function drawTreeBody(){
             
             const color = heatmapColorOf(heatmapData, value);
             
+            if (fastMode) {   // a large tree: all cells of one colour as one arc path (js/fast-draw.js)
+              tmFast.polar(heatmapGroup, { r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, tooltip: (it, l) => `<b>${l.data.name}</b><br>Value: ${it.value}` }, { a: angle, r0: ring.innerRadius, r1: ring.outerRadius, path: arcGen(), color, leaf: d, value });
+              return;
+            }
             heatmapGroup.append('path')
               .attr('class', 'radial-heatmap-arc')
               .attr('data-accession', d.data.name)
@@ -7716,6 +7736,7 @@ function drawTreeBody(){
                 hideTip();
               });
           });
+          if (fastMode) tmFast.finishPolar(heatmapGroup);
         });
       }
       
@@ -8325,7 +8346,8 @@ function drawTreeBody(){
                   const x2 = clampedEndR * Math.cos(angle - Math.PI / 2);
                   const y2 = clampedEndR * Math.sin(angle - Math.PI / 2);
                   
-                  dataframeGroup.append('line')
+                  if (fastMode) tmFast.polar(dataframeGroup, { r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, vmin: dfVmin, vmax: dfVmax, tooltip: (it) => it.operonTip }, { a: angle, r0: clampedStartR, r1: clampedEndR, path: tmFast.radialLine(angle, clampedStartR, clampedEndR), stroke: 'var(--text)', sw: 3, op: 0.8, back: true, leaf: d, operonTip: `Operon: ${minStart}-${maxEnd} (expanded: ${expandedMinStart.toFixed(1)}-${expandedMaxEnd.toFixed(1)})` });
+                  else dataframeGroup.append('line')
                     .attr('class', 'radial-operon-stroke')
                     .attr('data-accession', d.data.name)
                     .attr('x1', x1)
@@ -8385,6 +8407,13 @@ function drawTreeBody(){
                 if (clampedOuterR <= clampedInnerR) return; // Nothing to draw
                 
                 const geneColor = color(gname || '');
+                if (fastMode) {   // a large tree: all bars of one gene as one path, the bar under the pointer found by angle and radius
+                  const ogF = orientCol ? (parseInt(r[orientCol], 10) || 0) : 0, arrowF = dfGeneOrientation.get(gname), dnaF = !!(dataframe.operonState && dataframe.operonState.get(gname));
+                  const fo = { r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, vmin: dfVmin, vmax: dfVmax, tooltip: (it) => buildDataframeTooltip(it.r, preparedMeta, columnIndicesRadial), click: (it, l, ev) => { toggleDataframeFocusGene(dataframeId, it.gname, ev); } };
+                  if (dnaF) tmFast.polar(dataframeGroup, fo, { a: angle, r0: clampedInnerR, r1: clampedOuterR, path: tmFast.radialLine(angle, clampedInnerR, clampedOuterR), stroke: geneColor, sw: 2, leaf: d, gname, r });
+                  else tmFast.polar(dataframeGroup, fo, { a: angle, r0: clampedInnerR, r1: clampedOuterR, path: arrowF ? tmFast.arcArrowPath(angle, arcSpan, clampedInnerR, clampedOuterR, ogF) : d3.arc()({ innerRadius: clampedInnerR, outerRadius: clampedOuterR, startAngle: angle - arcSpan / 2, endAngle: angle + arcSpan / 2 }), color: geneColor, leaf: d, gname, r });
+                  return;
+                }
                 
                 // Build dynamic tooltip from all available columns
                 const tooltipContent = buildDataframeTooltip(r, preparedMeta, columnIndicesRadial);
@@ -8584,6 +8613,7 @@ function drawTreeBody(){
               });
             });
           });
+          if (fastMode) tmFast.finishPolar(dataframeGroup);
         });
       }
       
@@ -8921,6 +8951,7 @@ function drawTreeBody(){
             default:
               renderRadialBarChart(leavesSel, chartData, chartGroup, ring, chartScale, arcSpan, chartMin, chartMax);
           }
+          if (fastMode) tmFast.finishPolar(chartGroup);
         });
         
         // Helper function to render radial bar chart
@@ -8967,7 +8998,8 @@ function drawTreeBody(){
                   .startAngle(startAngle)
                   .endAngle(endAngle);
                 
-                chartGroup.append('path')
+                if (fastMode) tmFast.polar(chartGroup, { r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, vmin: chartMin, vmax: chartMax, tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { a: angle, r0: Math.min(innerR, outerR), r1: Math.max(innerR, outerR), a0: (typeof startAngle !== 'undefined' ? startAngle : undefined), a1: (typeof endAngle !== 'undefined' ? endAngle : undefined), path: arcGen(), color: col.color, op: 0.8, leaf: d, column: col.column, value: col.value });   // a large tree: one path per colour
+                else chartGroup.append('path')
                   .attr('d', arcGen)
                   .attr('fill', col.color)
                   .attr('stroke', 'none')
@@ -9008,7 +9040,8 @@ function drawTreeBody(){
                   .startAngle(angle - arcSpan / 2)
                   .endAngle(angle + arcSpan / 2);
                 
-                chartGroup.append('path')
+                if (fastMode) tmFast.polar(chartGroup, { r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, vmin: chartMin, vmax: chartMax, tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { a: angle, r0: Math.min(innerR, outerR), r1: Math.max(innerR, outerR), a0: (typeof startAngle !== 'undefined' ? startAngle : undefined), a1: (typeof endAngle !== 'undefined' ? endAngle : undefined), path: arcGen(), color: col.color, op: 0.8, leaf: d, column: col.column, value: col.value });   // a large tree: one path per colour
+                else chartGroup.append('path')
                   .attr('d', arcGen)
                   .attr('fill', col.color)
                   .attr('stroke', 'none')
@@ -9049,7 +9082,8 @@ function drawTreeBody(){
                   .startAngle(angle - arcSpan / 2)
                   .endAngle(angle + arcSpan / 2);
                 
-                chartGroup.append('path')
+                if (fastMode) tmFast.polar(chartGroup, { r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, vmin: chartMin, vmax: chartMax, tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { a: angle, r0: Math.min(innerR, outerR), r1: Math.max(innerR, outerR), a0: (typeof startAngle !== 'undefined' ? startAngle : undefined), a1: (typeof endAngle !== 'undefined' ? endAngle : undefined), path: arcGen(), color: col.color, op: 0.8, leaf: d, column: col.column, value: col.value });   // a large tree: one path per colour
+                else chartGroup.append('path')
                   .attr('d', arcGen)
                   .attr('fill', col.color)
                   .attr('stroke', 'none')
@@ -9271,7 +9305,8 @@ function drawTreeBody(){
                 const x = radius * Math.cos(angle - Math.PI / 2);
                 const y = radius * Math.sin(angle - Math.PI / 2);
                 
-                chartGroup.append('circle')
+                if (fastMode) { const r0d = chartData.dotSizeDot || 3; tmFast.polar(chartGroup, { r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, vmin: chartMin, vmax: chartMax, tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { a: angle, r0: radius - r0d, r1: radius + r0d, path: tmFast.circlePath(x, y, r0d), color: chartData.valueColors.get(column), leaf: d, column, value }); }   // a large tree: all dots of one colour as one path
+                else chartGroup.append('circle')
                   .attr('cx', x)
                   .attr('cy', y)
                   .attr('r', chartData.dotSizeDot || 3)
