@@ -21,10 +21,29 @@
   // ------------------------------------------------------------ the bars drawn
   function beginLayer(id) { bars.set(id, []); }
   function bar(id, b) { var list = bars.get(id); if (!list) { list = []; bars.set(id, list); } var i = rowIndex(b.row); if (i >= 0) list.push({ x: b.x, w: b.w, y: b.y, h: b.h, gene: b.gene, acc: b.acc, i: i }); }
+  // the circular layout: each row's arc (angle a in radians, 0 at 12 o'clock, clockwise; its
+  // angular span; radii), in the frame of the rings' group (svg .radial-labels)
+  var rings = new Map();             // dataframe id -> { r0, r1 } (the ring's radii)
+  function beginRing(id, r0, r1) { bars.set(id, []); rings.set(id, { r0: r0, r1: r1 }); }
+  function arc(id, b) { var list = bars.get(id); if (!list) { list = []; bars.set(id, list); } var i = rowIndex(b.row); if (i >= 0) list.push({ polar: true, a: b.a, span: b.span, r0: b.r0, r1: b.r1, gene: b.gene, acc: b.acc, i: i }); }
+  function isRadial() { return typeof geometry !== 'undefined' && geometry === 'radial'; }
+  function ringsEl() { return document.querySelector('#svg > g.radial-labels'); }
   function ctm() { var z = $('zoomable'); return z ? z.getScreenCTM() : null; }
+  // a screen point in the rings' frame: [radius, angle]
+  function polarAt(cx, cy) {
+    var el = ringsEl(), m = el && el.getScreenCTM(); if (!m) return null;
+    var p = new DOMPoint(cx, cy).matrixTransform(m.inverse());
+    var a = Math.atan2(p.x, -p.y); if (a < 0) a += 2 * Math.PI;
+    return { r: Math.hypot(p.x, p.y), a: a };
+  }
   // the dataframe column under a screen point (rectangular layout)
   function layerAtScreenX(cx, cy) {
-    if (typeof geometry !== 'undefined' && geometry === 'radial') return null;
+    if (isRadial()) {   // the dataframe ring under the point
+      var q = polarAt(cx, cy); if (!q) return null;
+      var hit = null;
+      rings.forEach(function (rg, id) { if (hit == null && bars.has(id) && q.r >= rg.r0 && q.r <= rg.r1 && typeof dataframes !== 'undefined' && dataframes.has(id)) hit = id; });
+      return hit;
+    }
     if (typeof root === 'undefined' || !root || typeof getPanelPositions !== 'function') return null;
     var m = ctm(); if (!m) return null;
     var x = (cx - m.e) / m.a;   // screen -> drawing (no rotation in the rectangular layout)
@@ -39,8 +58,22 @@
   // the bars as screen rectangles, for the marquee (select-tool.js hit-tests rects by their names)
   function targets(id) {
     var m = ctm(), list = bars.get(id) || [], rects = [];
+    if (isRadial()) {   // each arc as the screen box around its corners and middle
+      var el = ringsEl(), M = el && el.getScreenCTM(); if (!M) return { pts: [], rects: rects };
+      list.forEach(function (b) {
+        if (!b.polar || !allowed(id, b.gene)) return;
+        var xs = [], ys = [];
+        [b.a - b.span / 2, b.a, b.a + b.span / 2].forEach(function (a) { [b.r0, (b.r0 + b.r1) / 2, b.r1].forEach(function (r) {
+          var x = r * Math.sin(a), y = -r * Math.cos(a);
+          xs.push(M.a * x + M.c * y + M.e); ys.push(M.b * x + M.d * y + M.f);
+        }); });
+        rects.push({ r: { left: Math.min.apply(null, xs), right: Math.max.apply(null, xs), top: Math.min.apply(null, ys), bottom: Math.max.apply(null, ys) }, names: [b.i] });
+      });
+      return { pts: [], rects: rects };
+    }
     if (!m) return { pts: [], rects: rects };
     list.forEach(function (b) {
+      if (b.polar) return;
       if (!allowed(id, b.gene)) return;   // a gene left out of the selection is not picked up
       var l = m.e + b.x * m.a, t = m.f + b.y * m.d;
       rects.push({ r: { left: l, right: l + b.w * m.a, top: t, bottom: t + b.h * m.d }, names: [b.i] });
@@ -87,7 +120,10 @@
     if (!quiet && typeof setStatus === 'function') setStatus('Ready');
   }
   // ------------------------------------------------------------ on the drawing
-  function layerEl(id) { try { var c = layerReuse.byKey.get('dataframe:' + id); return c && c.el ? c.el : null; } catch (e) { return null; } }
+  function layerEl(id) {
+    if (isRadial()) return document.querySelector('#svg > g.radial-labels g.radial-dataframe-' + id);
+    try { var c = layerReuse.byKey.get('dataframe:' + id); return c && c.el ? c.el : null; } catch (e) { return null; }
+  }
   function outline() {
     document.querySelectorAll('#svg g.feature-selection, .tm-live-layer g.feature-selection').forEach(function (o) { o.remove(); });
     if (sel.id == null) return;
@@ -98,8 +134,17 @@
     gEl.setAttribute('class', 'feature-selection'); gEl.setAttribute('pointer-events', 'none');
     host.appendChild(gEl);
     var g = d3.select(gEl);
+    if (isRadial()) {   // each selected arc tinted and outlined, in the ring's own group
+      var arcGen = d3.arc();
+      list.forEach(function (b) {
+        if (!b.polar || !keep.has(b.i)) return;
+        g.append('path').attr('d', arcGen({ innerRadius: b.r0, outerRadius: b.r1, startAngle: b.a - b.span / 2, endAngle: b.a + b.span / 2 }))
+          .attr('fill', 'rgba(255,107,53,0.35)').attr('stroke', '#ff6b35').attr('stroke-width', 0.8);
+      });
+      return;
+    }
     list.forEach(function (b) {
-      if (!keep.has(b.i)) return;
+      if (!keep.has(b.i) || b.polar) return;
       // inside the bar's own box (rows can be a few pixels apart), a thin stroke and a tint
       var sw = Math.max(0.5, Math.min(1, b.h * 0.18));
       g.append('rect').attr('x', b.x + sw / 2).attr('y', b.y + sw / 2).attr('width', Math.max(0.5, b.w - sw)).attr('height', Math.max(0.5, b.h - sw)).attr('rx', Math.min(1.5, b.h / 4))
@@ -109,7 +154,6 @@
   function afterDraw(ctx) {
     syncToolButton();
     if (sel.id == null) return;
-    if (ctx && ctx.isRadial) { clear(true); return; }
     if (!bars.has(sel.id) || !df()) { clear(true); return; }
     // rows that are no longer drawn (hidden genes, dropped tips) stay selected but are not outlined
     outline(); show();
@@ -187,7 +231,7 @@
   }
   function syncToolButton() {
     ensureToolButton(); var b = $('proSelectGenes'); if (!b) return;
-    var have = typeof dataframes !== 'undefined' && dataframes.size > 0 && !(typeof geometry !== 'undefined' && geometry === 'radial');
+    var have = typeof dataframes !== 'undefined' && dataframes.size > 0;
     b.hidden = !have; if (have) labelButtons();
   }
   // ------------------------------------------------------------ the toolbar
@@ -275,6 +319,6 @@
   if (svgEl) svgEl.addEventListener('click', function (e) { if (sel.id != null && e.target.closest && e.target.closest('.node, text.label')) clear(true); }, true);
   var origApply = window.applyTipSelection;
   if (typeof origApply === 'function') window.applyTipSelection = function (names) { if (sel.id != null && names && (names.length || names.size)) clear(true); return origApply.apply(this, arguments); };
-  window.tmFeatSel = { beginLayer: beginLayer, bar: bar, layerAtScreenX: layerAtScreenX, targets: targets, apply: apply, clear: clear, afterDraw: afterDraw,
+  window.tmFeatSel = { beginLayer: beginLayer, bar: bar, beginRing: beginRing, arc: arc, layerAtScreenX: layerAtScreenX, targets: targets, apply: apply, clear: clear, afterDraw: afterDraw,
     rows: rowsSelected, state: function () { var r = restrict.get(sel.id); return { id: sel.id, rows: Array.from(sel.rows), genes: r ? Array.from(r) : null }; }, restriction: function (id) { var r = restrict.get(id); return r ? Array.from(r) : null; }, restrictTo: function (id, genes) { if (genes == null) restrict.delete(id); else restrict.set(id, new Set(genes)); labelButtons(); show(); outline(); }, copy: copyRows, remove: deleteRows, bars: function (id) { return (bars.get(id) || []).slice(); } };
 })();

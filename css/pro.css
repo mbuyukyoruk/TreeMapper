@@ -144,6 +144,7 @@ html.pro .pro-btn .pro-ico { color: var(--muted); }
 html.pro .pro-btn:hover { background: var(--pro-hover); box-shadow: 0 1px 2px rgba(16, 32, 40, .05); }
 html.pro .pro-btn:active { transform: translateY(.5px); }
 html.pro .pro-btn:disabled { opacity: .5; cursor: not-allowed; }
+html.pro .pro-icon-btn:disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }   /* (the zoom buttons in the circular layout, which always shows the fitted figure) */
 html.pro .pro-btn-primary, html.pro .pro-btn-primary:hover {
   background: var(--pro-primary); border-color: transparent; color: var(--pro-accent-text); font-weight: 600;
   box-shadow: var(--pro-primary-shadow);
