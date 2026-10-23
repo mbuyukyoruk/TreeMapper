@@ -102,6 +102,14 @@
         try { var b = el.getBBox(); if (b.width) { right = Math.max(right, b.x + b.width); left = Math.min(left, b.x); } } catch (e) {}
       });
       Array.prototype.forEach.call(z.querySelectorAll('text.label'), function (t) { try { var b = t.getBBox(); if (b.width) right = Math.max(right, b.x + b.width); } catch (e) {} });
+      // with data panels, the right edge of the last panel: it stays where it is when panels are
+      // resized (a layer's drawn extent does not: content clipped to its panel still counts in a
+      // bounding box, and pushed the labels out of the canvas when a column was made narrow)
+      try {
+        var ps = typeof getPanelPositions === 'function' ? getPanelPositions() : [], edge = -Infinity;
+        ps.forEach(function (q) { if (q && q.width > 0 && q.type !== 'tree' && q.type !== 'labels' && !/^placeholder/.test(q.type)) edge = Math.max(edge, q.x + q.width); });
+        if (isFinite(edge)) right = edge;
+      } catch (e) {}
       if (!isFinite(right) || !isFinite(left)) return;
       var G = d3.select('#zoomable').append('g').attr('class', 'group-marks').attr('data-tree-part', '');
       var gap = R.leaves.length > 1 ? (R.leaves[R.leaves.length - 1].x - R.leaves[0].x) / (R.leaves.length - 1) : 10;
