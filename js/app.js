@@ -8068,6 +8068,7 @@ function drawTreeBody(){
           // Create group for this dataframe ring
           const dataframeGroup = labelGroup.append('g')
             .attr('class', `radial-dataframe-${dataframeId}`);
+          if (window.tmFeatSel && tmFeatSel.beginRing) tmFeatSel.beginRing(dataframeId, ring.innerRadius, ring.outerRadius);   // the arcs drawn below are listed for selection
           
           // Draw grid arcs if enabled (behind data arcs)
           if (dataframe.showMajorGrid || dataframe.showMinorGrid) {
@@ -8459,6 +8460,7 @@ function drawTreeBody(){
                 const clampedOuterR = Math.max(ring.innerRadius, Math.min(outerR, ring.outerRadius));
                 
                 if (clampedOuterR <= clampedInnerR) return; // Nothing to draw
+                if (window.tmFeatSel && tmFeatSel.arc) tmFeatSel.arc(dataframeId, { a: angle, span: arcSpan, r0: clampedInnerR, r1: clampedOuterR, gene: String(gname || ''), acc: String(d.data.name), row: r });
                 
                 const geneColor = color(gname || '');
                 if (fastMode) {   // a large tree: all bars of one gene as one path, the bar under the pointer found by angle and radius
