@@ -132,7 +132,9 @@
   if (bar) {
     var b = document.createElement('button'); b.type = 'button'; b.id = 'distancesBtn'; b.className = 'clade-toolbar-btn'; b.title = 'Distances along the tree from the selected tip; cophenetic matrix export'; b.style.display = 'none';
     b.innerHTML = '<svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17h18"/><path d="M6 14v3M10 15v2M14 14v3M18 15v2"/><path d="M5 7l4-3 5 4 5-3"/></svg><span>Distances</span>';
-    var anchor = $('isolateLUCA'); if (anchor && anchor.parentNode === bar) bar.insertBefore(b, anchor.nextSibling); else bar.appendChild(b);
+    // among the other clade buttons (they wrap together when the canvas is narrow; appended after
+    // them the toolbar grew wider than the canvas)
+    var anchor = $('isolateLUCA'); if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(b, anchor.nextSibling); else bar.appendChild(b);
     b.addEventListener('click', open);
     var refresh = function () { b.style.display = selectedLeaves().length ? '' : 'none'; };
     new MutationObserver(refresh).observe(bar, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true, characterData: true });

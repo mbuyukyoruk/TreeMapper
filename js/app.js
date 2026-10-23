@@ -5904,11 +5904,24 @@ function drawTree(){
   let done = false, out;
   const t0 = outer ? 0 : performance.now();
   if (!outer && window.tmDragLive && tmDragLive.active()) tmDragLive.reset();   // the drawing back as drawn before it is redrawn
-  try { out = drawTreeBody.apply(this, arguments); done = true; if (!outer) { lastTreeKeepKey = pendingTreeKeepKey; recentDrawMs.push(performance.now() - t0); if (recentDrawMs.length > 3) recentDrawMs.shift(); lastDrawMs = Math.min(...recentDrawMs); const svgEl = document.getElementById('svg'); lastDrawElements = svgEl ? svgEl.getElementsByTagName('*').length : 0; } }
-  finally {
-    drawTreeDepth--;
-    if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
+  // The label font follows the tip spacing, which is known once the tips are laid out; the
+  // parts drawn before that (label backgrounds, the room kept above the tips) use the font of
+  // the previous redraw. When the font comes out different, the tree is drawn once more with
+  // it, so one redraw gives the same drawing as a second one would. (Before, the resize paths
+  // drew three times and so hid this; a drag redraw stays a single pass.)
+  for (let pass = 0; pass < 2; pass++) {
+    const fontBefore = labelFontPxOverride;
+    if (pass > 0) drawTreeDepth++;
+    try { out = drawTreeBody.apply(this, arguments); done = true; }
+    finally {
+      drawTreeDepth--;
+      if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
+    }
+    const hideLabelsEl = document.getElementById('hideLabels');
+    if (outer || !done || dragGeom || labelFontPxOverride === fontBefore || (hideLabelsEl && hideLabelsEl.checked)) break;   // (hidden labels: nothing drawn depends on their font)
+    done = false;
   }
+  if (done && !outer) { lastTreeKeepKey = pendingTreeKeepKey; recentDrawMs.push(performance.now() - t0); if (recentDrawMs.length > 3) recentDrawMs.shift(); lastDrawMs = Math.min(...recentDrawMs); const svgEl = document.getElementById('svg'); lastDrawElements = svgEl ? svgEl.getElementsByTagName('*').length : 0; }
   if (done && !outer) {
     drawTreeFinish();
     if (panelDragPreview && window.tmDragLive) tmDragLive.capture();
@@ -6027,6 +6040,7 @@ function drawTreeBody(){
   const svgEl = document.getElementById('svg');
   const canvasW = dragGeom ? dragGeom.svgW : (svgEl ? svgEl.clientWidth  : 0);
   const svgH    = dragGeom ? dragGeom.svgH : (svgEl ? svgEl.clientHeight : 0);
+  if (!dragGeom && drawTreeDepth <= 1) lastDrawSize = canvasW + 'x' + svgH;   // (a resize to this same size then needs no redraw)
 
   // User-selected bar width and a fixed gap between labels and bars
   const barSelectW = +trackWidthSel.value; // desired metadata bar width (0 hides)
@@ -18234,16 +18248,13 @@ async function handleHeatmapFile(f){
       populateHeatmapCard(newCardId, parsedHeatmapData);
       setStatus(`Heatmap loaded: ${f.name}`);
       
-      // Add heatmap panel to canvas
+      // Add heatmap panel to canvas, update the legend, then draw once
       addHeatmap();
-      
-      // Update legend to show heatmap legend
       updateMetadataLegend();
       
-      // Redraw tree after legend update to ensure panel positions are correct
       if (root) {
-        // drawTree();
-        // console.log('drawTree in handleHeatmapFile called but suppressed by user');
+        drawTree();
+        updateZoomBounds();
       }
     }
     
@@ -18709,13 +18720,6 @@ function addHeatmap() {
       };
     }
   }
-  
-  setTimeout(() => {
-    if (typeof drawTree === 'function') {
-      drawTree();
-      updateZoomBounds();
-    }
-  }, 0);
 }
 
 function getHeatmapPanelDimensions(heatmapIndex = 0) {
@@ -18936,13 +18940,10 @@ async function handleHighlightFile(f){
       populateHighlightCard(newCardId, parsedHighlightData);
       setStatus(`Highlight loaded: ${f.name}`);
       
-      // Add highlight panel to canvas
-      addHighlight();
-      
-      // Update legend to show highlight legend
+      // Update legend to show highlight legend, then draw once (the labels take their
+      // backgrounds from the highlight data in drawTree)
       updateMetadataLegend();
       
-      // Redraw tree after legend update to ensure panel positions are correct
       if (root) {
         drawTree();
       }
@@ -19208,12 +19209,6 @@ function deleteHighlightCard(highlightId) {
   }
 }
 
-function addHighlight() {
-  // The highlight functionality is now handled in the drawTree function
-  // where labels get background highlighting based on highlight data
-  drawTree();
-}
-
 function updateHighlightMasterCheckbox(highlightId) {
   const masterCheckbox = document.getElementById(`highlightToggle${highlightId}`);
   const highlightDiv = document.getElementById(`highlightData${highlightId}`);
@@ -19406,13 +19401,10 @@ async function handleCladeFile(f){
       populateCladeCard(newCardId, parsedCladeData);
       setStatus(`Clade loaded: ${f.name}${wasConverted ? ' (converted from alternative format)' : ''}`);
       
-      // Add clade panel to canvas
-      addClade();
-      
-      // Update legend to show clade legend
+      // Colour the branches, update the legend, then draw once
+      applyCladeColorsToTree();
       updateMetadataLegend();
       
-      // Redraw tree after legend update to ensure panel positions are correct (addClade already calls drawTree, but ensure it's after legend update)
       if (root) {
         drawTree();
       }
@@ -19733,15 +19725,6 @@ function deleteCladeCard(cladeId) {
     
     setStatus('Clade card deleted and colored branches removed from tree');
   }
-}
-
-function addClade() {
-  // Reset and apply clade colors to tree branches using existing search and color path functions
-  applyCladeColorsToTree();
-  
-  // The clade functionality is now handled in the drawTree function
-  // where labels get background highlighting based on clade data
-  drawTree();
 }
 
 function applyCladeColorsToTree() {
@@ -20599,15 +20582,13 @@ async function handleChartFile(f){
       populateChartCard(newCardId, parsedChartData);
       setStatus(`Chart loaded: ${f.name}`);
       
-      // Add chart panel to canvas
+      // Add chart panel to canvas, update the legend, then draw once
       addChart();
-      
-      // Update legend to show chart legend
       updateMetadataLegend();
       
-      // Redraw tree after legend update to ensure panel positions are correct
       if (root) {
         drawTree();
+        updateZoomBounds();
       }
     }
     
@@ -21444,13 +21425,6 @@ function addChart() {
       };
     }
   }
-  
-  setTimeout(() => {
-    if (typeof drawTree === 'function') {
-      drawTree();
-      updateZoomBounds();
-    }
-  }, 0);
 }
 
 function getComparePanelDimensions() { return getPanelByType('compare1') || null; }
@@ -21617,6 +21591,9 @@ function shouldSuppressAutoFit(){ return Date.now() < _suppressAutoFitUntil; }
 function autoFitOnResize(){
   if(shouldSuppressAutoFit && shouldSuppressAutoFit()) return;
   if(!root) return;
+  const size = currentCanvasSize();
+  if(resizeSettledSize === size && lastDrawSize === size) return;   // the frame redraw already settled this size
+  resizeSettledSize = size;
   const expPct = tipSpacingSel ? (+tipSpacingSel.value||0) : 0;
   if(geometry === 'rect'){
     if(expPct <= 0){
@@ -24346,19 +24323,38 @@ svg.on('dblclick', (e) => {
 
 let resizeRaf = null;
 
+// The canvas size the last redraw was made for, and the size the resize redraw last settled.
+// A canvas resize used to draw three times (a redraw on the next frame, the fit-to-view
+// redraw right after it, and the debounced auto-fit 120 ms later, all of the same state);
+// each is seconds on a large tree. Now the frame redraw is the one draw (fit-to-view draws
+// by itself), the auto-fit only runs when the size changed since, and a size the tree was
+// just drawn for (a layer's legend appearing before its draw) needs no redraw at all.
+let lastDrawSize = null, resizeSettledSize = null;
+function currentCanvasSize(){ const e = document.getElementById('svg'); return e ? e.clientWidth + 'x' + e.clientHeight : null; }
+function drawnAtCurrentSize(){
+  if(!root || geometry !== 'rect') return false;
+  const expPct = tipSpacingSel ? (+tipSpacingSel.value||0) : 0;
+  return expPct <= 0 && lastDrawSize !== null && lastDrawSize === currentCanvasSize();   // (in fit mode a plain redraw is the fit)
+}
 function scheduleResizeRedraw(){
   if(resizeRaf) return;
   resizeRaf = requestAnimationFrame(()=>{
     resizeRaf = null;
     if(!root) return; // Skip when no tree data (e.g. page reload before tree loaded)
-    drawTree();
+    const size = currentCanvasSize();
+    // nothing to redo when the tree was drawn for this very size: by this path already (a second
+    // notification of one resize), or by any draw in fit mode (a plain redraw is the fit there)
+    if((resizeSettledSize === size && lastDrawSize === size) || drawnAtCurrentSize()){ resizeSettledSize = size; return; }
+    resizeSettledSize = size;
     if(geometry === 'radial'){
+      drawTree();
       centerRadial();
     } else {
       const expPct = tipSpacingSel ? (+tipSpacingSel.value||0) : 0;
       if(expPct <= 0){
-        onFitToViewRect();
+        onFitToViewRect();   // (draws by itself)
       } else {
+        drawTree();
         anchorTopLeftPreserveScale();
         try{ updateMetaAddButtonY(); }catch(e){}
         setTimeout(()=>{

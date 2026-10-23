@@ -212,6 +212,8 @@
       if (w === lastW) return;
       lastW = w;
       if (win !== lastWin) { lastWin = win; return; }   // a real window resize: the app handles it
+      // drawn at this width already (a layer's legend appeared before its own draw): nothing to redo
+      if (call(function () { return drawnAtCurrentSize(); })) { call(function () { if (resizeRaf) { cancelAnimationFrame(resizeRaf); resizeRaf = null; } if (_resizeTO) { clearTimeout(_resizeTO); _resizeTO = null; } resizeSettledSize = currentCanvasSize(); }); return; }
       redrawForNewWidth();
     }).observe(canvas);
   })();
@@ -235,6 +237,30 @@
     // controls that come and go (Reset, Restore, Copy rows...)
     new MutationObserver(later).observe(tb, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'style'] });
     fit();
+  })();
+
+  // ------------------------------------------------ selection toolbar: compact when narrow
+  // The selection toolbar (a HUD at the bottom of the canvas) is one row. When the canvas is
+  // narrower than the row with its labels (the legend open, a small window), the buttons go
+  // icon-only (their titles name them) instead of the row scrolling out of reach.
+  (function () {
+    var bar = $('cladeToolbar'), canvas = $('canvas');
+    if (!bar || !canvas || !window.ResizeObserver) return;
+    var naturalW = 0, measuring = false, pending = 0;
+    function measure() { measuring = true; bar.classList.remove('is-compact'); naturalW = bar.scrollWidth; measuring = false; }
+    function fit() {
+      if (!bar.classList.contains('visible')) return;
+      if (!naturalW) measure();
+      bar.classList.toggle('is-compact', naturalW > canvas.clientWidth - 24);   // (24: its side margins)
+    }
+    function later(remeasure) { if (remeasure) naturalW = 0; if (!pending) pending = requestAnimationFrame(function () { pending = 0; fit(); }); }
+    new ResizeObserver(function () { later(false); }).observe(canvas);
+    new MutationObserver(function (muts) {
+      if (measuring) return;
+      // its own class changes (shown, compact) only re-check; anything inside it (buttons shown or hidden, the status text) is measured again
+      var inside = muts.some(function (m) { return !(m.type === 'attributes' && m.target === bar); });
+      later(inside);
+    }).observe(bar, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
   })();
 
   // ------------------------------------------------------- shared helpers
