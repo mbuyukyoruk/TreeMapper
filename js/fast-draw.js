@@ -251,13 +251,15 @@
     F.cols.delete(el);
     const G = col.spanG, o = col.opts;
     const ordered = [...col.groups.values()].sort((a, b) => (b.back ? 1 : 0) - (a.back ? 1 : 0));
+    // (a ring drag draws the ring from these, js/fast-draw.js radialDragFrame)
+    { const flat = []; col.byRow.forEach(items => items.forEach(it => flat.push(it))); el.__fastRing = { opts: o, items: flat }; }
     // a ring of many colours (a column where every value differs): its arcs painted into one picture
     if (ordered.length > F.MANY_COLOURS && o.r1 > o.r0 && ordered.every(g => !g.stroke && col.byRow.size)) {
       const S = 2, R = o.r1, W = Math.max(1, Math.round(2 * R * S)), cv = document.createElement('canvas'); cv.width = W; cv.height = W;
       const ctx = cv.getContext('2d'); ctx.translate(W / 2, W / 2); ctx.scale(S, S);
       let n = 0;
       col.byRow.forEach(items => items.forEach(it => {
-        const a0 = (it.a0 !== undefined ? it.a0 : it.a - (o.aTol || 0) * 0.9) - Math.PI / 2, a1 = (it.a1 !== undefined ? it.a1 : it.a + (o.aTol || 0) * 0.9) - Math.PI / 2;
+        const a0 = (it.a0 !== undefined ? it.a0 : it.a - (o.aTol || 0)) - Math.PI / 2, a1 = (it.a1 !== undefined ? it.a1 : it.a + (o.aTol || 0)) - Math.PI / 2;
         ctx.beginPath(); ctx.arc(0, 0, it.r1, a0, a1); ctx.arc(0, 0, it.r0, a1, a0, true); ctx.closePath();
         ctx.fillStyle = it.color; if (it.op != null) ctx.globalAlpha = it.op; ctx.fill(); ctx.globalAlpha = 1; n++;
       }));
@@ -372,6 +374,51 @@
       else e.el.setAttribute('transform', 'matrix(' + kk + ',0,0,1,' + (p.x - e.x * kk) + ',0)');
     });
     try { drawSplittersInSVG(g, lastSplitterContentHeight, dragGeom ? dragGeom.canvasRect : null); updateSplitterLineHeights(); } catch (e) {}
+    return true;
+  };
+
+  // ---- a ring drag of the circular layout: live frames from the few elements
+  // The tree's paths scale with its ring; each data ring is painted into a picture with its
+  // arcs moved to the ring's new radii (a ring drag changes radii, which no transform of the
+  // paths can follow). The release draws everything for real.
+  let ringBase = null;
+  F.radialDragCapture = function () {
+    ringBase = null;
+    if (!F.active || !F.radial || typeof radialRings === 'undefined') return;
+    const rings0 = radialRings.map(r => ({ type: r.type, inner: r.innerRadius, outer: r.outerRadius }));
+    const parts = [...document.querySelectorAll('#zoomable [data-tree-part]')];
+    const rings = [...document.querySelectorAll('#svg g')].filter(g => g.__fastRing && g.isConnected).map(g => {   // (the rings sit in the labels group beside the zoomed group)
+      const o = g.__fastRing.opts, r0 = rings0.find(r => r.type === o.ringType) || rings0.find(r => Math.abs(r.inner - o.r0) < 1e-6 && Math.abs(r.outer - o.r1) < 1e-6);
+      return { el: g, items: g.__fastRing.items, ring0: r0, hidden: false };
+    });
+    ringBase = { rings0, parts, rings };
+  };
+  F.radialDragFrame = function () {
+    const b = ringBase; if (!b || typeof radialRings === 'undefined') return false;
+    const t0 = b.rings0.find(r => r.type === 'tree'), t1 = radialRings.find(r => r.type === 'tree');
+    if (t0 && t1 && t0.outer > 0) { const sc = t1.outerRadius / t0.outer; b.parts.forEach(el => { if (Math.abs(sc - 1) < 1e-9) el.removeAttribute('transform'); else el.setAttribute('transform', 'scale(' + sc + ')'); }); }
+    const S = 2, Rmax = Math.max(...radialRings.map(r => r.outerRadius), 1);
+    b.rings.forEach(R => {
+      if (!R.ring0) return;
+      const r1 = radialRings.find(r => r.type === R.ring0.type); if (!r1) return;
+      const i0 = R.ring0.inner, o0 = R.ring0.outer, i1 = r1.innerRadius, o1 = r1.outerRadius, k = (o0 > i0) ? (o1 - i1) / (o0 - i0) : 1;
+      const f = (r) => i1 + (r - i0) * k;
+      if (!R.hidden) { [...R.el.children].forEach(c => { if (c.classList && (c.classList.contains('fast-items') || c.classList.contains('fast-hit'))) c.style.display = 'none'; }); R.hidden = true; }
+      const W = Math.max(1, Math.round(2 * o1 * S)), cv = document.createElement('canvas'); cv.width = W; cv.height = W;
+      const ctx = cv.getContext('2d'); ctx.translate(W / 2, W / 2); ctx.scale(S, S);
+      const aTol = R.el.__fastRing.opts.aTol || 0;
+      R.items.forEach(it => {
+        const a0 = (it.a0 !== undefined ? it.a0 : it.a - aTol) - Math.PI / 2, a1 = (it.a1 !== undefined ? it.a1 : it.a + aTol) - Math.PI / 2;
+        const ra = f(it.r0), rb = f(it.r1);
+        if (it.op != null) ctx.globalAlpha = it.op;
+        if (it.stroke) { ctx.beginPath(); ctx.moveTo(ra * Math.cos(it.a - Math.PI / 2), ra * Math.sin(it.a - Math.PI / 2)); ctx.lineTo(rb * Math.cos(it.a - Math.PI / 2), rb * Math.sin(it.a - Math.PI / 2)); ctx.strokeStyle = it.stroke === 'var(--text)' ? '#888' : it.stroke; ctx.lineWidth = it.sw || 1; ctx.stroke(); }
+        else { ctx.beginPath(); ctx.arc(0, 0, rb, a0, a1); ctx.arc(0, 0, ra, a1, a0, true); ctx.closePath(); ctx.fillStyle = it.color; ctx.fill(); }
+        ctx.globalAlpha = 1;
+      });
+      let im = R.el.querySelector(':scope > image.fast-drag-picture');
+      if (!im) { im = document.createElementNS('http://www.w3.org/2000/svg', 'image'); im.setAttribute('class', 'fast-drag-picture'); im.setAttribute('pointer-events', 'none'); R.el.appendChild(im); }
+      im.setAttribute('x', -o1); im.setAttribute('y', -o1); im.setAttribute('width', 2 * o1); im.setAttribute('height', 2 * o1); im.setAttribute('href', cv.toDataURL('image/png'));
+    });
     return true;
   };
 
