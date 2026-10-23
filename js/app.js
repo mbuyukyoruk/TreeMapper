@@ -2239,9 +2239,11 @@ function getRadialDistanceFromCenter(clientX, clientY) {
   if (!container) return 0;
 
   const rect = container.getBoundingClientRect();
-  const dx = clientX - rect.left - radialCenterX;
-  const dy = clientY - rect.top - radialCenterY;
-  return Math.sqrt(dx * dx + dy * dy);
+  // (in the rings' own units: the figure may be zoomed and panned)
+  const v = (typeof radialViewNow === 'function') ? radialViewNow() : { x: radialCenterX, y: radialCenterY, k: 1 };
+  const dx = clientX - rect.left - v.x;
+  const dy = clientY - rect.top - v.y;
+  return Math.sqrt(dx * dx + dy * dy) / (v.k || 1);
 }
 
 // Fit rings to canvas - scale all rings to fit within the container
@@ -2297,9 +2299,10 @@ function drawRadialPanels() {
 
   radialSvg.selectAll('*').remove();
 
-  // Create main group centered
+  // Create main group centered (and, if the figure is zoomed or panned, placed with it)
   const g = radialSvg.append('g')
     .attr('transform', `translate(${radialCenterX},${radialCenterY})`);
+  try { if (geometry === 'radial' && typeof syncRadialRings === 'function') { const v = radialViewNow(); g.attr('transform', `translate(${v.x},${v.y})` + (Math.abs(v.k - 1) > 1e-9 ? ` scale(${v.k})` : '')); } } catch (e) {}
 
   // Draw center marker
   g.append('circle')
@@ -26252,11 +26255,20 @@ if(clearAllColorsBtn){
 let radialRingK = 1;
 function syncRadialRings(t){
   if(geometry !== 'radial') return;
-  const rl = svg.select('.radial-labels');
-  if (rl.empty()) return;
   t = t || d3.zoomTransform(svg.node());
   const k = radialRingK > 0 ? t.k / radialRingK : 1;
-  rl.attr('transform', `translate(${t.x}, ${t.y})` + (Math.abs(k - 1) > 1e-9 ? ` scale(${k})` : '') + ` rotate(${spinDeg})`);
+  const sc = Math.abs(k - 1) > 1e-9 ? ` scale(${k})` : '';
+  const rl = svg.select('.radial-labels');
+  if (!rl.empty()) rl.attr('transform', `translate(${t.x}, ${t.y})${sc} rotate(${spinDeg})`);
+  // the ring splitters' guide circles and handles (an overlay svg over the canvas) likewise
+  const ov = d3.select('#radialPanelsSvg > g');
+  if (!ov.empty()) ov.attr('transform', `translate(${t.x},${t.y})${sc}`);
+}
+// the zoom's view of the rings: the centre on screen and the scale of the rings' units
+function radialViewNow(){
+  if (geometry !== 'radial') return { x: radialCenterX, y: radialCenterY, k: 1 };
+  const t = d3.zoomTransform(svg.node());
+  return { x: t.x, y: t.y, k: radialRingK > 0 ? t.k / radialRingK : 1 };
 }
 function applySpin(){
   if(geometry !== 'radial' || !gSpin) return;
