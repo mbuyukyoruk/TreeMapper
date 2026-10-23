@@ -388,7 +388,7 @@
   const HEAVY_D = 1500;   // a path with more data than this (characters) goes into the picture
   const SVG_NS = 'http://www.w3.org/2000/svg';
   function dragGroups() {
-    const groups = [...document.querySelectorAll('#zoomable [data-tree-part]')].filter(el => !el.classList.contains('group-marks'));
+    const groups = [...document.querySelectorAll('#zoomable [data-tree-part], #zoomable > #tree-scale')].filter(el => !el.classList.contains('group-marks'));
     if (typeof layerReuse !== 'undefined' && layerReuse.byKey) layerReuse.byKey.forEach(e => { if (e.el && e.el.isConnected && e.panelFn && Number.isFinite(e.x) && e.w > 0) groups.push(e.el); });
     return groups;
   }
@@ -521,7 +521,8 @@
     const ps = getPanelPositions(), tree = ps.find(p => p.type === 'tree'); if (!tree) return;
     if (deferPictures) requestAnimationFrame(() => setTimeout(() => { if (dragBase) prepareNow(); }, 0)); else prepareNow();
     // (the group marks span the whole drawing, whose right edge a column drag does not move: they stay as drawn)
-    const parts = [...document.querySelectorAll('#zoomable [data-tree-part]')].filter(el => !el.classList.contains('group-marks'));
+    // (the tree's scale bar too: it is not a tree part, which normal-mode drags keep as drawn)
+    const parts = [...document.querySelectorAll('#zoomable [data-tree-part], #zoomable > #tree-scale')].filter(el => !el.classList.contains('group-marks'));
     const links = document.querySelector('#zoomable g.links[data-tree-part]');
     const treeSpan = (links && spanOf(links, tree)) || { a: tree.x + 48, s: Math.max(1, tree.width - 56), mL: 48, mR: 8 };
     const layers = [];
