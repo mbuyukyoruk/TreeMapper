@@ -237,6 +237,7 @@ const zoom = d3.zoom()
   })
   .on('end', (ev)=>{
     try { updatePanCursorClass(); } catch (e) {}
+    if (window.tmFast) tmFast.afterZoom();   // a large tree: the labels in view drawn again (when the view changed)
     if (!ev || !ev.sourceEvent) return;
     const svgNode = svg.node();
     if(svgNode) svgNode.style.cursor = '';
@@ -1232,6 +1233,7 @@ function treeKeepKey() {
 // whole half-built drawing an extra time on every frame
 let dragGeom = null;
 let dragLiveSticky = false, lastPreviewWidths = null;   // (refreshAllRAF: a pushing drag shown live)
+let lastSplitterContentHeight = 0;
 function readDragGeom() {
   const svgEl = document.getElementById('svg'), canvasEl = document.getElementById('canvas');
   return {
@@ -1247,6 +1249,7 @@ function startDrag(e) {
   dragGeom = readDragGeom();
   dragLiveSticky = false; lastPreviewWidths = null;
   if (window.tmDragLive) tmDragLive.capture();   // the drawing as it is: what live frames start from
+  if (window.tmFast && tmFast.active) tmFast.dragCapture();   // a large tree drawn as few elements: its own live frames
   currentSplitter = parseInt(e.target.dataset.index);
   startX = e.clientX;
   startWidths = [...panelWidths];
@@ -1696,7 +1699,9 @@ function updateSplitterPositions() {
 const LIVE_DRAG_MIN_MS = 40, LIVE_DRAG_MIN_ELEMENTS = 4000;   // (e.g. ~300 tips with a few data columns and an alignment)
 // worth showing a drag from the existing drawing: redraws are slow every time, and the
 // drawing is large (a small drawing that happened to redraw slowly is drawn as usual)
-function liveDragWorthIt() { return lastDrawMs > LIVE_DRAG_MIN_MS && lastDrawElements > LIVE_DRAG_MIN_ELEMENTS; }
+// (a large tree drawn as few elements, js/fast-draw.js, has its own live drag: the resized
+// column is stretched and the others moved, no redraw until the release: see layerIteration)
+function liveDragWorthIt() { return lastDrawMs > LIVE_DRAG_MIN_MS && lastDrawElements > LIVE_DRAG_MIN_ELEMENTS && !(window.tmFast && tmFast.active); }
 function refreshAllRAF() {
   if (_rafPending) return;
   _rafPending = true;
@@ -1723,6 +1728,9 @@ function refreshAllRAF() {
       tmDragLive.frame();
       return;
     }
+    // a large tree drawn as few elements: the columns moved and the resized one stretched,
+    // the tree stretched to its column, no redraw until the release (js/fast-draw.js)
+    if (root && panelDragPreview && geometry !== 'radial' && window.tmFast && tmFast.active && tmFast.dragReady() && tmFast.dragFrame()) return;
     if (root) {
       // a column drag changes only the layout, not the data or settings of any column:
       // columns whose size is unchanged can be kept (moved); the release redraws all
@@ -5813,6 +5821,7 @@ function layerIteration(type, panelFn, draw) {
     const ep = '#' + index + '#' + layerReuse.epoch[type] + '.' + (layerReuse.keyEpoch.get(key) || 0) + '#';
     const sig = layerReuse.layoutSig + ep + (panel ? [panel.x, panel.width, panel.height, panel.y].join(',') : 'none');
     const movedSig = layerReuse.layoutSigMoved + ep + (panel ? [panel.width, panel.height, panel.y].join(',') : 'none');
+    const stretchSig = layerReuse.layoutSigMoved + ep + (panel ? [panel.height, panel.y].join(',') : 'none');
     layerReuse.visited.add(key);
     const c = layerReuse.container, cached = layerReuse.byKey.get(key);
     let after = layerReuse.lastEl ? layerReuse.lastEl.nextSibling : c.firstChild;
@@ -5832,6 +5841,17 @@ function layerIteration(type, panelFn, draw) {
       layerReuse.lastEl = cached.el;
       return;
     }
+    // a large tree drawn as few elements (js/fast-draw.js): while a splitter is dragged the
+    // column whose width changes is stretched sideways (its cells and bars are drawn in
+    // proportion to the column's width, so a stretch is what a redraw would give); the
+    // release draws it for real
+    if (panelDragPreview && panel && cached && window.tmFast && tmFast.active && cached.stretchSig === stretchSig && cached.el.parentNode === c && Number.isFinite(cached.x) && cached.w > 0 && panel.width > 0) {
+      if (cached.el !== after) c.insertBefore(cached.el, after);
+      const k = panel.width / cached.w;
+      cached.el.setAttribute('transform', 'matrix(' + k + ',0,0,1,' + (panel.x - cached.x * k) + ',0)');
+      layerReuse.lastEl = cached.el;
+      return;
+    }
     if (cached && cached.el.parentNode) {
       if (after === cached.el) after = cached.el.nextSibling;
       cached.el.parentNode.removeChild(cached.el);
@@ -5839,7 +5859,7 @@ function layerIteration(type, panelFn, draw) {
     const el = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     el.setAttribute('class', 'data-layer data-layer-' + type);
     c.insertBefore(el, after);
-    layerReuse.byKey.set(key, { el, sig, movedSig, x: panel ? panel.x : NaN, w: panel ? panel.width : NaN, index });
+    layerReuse.byKey.set(key, { el, sig, movedSig, stretchSig, x: panel ? panel.x : NaN, w: panel ? panel.width : NaN, index, panelFn });
     layerReuse.lastEl = el;
     layerAppendMode('layer', el);
     try { draw(id, index); }
@@ -6998,7 +7018,9 @@ function drawTreeBody(){
     // a group per tip only when the labels are shown (the label code draws into them)
     const shown = root.descendants().filter(d => !d._removedAsDuplicate && !droppedNodes.has(d));
     const _hl = document.getElementById('hideLabels');
-    const tipGroups = (_hl && _hl.checked) ? [] : shown.filter(d => !d.children && !d._children);
+    // labels on a large tree: only the rows in view, once a label is legible at this zoom (the
+    // export draws them all; a zoom or pan draws them again for the new view: js/fast-draw.js)
+    const tipGroups = (_hl && _hl.checked) ? [] : tmFast.labelTips(shown.filter(d => !d.children && !d._children), cachedOptimalFontSize || (+labelSizeSel.value || 12), svgH);
     nodes = g.append('g').attr('class','nodes').attr('data-tree-part', '')
       .selectAll('g.node')
       .data(tipGroups)
@@ -7033,6 +7055,7 @@ function drawTreeBody(){
   // Draw SVG-based splitter lines (pass canvas rect to avoid layout-forcing reads inside drawSplittersInSVG)
   if (!isRadial) {
     const canvasRect = canvasRect0;
+    lastSplitterContentHeight = vTop + plotH;   // (a fast-mode drag frame draws the splitters again at this height)
     drawSplittersInSVG(g, vTop + plotH, canvasRect);
       // Update splitter line heights to match the actual tree
       updateSplitterLineHeights();
@@ -9682,6 +9705,12 @@ function drawTreeBody(){
       
       // Draw label text (only if labels are not hidden and label panel exists)
       if (!hideLabels && hasLabelRing) {
+        // a large tree (js/fast-draw.js): only the labels in view, once legible at this zoom
+        const labelLeavesSel = fastMode ? tmFast.leafSelection(tmFast.labelTipsRadial(leavesSel.data(), (() => {
+          // the room a label has along the ring (the font follows it): the circumference at the ring's inner edge, less the opening, per tip
+          const oa = document.getElementById('openAngleDeg'), od = oa ? (+oa.value || 0) : 0, n = Math.max(1, leavesSel.size());
+          return 2 * Math.PI * labelInnerRadius * ((360 - od) / 360) / n;
+        })(), gSpin.node())) : leavesSel;
         // Draw labels starting from the inner edge of the label ring (with small margin)
         const labelMargin = 8; // Small margin from inner edge
         const labelStartRadius = labelInnerRadius + labelMargin;
@@ -9694,7 +9723,7 @@ function drawTreeBody(){
         const highlightedStyle = { fill: '#ff6b6b', fontWeight: 'bold' };
         
         // Pre-calculate styles and text
-        leavesSel.each(function(d) {
+        labelLeavesSel.each(function(d) {
           const isHighlighted = highlightedClade === d || highlightedClades.has(d);
           labelStyles.set(d, isHighlighted ? highlightedStyle : normalStyle);
           
@@ -9705,7 +9734,7 @@ function drawTreeBody(){
         });
         
         // Calculate optimal font size based on circumference (similar to rectangular layout)
-        const numLeaves = leavesSel.size();
+        const numLeaves = labelLeavesSel.size();
         let optimalFontSize = labelSize;
         
         // Calculate available width for labels (radial direction)
@@ -9750,7 +9779,7 @@ function drawTreeBody(){
             let totalTextHeight = 0;
             let sampleCount = 0;
             
-            leavesSel.each(function(d) {
+            labelLeavesSel.each(function(d) {
               const text = textContent.get(d);
               if (text && sampleCount < 10) { // Sample first 10 labels
                 testElement.textContent = text;
@@ -9774,7 +9803,7 @@ function drawTreeBody(){
         }
         
         // Draw each label following the radial path
-        leavesSel.each(function(d) {
+        labelLeavesSel.each(function(d) {
           const angle = d.a || 0; // Angle in radians (from computeRadialAnglesInPlace)
           
           // Calculate position at the label start radius (inner edge)
@@ -24528,6 +24557,13 @@ window.addEventListener('resize', scheduleResizeRedraw);
 
 // Builds the standalone SVG document used by every export (SVG, PNG, PDF).
 function buildExportSvgSource(){
+  // a large tree shows only the labels in view: for the export every label is drawn, afterwards the view's again
+  let labelsRestore = false;
+  if (window.tmFast && tmFast.active && tmFast.culled) { tmFast.allLabels = true; try { drawTree(); } catch (e) {} labelsRestore = true; }
+  try { return buildExportSvgSourceNow(); }
+  finally { if (labelsRestore) { tmFast.allLabels = false; try { drawTree(); } catch (e) {} } }
+}
+function buildExportSvgSourceNow(){
   const svgEl = document.getElementById('svg');
   
   // Create a clone of the SVG for export
