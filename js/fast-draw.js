@@ -2,7 +2,7 @@
 //
 // A drawing of 20,000 tips with data columns is 300,000 SVG elements when every branch,
 // marker, cell and bar is its own element; the browser then styles and lays out all of
-// them on every redraw, and Safari takes seconds. Above TM_FAST_FROM tips (rectangular
+// them on every redraw, and Safari takes seconds. From TM_FAST_FROM tips (3,000; rectangular
 // layout) the tree is drawn here instead: all branches of one colour and width as one
 // path, all markers of one look as one path, all cells of one colour as one path, all
 // bars of one gene as one path. Hover, click and tooltips are found from coordinates
@@ -13,14 +13,16 @@
 // per bar); line and box charts are drawn as before (per element).
 (function () {
   'use strict';
-  const F = { active: false, rows: null, links: null, nodes: null, markers: null, cols: new Map() };
-  window.TM_FAST_FROM = window.TM_FAST_FROM || 1500;
+  const F = { active: false, rows: null, links: null, nodes: null, markers: null, cols: new Map(), MANY_COLOURS: 400 };
+  window.TM_FAST_FROM = window.TM_FAST_FROM || 3000;
   const n2 = (v) => (Math.round(v * 100) / 100).toString();
 
   // ---- a redraw begins: is this a large rectangular tree?
   F.begin = function (leaves, isRadial) {
     F.active = !isRadial && leaves.length >= window.TM_FAST_FROM && window.tmFastDraw !== false;
     F.cols = new Map();
+    // the hovered row is forgotten with the drawing it was found in (the next pointer move finds it again)
+    try { if (typeof hoveredBand !== 'undefined') hoveredBand = null; } catch (e) {}
     if (!F.active) { F.rows = null; return false; }
     const rows = leaves.filter(l => Number.isFinite(l.x)).map(l => ({ y: l.x, leaf: l }));
     rows.sort((a, b) => a.y - b.y);
@@ -138,8 +140,9 @@
     if (!col) { col = { spanG, el, opts, groups: new Map(), byRow: new Map(), y0: Infinity, y1: -Infinity }; F.cols.set(el, col); }
     const key = (item.back ? 'B' : 'A') + (item.stroke ? 'S' + item.stroke + '|' + item.sw : 'F' + item.color) + (item.op != null ? '|' + item.op : '');
     let g = col.groups.get(key);
-    if (!g) { g = { color: item.color, stroke: item.stroke, sw: item.sw, op: item.op, back: !!item.back, d: [] }; col.groups.set(key, g); }
+    if (!g) { g = { color: item.color, stroke: item.stroke, sw: item.sw, op: item.op, back: !!item.back, d: [], items: [], plain: true }; col.groups.set(key, g); }
     g.d.push(item.path || ('M' + n2(item.x) + ',' + n2(item.y) + 'h' + n2(item.w) + 'v' + n2(item.h) + 'h' + n2(-item.w) + 'z'));
+    g.items.push(item); if (item.path || item.stroke) g.plain = false;
     if (item.leaf) { let r = col.byRow.get(item.leaf); if (!r) { r = []; col.byRow.set(item.leaf, r); } r.push(item); }
     if (item.y < col.y0) col.y0 = item.y; if (item.y + item.h > col.y1) col.y1 = item.y + item.h;
   };
@@ -158,6 +161,16 @@
     F.cols.delete(el);
     const G = col.spanG;
     const ordered = [...col.groups.values()].sort((a, b) => (b.back ? 1 : 0) - (a.back ? 1 : 0));
+    // a column of many colours (a heatmap where every value differs: thousands of colours, so
+    // thousands of paths): its plain boxes are painted into one picture instead
+    if (ordered.length > F.MANY_COLOURS && ordered.every(g => g.plain) && Number.isFinite(col.y0)) {
+      const o = col.opts, S = 2, W = Math.max(1, Math.round(o.w * S)), H = Math.max(1, Math.round((col.y1 - col.y0) * S));
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = Math.min(H, 16000); const ctx = cv.getContext('2d');
+      const ky = cv.height / H;
+      ordered.forEach(g => { ctx.fillStyle = g.color; if (g.op != null) ctx.globalAlpha = g.op; g.items.forEach(it => ctx.fillRect((it.x - o.x) * S, (it.y - col.y0) * S * ky, Math.max(0.5, it.w * S), Math.max(0.5, it.h * S * ky))); ctx.globalAlpha = 1; });
+      G.append('image').attr('class', 'fast-items fast-picture').attr('x', o.x).attr('y', col.y0).attr('width', o.w).attr('height', col.y1 - col.y0).attr('preserveAspectRatio', 'none').attr('href', cv.toDataURL('image/png')).attr('pointer-events', 'none');
+      col.pictured = ordered;
+    } else
     ordered.forEach(g => {
       const p = G.append('path').attr('class', 'fast-items').attr('d', g.d.join('')).attr('pointer-events', 'none');
       if (g.stroke) p.attr('fill', 'none').attr('stroke', g.stroke).attr('stroke-width', g.sw); else p.attr('fill', g.color).attr('stroke', 'none');
@@ -184,6 +197,17 @@
       if (h && o.tooltip) { ev.stopPropagation(); showTip(ev, h.leaf, true, { v: o.tooltip(h.item, h.leaf), vmin: o.vmin, vmax: o.vmax }); } else hideTip();
     }).on('mouseleave', function () { if (over) { bandHover(over, false); over = null; } hideTip(); this.style.cursor = ''; })
       .on('click', function (ev) { if (!o.click) return; if (typeof isDragging !== 'undefined' && isDragging) return; if (window.__draggingSplitter) return; const h = find(ev); if (!h || h.item.back) return; ev.stopPropagation(); o.click(h.item, h.leaf, ev); });
+  };
+
+  // ---- the label backgrounds (highlight layers): one path per colour, only where there is one
+  // rows: [{ x, y, w, h, fill, op }] for the tips with highlight data
+  F.labelBgs = function (rows) {
+    const G = F.nodesG; if (!G) return;
+    const groups = new Map();
+    rows.forEach(r => { const key = r.fill + '|' + r.op; let g = groups.get(key); if (!g) { g = { fill: r.fill, op: r.op, d: [] }; groups.set(key, g); } g.d.push('M' + n2(r.x) + ',' + n2(r.y) + 'h' + n2(r.w) + 'v' + n2(r.h) + 'h' + n2(-r.w) + 'z'); });
+    const holder = document.createElementNS('http://www.w3.org/2000/svg', 'g'); holder.setAttribute('class', 'fast-label-bgs');
+    groups.forEach(g => { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('class', 'label-highlight-bg'); p.setAttribute('fill', g.fill); p.setAttribute('opacity', g.op); p.setAttribute('d', g.d.join('')); p.setAttribute('pointer-events', 'none'); holder.appendChild(p); });
+    G.insertBefore(holder, G.firstChild);
   };
 
   window.tmFast = F;
