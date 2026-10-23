@@ -190,13 +190,15 @@
     });
     if (!Number.isFinite(col.y0)) return;
     const o = col.opts;
+    el.__fastCol = col;
     const hit = G.append('rect').attr('class', 'fast-hit fast-hit-column').attr('x', o.x).attr('y', col.y0).attr('width', Math.max(0, o.w)).attr('height', Math.max(0, col.y1 - col.y0)).attr('fill', 'transparent').attr('stroke', 'none');
     const find = (ev) => {
       const [px, py] = pointerIn(ev, col.el);
-      const leaf = F.rowAt(py, (o.rowTol || 0));
+      // rows thinner than a pixel: the pointer (whole pixels in Firefox) is given to the nearest row
+      const leaf = F.rowAt(py, Math.max(o.rowTol || 0, 0.5));
       if (!leaf) return null;
       const items = col.byRow.get(leaf); if (!items) return null;
-      for (let i = 0; i < items.length; i++) { const it = items[i]; if (py >= it.y && py <= it.y + it.h && px >= it.x && px <= it.x + it.w) return { item: it, leaf }; }
+      for (let i = 0; i < items.length; i++) { const it = items[i]; const sl = it.h < 1 ? 0.5 : 0; if (py >= it.y - sl && py <= it.y + it.h + sl && px >= it.x && px <= it.x + it.w) return { item: it, leaf }; }
       return null;
     };
     let over = null;
@@ -282,10 +284,11 @@
     const find = (ev) => {
       const [px, py] = pointerIn(ev, col.el);
       const r = Math.hypot(px, py); let a = Math.atan2(px, -py); if (a < 0) a += 2 * Math.PI;   // (d3's arcs: 0 at 12 o'clock, clockwise)
-      const leaf = F.rowAtAngle(a, o.aTol || 0);
+      const sl = 0.5 / Math.max(r, 1);   // half a pixel of angle: the pointer comes in whole pixels in Firefox
+      const leaf = F.rowAtAngle(a, Math.max(o.aTol || 0, sl));
       if (!leaf) return null;
       const items = col.byRow.get(leaf); if (!items) return null;
-      for (let i = 0; i < items.length; i++) { const it = items[i]; if (it.a0 !== undefined && (a < it.a0 || a > it.a1)) continue; if (r >= it.r0 && r <= it.r1) return { item: it, leaf }; }
+      for (let i = 0; i < items.length; i++) { const it = items[i]; if (it.a0 !== undefined && (a < it.a0 - sl || a > it.a1 + sl)) continue; if (r >= it.r0 && r <= it.r1) return { item: it, leaf }; }
       return null;
     };
     hit.on('mousemove', function (ev) {
