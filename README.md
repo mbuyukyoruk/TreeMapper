@@ -136,6 +136,26 @@ changes to the tree, colours, highlights, the theme and Fit therefore redraw
 only the tree, and a change in one data card redraws only that layer. Exports
 are unaffected (byte-identical to a full redraw).
 
+## Large trees (fast prototype, branch `fast-prototype`)
+
+From 3,000 tips (`window.TM_FAST_FROM`) the tree and its data layers are drawn
+by `js/fast-draw.js` as a few hundred elements instead of one per branch, tip,
+cell and bar: all branches of one colour and width are one path, all markers
+of one look one path, all heatmap cells of one colour one path, all bars of one
+gene one path (boxes, arrow heads, DNA lines), chart bars, dots, lines, box
+plots and synteny links likewise; a column or ring where every value has its
+own colour is painted into one picture. Hover, tooltips, the row band, clicks
+(select a node, focus a gene) and the marquee work from coordinates: the row
+from y (or the angle in the circular layout), the bar from x (or the radius).
+The selection overlay, clade colours and marker colours redraw the few paths.
+Labels are drawn only for the rows in view once a label is at least 3.5 px
+tall on screen; a zoom or pan draws them again; the export draws every label.
+A splitter or ring drag moves and stretches the existing paths (rings are
+painted) and the release draws for real. Everything stays SVG, so zoom,
+export, sessions, undo and the comparison tree are unchanged. Below the
+threshold the drawing is exactly as before. Test:
+`PAGE=TreeMapper-fast node regress/fastmode.js` in `TreeMapper_tests`.
+
 ## Diagnostics
 
 - `index.html?bench`: runs a built-in speed test on generated 3,000-tip data.

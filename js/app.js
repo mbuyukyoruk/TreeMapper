@@ -11114,6 +11114,7 @@ function drawTreeBody(){
           break;
         case 'box':
           renderBoxChart(leaves, chartData, spanG, panelX, panelWidth, chartScale, dynamicBarH);
+          if (window.tmFast && tmFast.active) tmFast.finish(spanG);
           break;
         default:
            // For now, render as bar chart until individual functions are implemented
@@ -11607,7 +11608,7 @@ function drawTreeBody(){
             const lowerWhisker = nonOutliers.length > 0 ? d3.min(nonOutliers) : min;
             const upperWhisker = nonOutliers.length > 0 ? d3.max(nonOutliers) : max;
             
-            const leafG = spanG.append('g').attr('data-accession', leaf.data.name);   // the row's tip
+            const leafG = (window.tmFast && tmFast.active) ? spanG : spanG.append('g').attr('data-accession', leaf.data.name);   // the row's tip (no group per row on a large tree)
             ensureLayerBands(spanG, leaves, panelX, panelWidth, dynamicBarH);   // the column's highlight bands (made when needed)
             
             const boxColor = chartData.valueColors.get(column);
@@ -11641,6 +11642,18 @@ function drawTreeBody(){
                boxY = leaf.x - (boxHeight / 2);
              }
             
+            if (window.tmFast && tmFast.active) {   // a large tree: the boxes of one colour as one path, their lines as another
+              const fo = { x: panelX, w: panelWidth, rowTol: dynamicBarH / 2, vmin: chartDomain[0], vmax: chartDomain[1], tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: median ${it.median}` };
+              tmFast.item(spanG, fo, { x: boxX, w: boxWidth, y: boxY, h: boxHeight, color: boxColor, op: boxOpacity, leaf, column, median });
+              const wy = boxY + boxHeight / 2, cs = 3, cap = 2, L = (x1, y1, x2, y2) => 'M' + x1.toFixed(2) + ',' + y1.toFixed(2) + 'L' + x2.toFixed(2) + ',' + y2.toFixed(2);
+              let lines = '';
+              if (chartData.showMedianBox !== false) lines += L(medianX, boxY, medianX, boxY + boxHeight);
+              if (chartData.showMeanBox !== false) lines += L(meanX - cs, wy - cs, meanX + cs, wy + cs) + L(meanX - cs, wy + cs, meanX + cs, wy - cs);
+              if (chartData.showWhiskersBox !== false) lines += L(lowerWhiskerX, wy, q1X, wy) + L(lowerWhiskerX, wy - cap, lowerWhiskerX, wy + cap) + L(q3X, wy, upperWhiskerX, wy) + L(upperWhiskerX, wy - cap, upperWhiskerX, wy + cap);
+              if (lines) tmFast.item(spanG, fo, { x: Math.min(lowerWhiskerX, boxX), w: Math.max(upperWhiskerX, boxX + boxWidth) - Math.min(lowerWhiskerX, boxX), y: boxY, h: boxHeight, stroke: boxColor, sw: 1, path: lines, leaf, column, median });
+              if (chartData.showOutliersBox !== false) outliers.forEach(v => { const ox = panelX + chartScale(v); tmFast.item(spanG, fo, { x: ox - 2, w: 4, y: wy - 2, h: 4, color: boxColor, path: tmFast.circlePath(ox, wy, 2), leaf, column, median }); });
+              return;
+            }
             // Draw box (Q1 to Q3)
             leafG.append('rect')
               .attr('x', boxX)
