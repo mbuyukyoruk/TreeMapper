@@ -4995,6 +4995,52 @@ function applyTipSelection(names) {
   setStatus(n ? n + ' tip' + (n === 1 ? '' : 's') + ' selected' : 'Selection cleared');
 }
 
+// ---- highlight bands across the data columns
+// The orange band across a data column marks a tip's row: the hovered row, the search hits,
+// the selection. One band per highlighted tip per column, made when needed (a band per tip
+// per column, kept invisible, used to be two of every three elements of a heatmap or chart
+// column: 20,500 tips × columns laid out and styled on every redraw of a large tree).
+// A column registers itself as it is drawn (its row geometry); the bands live in a group
+// first in the column, behind its cells, and follow the column when it is kept or moved.
+const layerBands = new Map();   // column group element -> { g, x, w, h, yOf, shown }
+let hoveredBand = null;
+function ensureLayerBands(spanG, leaves, panelX, width, barH) {
+  const el = spanG.node();
+  if (!el || layerBands.has(el)) return;
+  const g = spanG.insert('g', ':first-child').attr('class', 'df-bands').node();
+  const yOf = new Map();
+  for (const l of leaves) yOf.set(l.data.name, l.x - barH / 2);
+  const entry = { g, x: panelX, w: Math.max(0, width), h: barH, yOf, shown: new Map() };
+  layerBands.set(el, entry);
+  syncLayerBands(el, entry);
+}
+function bandWanted(name) { return (highlightedAccessions && highlightedAccessions.has(name)) || name === hoveredBand; }
+function layerBandSet(entry, name, on) {
+  const have = entry.shown.get(name);
+  if (on && !have) {
+    const y = entry.yOf.get(name);
+    if (y === undefined) return;
+    const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    r.setAttribute('class', 'df-leaf-highlight'); r.setAttribute('data-accession', name);
+    r.setAttribute('x', entry.x); r.setAttribute('y', y); r.setAttribute('width', entry.w); r.setAttribute('height', entry.h);
+    r.setAttribute('fill', '#ff6b35'); r.setAttribute('opacity', 0.2); r.setAttribute('pointer-events', 'none');
+    entry.g.appendChild(r); entry.shown.set(name, r);
+  } else if (!on && have) { have.remove(); entry.shown.delete(name); }
+}
+function syncLayerBands(el, entry) {
+  if (!el.isConnected) { layerBands.delete(el); return; }
+  entry.shown.forEach((r, name) => { if (!bandWanted(name)) { r.remove(); entry.shown.delete(name); } });
+  if (highlightedAccessions) highlightedAccessions.forEach(name => layerBandSet(entry, name, true));
+  if (hoveredBand) layerBandSet(entry, hoveredBand, true);
+}
+function syncAllBands() { layerBands.forEach((entry, el) => syncLayerBands(el, entry)); }
+// the hovered row (a cell, bar or dot under the pointer): its band in every column, gone when
+// the pointer leaves unless the tip is highlighted
+function bandHover(name, on) {
+  if (on) hoveredBand = name; else if (hoveredBand === name) hoveredBand = null;
+  layerBands.forEach((entry, el) => { if (!el.isConnected) { layerBands.delete(el); return; } layerBandSet(entry, name, bandWanted(name)); });
+}
+
 function updateSearchHighlights() {
   if (!root) return;
   
@@ -5013,13 +5059,7 @@ function updateSearchHighlights() {
   }
   
   const svg = d3.select('#svg');
-  try{
-    svg.selectAll('rect.df-leaf-highlight')
-      .attr('opacity', function(){
-        const acc = this.getAttribute('data-accession');
-        return (highlightedAccessions && highlightedAccessions.has(acc)) ? 0.2 : 0;
-      });
-  }catch(_){/* best-effort */}
+  syncAllBands();   // the bands across the data columns for the highlighted tips
   if (window.tmTangle) { try { tmTangle.refreshSelection(); } catch (e) {} }   // comparison-tree connectors
   svg.selectAll('text.label')
     .style('background', null)
@@ -5896,6 +5936,10 @@ let drawTreeDepth = 0;
 // last three, so that one slow redraw (the first one after loading, a busy moment) does
 // not count a small drawing as a large one
 let lastDrawMs = 0, lastDrawElements = 0;
+// the SVG's size as read at the start of the current draw: a helper called during the draw
+// takes it from here instead of asking the browser (that would force a layout of everything
+// drawn so far, several hundred ms on a large tree, each time)
+let drawSizes = null;
 const recentDrawMs = [];
 function drawTree(){
   if (drawTreeDepth === 0) supportPaintCache = null;   // settings may have changed since the last redraw
@@ -5914,6 +5958,7 @@ function drawTree(){
     if (pass > 0) drawTreeDepth++;
     try { out = drawTreeBody.apply(this, arguments); done = true; }
     finally {
+      if (!done) drawSizes = null;
       drawTreeDepth--;
       if (outer) layerReuseRestoreState(outer); else layerReuseEnd();
     }
@@ -5924,8 +5969,15 @@ function drawTree(){
   if (done && !outer) { lastTreeKeepKey = pendingTreeKeepKey; recentDrawMs.push(performance.now() - t0); if (recentDrawMs.length > 3) recentDrawMs.shift(); lastDrawMs = Math.min(...recentDrawMs); const svgEl = document.getElementById('svg'); lastDrawElements = svgEl ? svgEl.getElementsByTagName('*').length : 0; }
   if (done && !outer) {
     drawTreeFinish();
+    // the zoom's bounds from the whole drawing, measured once everything (the selection
+    // and colour overlay too) is in place: the one layout of the new drawing. (Measured
+    // inside the draw, before the overlay, the browser laid the drawing out twice: with
+    // 20,500 labels a second of its own. Not while a splitter is dragged; the redraw on
+    // release measures.)
+    if (!panelDragPreview) updateZoomBounds();
     if (panelDragPreview && window.tmDragLive) tmDragLive.capture();
   }
+  drawSizes = null;
   return out;
 }
 // After every redraw: re-apply search / selection colours (path to the selected
@@ -6041,6 +6093,12 @@ function drawTreeBody(){
   const canvasW = dragGeom ? dragGeom.svgW : (svgEl ? svgEl.clientWidth  : 0);
   const svgH    = dragGeom ? dragGeom.svgH : (svgEl ? svgEl.clientHeight : 0);
   if (!dragGeom && drawTreeDepth <= 1) lastDrawSize = canvasW + 'x' + svgH;   // (a resize to this same size then needs no redraw)
+  // the canvas box, read here with the sizes above, before the drawing is touched: a size read
+  // later in the draw forces the browser to lay out the whole SVG again (hundreds of ms on a
+  // large tree), and the same reads used to happen four times per draw
+  const canvasEl0 = document.getElementById('canvas');
+  const canvasRect0 = dragGeom ? dragGeom.canvasRect : (canvasEl0 ? { top: canvasEl0.offsetTop, left: canvasEl0.offsetLeft, width: canvasEl0.offsetWidth, height: canvasEl0.offsetHeight } : null);
+  drawSizes = { svgW: canvasW, svgH: svgH };   // for the helpers this draw calls (cleared when the draw ends)
 
   // User-selected bar width and a fixed gap between labels and bars
   const barSelectW = +trackWidthSel.value; // desired metadata bar width (0 hides)
@@ -6314,8 +6372,7 @@ function drawTreeBody(){
   // values, clade highlights, guides) is exactly what this code would draw again: it
   // is kept, and only the splitter lines are redrawn here (see treeKeepKey).
   if (keepTree) {
-    const canvasEl = document.getElementById('canvas');
-    const canvasRect = dragGeom ? dragGeom.canvasRect : (canvasEl ? { top: canvasEl.offsetTop, left: canvasEl.offsetLeft, width: canvasEl.offsetWidth, height: canvasEl.offsetHeight } : null);
+    const canvasRect = canvasRect0;
     drawSplittersInSVG(g, vTop + plotH, canvasRect);
     updateSplitterLineHeights();
   } else {
@@ -6921,8 +6978,7 @@ function drawTreeBody(){
   
   // Draw SVG-based splitter lines (pass canvas rect to avoid layout-forcing reads inside drawSplittersInSVG)
   if (!isRadial) {
-    const canvasEl = document.getElementById('canvas');
-    const canvasRect = dragGeom ? dragGeom.canvasRect : (canvasEl ? { top: canvasEl.offsetTop, left: canvasEl.offsetLeft, width: canvasEl.offsetWidth, height: canvasEl.offsetHeight } : null);
+    const canvasRect = canvasRect0;
     drawSplittersInSVG(g, vTop + plotH, canvasRect);
       // Update splitter line heights to match the actual tree
       updateSplitterLineHeights();
@@ -7150,14 +7206,14 @@ function drawTreeBody(){
         })
         .attr('y', -labelSize/2)
         .attr('width', labelsPanel.width)
-        .attr('height', d => {
-          // Use dynamic height based on actual spacing between labels
-          const leafPositions = leaves.map(leaf => leaf.x).sort((a, b) => a - b);
-          const avgGap = leafPositions.length > 1 ?
-            (leafPositions[leafPositions.length - 1] - leafPositions[0]) / (leafPositions.length - 1) :
-            currentBarH;
+        .attr('height', (() => {
+          // one height for all: from the average spacing between the tips (worked out once; it was
+          // worked out again for every tip, sorting every tip's position each time)
+          let lo = Infinity, hi = -Infinity;
+          for (const leaf of leaves) { if (leaf.x < lo) lo = leaf.x; if (leaf.x > hi) hi = leaf.x; }
+          const avgGap = leaves.length > 1 ? (hi - lo) / (leaves.length - 1) : currentBarH;
           return Math.max(currentBarH, Math.min(avgGap * 0.9, 20));
-        })
+        })())
         .attr('fill', d => {
           // Check if this accession has highlight data
           if (highlights && highlights.size > 0) {
@@ -7344,8 +7400,8 @@ function drawTreeBody(){
       }
       
       // Get center coordinates from radial panel system
-      const centerX = window.radialPanelSystem ? window.radialPanelSystem.getCenterX() : (svgEl.clientWidth / 2);
-      const centerY = window.radialPanelSystem ? window.radialPanelSystem.getCenterY() : (svgEl.clientHeight / 2);
+      const centerX = window.radialPanelSystem ? window.radialPanelSystem.getCenterX() : (canvasW / 2);
+      const centerY = window.radialPanelSystem ? window.radialPanelSystem.getCenterY() : (svgH / 2);
       
       // Define colors for radial elements (same as rectangular layout)
       const ringCol = cssVar('--tree') || '#e5e7eb';
@@ -7693,8 +7749,8 @@ function drawTreeBody(){
           
           // Get canvas dimensions
           const svgEl = document.getElementById('svg');
-          const canvasWidth = svgEl ? svgEl.clientWidth : 800;
-          const canvasHeight = svgEl ? svgEl.clientHeight : 800;
+          const canvasWidth = canvasW || 800;
+          const canvasHeight = svgH || 800;
           
           // Calculate scale bar length based on user-defined scale range
           const scaleBarLength = (scaleRange / maxCum) * treeOuterRadius;
@@ -9758,8 +9814,7 @@ function drawTreeBody(){
       const cx   = placeholderX + placeholderWidth / 2; // Center in placeholder area
       // Place vertically at the center of the visible viewport (not plot area)
       const tZ = d3.zoomTransform(svg.node());
-      const svgEl2 = document.getElementById('svg');
-      const viewH = svgEl2 ? svgEl2.clientHeight : 0;
+      const viewH = svgH;   // (read before the drawing was touched)
       let cy   = (viewH/2 - tZ.y) / Math.max(0.0001, tZ.k);
       // Optional: clamp to placeholder vertical bounds so it stays within the bar column
       cy = Math.max(topY + 14, Math.min(topY + phH - 14, cy));
@@ -10081,21 +10136,8 @@ function drawTreeBody(){
           if (!recs) return;
           
         const dx = 0; // No offset needed since alignment is handled in prepareDataframeForDrawing
-          const leafG = spanG.append('g').attr('transform', `translate(${dx}, 0)`);
-          (function(){
-            const highlightY = d.x - (dynamicBarH / 2);
-            const highlightW = (panelWidth - margin.right);
-            leafG.append('rect')
-              .attr('class', 'df-leaf-highlight')
-              .attr('data-accession', d.data.name)
-              .attr('x', panelX)
-              .attr('y', highlightY)
-              .attr('width', Math.max(0, highlightW))
-              .attr('height', dynamicBarH)
-              .attr('fill', '#ff6b35')
-              .attr('opacity', (highlightedAccessions && highlightedAccessions.has(d.data.name)) ? 0.2 : 0)
-              .attr('pointer-events', 'none');
-          })();
+          const leafG = spanG.append('g').attr('transform', `translate(${dx}, 0)`).attr('data-accession', d.data.name);   // the row's tip
+          ensureLayerBands(spanG, leaves, panelX, (panelWidth - margin.right), dynamicBarH);   // the column's highlight bands (made when needed)
           
           // Group by gene
         const byGene = new Map();
@@ -10166,7 +10208,7 @@ function drawTreeBody(){
                   .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
                   .on('click', (ev) => {
@@ -10181,7 +10223,7 @@ function drawTreeBody(){
                       showTip(ev, d, true, { v: tooltipContent, vmin: dfVmin, vmax: dfVmax }); 
                     }
                   })
-                  .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } hideTip(); });
+                  .on('mouseleave', () => { bandHover(d.data.name, false); hideTip(); });
               } else if (showArrow) {
                 // Arrow mode: draw box with arrow (bar shortened by arrow width)
                 const base = leafG.append('g');
@@ -10194,63 +10236,63 @@ function drawTreeBody(){
                     .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
-                    .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){}});
+                    .on('mouseleave', () => { bandHover(d.data.name, false);});
                   // Arrow triangle starts exactly at the right edge of the shortened box
                   base.append('path').attr('d', `M ${x + barWidth} ${y} L ${x + barWidth + tipW} ${y + dynamicBarH / 2} L ${x + barWidth} ${y + dynamicBarH} Z`).attr('fill', color(gname || ''))
                     .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
-                    .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){}});
+                    .on('mouseleave', () => { bandHover(d.data.name, false);});
                 } else if (og < 0) {
                   // Left-pointing arrow: draw shortened rectangle, then append arrow at the beginning
                   base.append('rect').attr('x', x + tipW).attr('y', y).attr('width', barWidth).attr('height', dynamicBarH).attr('fill', color(gname || ''))
                     .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
-                    .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){}});
+                    .on('mouseleave', () => { bandHover(d.data.name, false);});
                   // Arrow triangle ends exactly at the left edge of the shortened box
                   base.append('path').attr('d', `M ${x} ${y + dynamicBarH / 2} L ${x + tipW} ${y} L ${x + tipW} ${y + dynamicBarH} Z`).attr('fill', color(gname || ''))
                     .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
-                    .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){}});
+                    .on('mouseleave', () => { bandHover(d.data.name, false);});
                       } else {
                   // Orientation = 0: draw shortened box with reverse orientation arrow (left-pointing)
                   base.append('rect').attr('x', x + tipW).attr('y', y).attr('width', barWidth).attr('height', dynamicBarH).attr('fill', color(gname || ''))
                     .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
-                    .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){}});
+                    .on('mouseleave', () => { bandHover(d.data.name, false);});
                   // Arrow triangle ends exactly at the left edge of the shortened box
                   base.append('path').attr('d', `M ${x} ${y + dynamicBarH / 2} L ${x + tipW} ${y} L ${x + tipW} ${y + dynamicBarH} Z`).attr('fill', color(gname || ''))
                     .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
-                    .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){}});
+                    .on('mouseleave', () => { bandHover(d.data.name, false);});
                 }
                 base
                   .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
                   .on('click', (ev) => {
@@ -10265,7 +10307,7 @@ function drawTreeBody(){
                       showTip(ev, d, true, { v: tooltipContent, vmin: dfVmin, vmax: dfVmax }); 
                     }
                   })
-                  .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } hideTip(); });
+                  .on('mouseleave', () => { bandHover(d.data.name, false); hideTip(); });
               } else {
                 // Normal mode: draw box without arrow
                 leafG.append('rect')
@@ -10279,7 +10321,7 @@ function drawTreeBody(){
                   .on('mouseenter', () => { 
                     // Don't show highlight if splitter is being dragged
                     if (!isDragging && !window.__draggingSplitter) {
-                      try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                      bandHover(d.data.name, true);
                     }
                   })
                   .on('click', (ev) => {
@@ -10287,7 +10329,7 @@ function drawTreeBody(){
                     if (isDragging || window.__draggingSplitter) return;
                     toggleDataframeFocusGene(dataframeId, gname, ev);
                   })
-                  .on('mouseleave', () => { try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } hideTip(); })
+                  .on('mouseleave', () => { bandHover(d.data.name, false); hideTip(); })
                   .on('mousemove', (ev) => { 
                     ev.stopPropagation(); 
                     // Don't show tooltip if splitter is being dragged
@@ -10459,8 +10501,7 @@ function drawTreeBody(){
       const cx   = placeholderX + placeholderWidth / 2; // Center in placeholder area
       // Place vertically at the center of the visible viewport (not plot area)
       const tZ = d3.zoomTransform(svg.node());
-      const svgEl2 = document.getElementById('svg');
-      const viewH = svgEl2 ? svgEl2.clientHeight : 0;
+      const viewH = svgH;   // (read before the drawing was touched)
       let cy   = (viewH/2 - tZ.y) / Math.max(0.0001, tZ.k);
       // Optional: clamp to placeholder vertical bounds so it stays within the bar column
       cy = Math.max(topY + 14, Math.min(topY + phH - 14, cy));
@@ -10673,24 +10714,7 @@ function drawTreeBody(){
         const color = heatmapColorOf(heatmapData, value);
         rectanglesDrawn++;
         
-        const dx = 0; // No offset needed
-        const leafG = spanG.append('g').attr('transform', `translate(${dx}, 0)`);
-        
-        // Add highlight rectangle - use full panel width
-        (function(){
-          const highlightY = d.x - (dynamicBarH / 2);
-          const highlightW = panelWidth; // Use full panel width
-          leafG.append('rect')
-            .attr('class', 'df-leaf-highlight')
-            .attr('data-accession', d.data.name)
-            .attr('x', panelX)
-            .attr('y', highlightY)
-            .attr('width', Math.max(0, highlightW))
-            .attr('height', dynamicBarH)
-            .attr('fill', '#ff6b35')
-            .attr('opacity', (highlightedAccessions && highlightedAccessions.has(d.data.name)) ? 0.2 : 0)
-            .attr('pointer-events', 'none');
-        })();
+        ensureLayerBands(spanG, leaves, panelX, panelWidth, dynamicBarH);   // the column's highlight bands (made when needed)
         
         // Draw heatmap rectangle (start=0, end=1, orientation=1)
         const startX = panelX + heatmapScale(0); // Start at 0
@@ -10699,7 +10723,8 @@ function drawTreeBody(){
         const y = d.x - (dynamicBarH / 2);
         
         
-        leafG.append('rect')
+        spanG.append('rect')   // (the cell itself: no group per row)
+          .attr('data-accession', d.data.name)
           .attr('x', startX)
           .attr('y', y)
           .attr('width', boxWidth)
@@ -10708,7 +10733,7 @@ function drawTreeBody(){
           .attr('stroke', 'none')
           .on('mouseenter', () => { 
             if (!isDragging && !window.__draggingSplitter) {
-              try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+              bandHover(d.data.name, true);
             }
           })
           .on('mousemove', (ev) => { 
@@ -10718,7 +10743,7 @@ function drawTreeBody(){
             }
           })
           .on('mouseleave', () => { 
-            try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } 
+            bandHover(d.data.name, false); 
             hideTip(); 
           });
       });
@@ -10943,22 +10968,7 @@ function drawTreeBody(){
             return;
           }
           
-          const dx = 0;
-          const leafG = spanG.append('g').attr('transform', `translate(${dx}, 0)`);
-          
-          // Add highlight rectangle
-          const highlightY = d.x - (dynamicBarH / 2);
-          const highlightW = panelWidth;
-          leafG.append('rect')
-            .attr('class', 'df-leaf-highlight')
-            .attr('data-accession', d.data.name)
-            .attr('x', panelX)
-            .attr('y', highlightY)
-            .attr('width', Math.max(0, highlightW))
-            .attr('height', dynamicBarH)
-            .attr('fill', '#ff6b35')
-            .attr('opacity', (highlightedAccessions && highlightedAccessions.has(d.data.name)) ? 0.2 : 0)
-            .attr('pointer-events', 'none');
+          ensureLayerBands(spanG, leaves, panelX, panelWidth, dynamicBarH);   // the column's highlight bands (made when needed)
           
           if (barLayout === 'dodge' && visibleColumns.length > 1) {
             // Dodge layout: bars side by side with reduced width
@@ -10971,7 +10981,7 @@ function drawTreeBody(){
               const boxWidth = endX - startX;
               const y = d.x - (dynamicBarH / 2) + (index * (barWidth + barSpacing));
               
-              leafG.append('rect')
+              spanG.append('rect').attr('data-accession', d.data.name)   // (the bar itself: no group per row)
                 .attr('x', startX)
                 .attr('y', y)
                 .attr('width', boxWidth)
@@ -10980,7 +10990,7 @@ function drawTreeBody(){
                 .attr('stroke', 'none')
                 .on('mouseenter', () => { 
                   if (!isDragging && !window.__draggingSplitter) {
-                    try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                    bandHover(d.data.name, true);
                   }
                 })
                 .on('mousemove', (ev) => { 
@@ -10990,7 +11000,7 @@ function drawTreeBody(){
                   }
                 })
                 .on('mouseleave', () => { 
-                  try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } 
+                  bandHover(d.data.name, false); 
                   hideTip(); 
                 });
             });
@@ -11005,7 +11015,7 @@ function drawTreeBody(){
               const boxWidth = endX - startX;
               const y = d.x - (dynamicBarH / 2);
               
-              leafG.append('rect')
+              spanG.append('rect').attr('data-accession', d.data.name)   // (the bar itself: no group per row)
                 .attr('x', startX)
                 .attr('y', y)
                 .attr('width', boxWidth)
@@ -11014,7 +11024,7 @@ function drawTreeBody(){
                 .attr('stroke', 'none')
                 .on('mouseenter', () => { 
                   if (!isDragging && !window.__draggingSplitter) {
-                    try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                    bandHover(d.data.name, true);
                   }
                 })
                 .on('mousemove', (ev) => { 
@@ -11024,7 +11034,7 @@ function drawTreeBody(){
                   }
                 })
                 .on('mouseleave', () => { 
-                  try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } 
+                  bandHover(d.data.name, false); 
                   hideTip(); 
                 });
               
@@ -11039,7 +11049,7 @@ function drawTreeBody(){
               const boxWidth = endX - startX;
               const y = d.x - (dynamicBarH / 2);
               
-              leafG.append('rect')
+              spanG.append('rect').attr('data-accession', d.data.name)   // (the bar itself: no group per row)
                 .attr('x', startX)
                 .attr('y', y)
                 .attr('width', boxWidth)
@@ -11049,7 +11059,7 @@ function drawTreeBody(){
                 .attr('opacity', 0.8) // Slightly transparent so overlapping bars are visible
                 .on('mouseenter', () => { 
                   if (!isDragging && !window.__draggingSplitter) {
-                    try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                    bandHover(d.data.name, true);
                   }
                 })
                 .on('mousemove', (ev) => { 
@@ -11059,7 +11069,7 @@ function drawTreeBody(){
                   }
                 })
                 .on('mouseleave', () => { 
-                  try{ const on = highlightedAccessions && highlightedAccessions.has(d.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${d.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } 
+                  bandHover(d.data.name, false); 
                   hideTip(); 
                 });
             });
@@ -11179,32 +11189,18 @@ function drawTreeBody(){
           
           // Draw circles at each data point
           lineData.forEach(point => {
-            const leafG = spanG.append('g');
-            
-            // Add highlight rectangle
-            const highlightY = point.x - (dynamicBarH / 2);
-            const highlightW = panelWidth;
-            leafG.append('rect')
-              .attr('class', 'df-leaf-highlight')
-              .attr('data-accession', point.accession)
-              .attr('x', panelX)
-              .attr('y', highlightY)
-              .attr('width', Math.max(0, highlightW))
-              .attr('height', dynamicBarH)
-              .attr('fill', '#ff6b35')
-              .attr('opacity', (highlightedAccessions && highlightedAccessions.has(point.accession)) ? 0.2 : 0)
-              .attr('pointer-events', 'none');
+            ensureLayerBands(spanG, leaves, panelX, panelWidth, dynamicBarH);   // the column's highlight bands (made when needed)
             
             // Draw circle only if showDots is enabled
             if (chartData.showDots) {
-              leafG.append('circle')
+              spanG.append('circle').attr('data-accession', point.accession)   // (the point itself: no group per point)
                 .attr('cx', point.y)
                 .attr('cy', point.x)
                 .attr('r', chartData.dotSize || 3)
                 .attr('fill', point.color)
                 .on('mouseenter', () => { 
                   if (!isDragging && !window.__draggingSplitter) {
-                    try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${point.accession}"]`).attr('opacity', 0.2); }catch(_){}
+                    bandHover(point.accession, true);
                   }
                 })
                 .on('mousemove', (ev) => { 
@@ -11214,7 +11210,7 @@ function drawTreeBody(){
                   }
                 })
                 .on('mouseleave', () => { 
-                  try{ const on = highlightedAccessions && highlightedAccessions.has(point.accession); d3.selectAll(`rect.df-leaf-highlight[data-accession="${point.accession}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } 
+                  bandHover(point.accession, false); 
                   hideTip(); 
                 });
             }
@@ -11268,31 +11264,17 @@ function drawTreeBody(){
             }
             
             if (hasValue) {
-              const leafG = spanG.append('g');
-              
-              // Add highlight rectangle
-              const highlightY = leaf.x - (dynamicBarH / 2);
-              const highlightW = panelWidth;
-              leafG.append('rect')
-                .attr('class', 'df-leaf-highlight')
-                .attr('data-accession', leaf.data.name)
-                .attr('x', panelX)
-                .attr('y', highlightY)
-                .attr('width', Math.max(0, highlightW))
-                .attr('height', dynamicBarH)
-                .attr('fill', '#ff6b35')
-                .attr('opacity', (highlightedAccessions && highlightedAccessions.has(leaf.data.name)) ? 0.2 : 0)
-                .attr('pointer-events', 'none');
+              ensureLayerBands(spanG, leaves, panelX, panelWidth, dynamicBarH);   // the column's highlight bands (made when needed)
               
               // Draw circle (dots always shown)
-              leafG.append('circle')
+              spanG.append('circle').attr('data-accession', leaf.data.name)   // (the dot itself: no group per dot)
                 .attr('cx', panelX + chartScale(value))
                 .attr('cy', leaf.x)
                 .attr('r', chartData.dotSizeDot || 3)
                 .attr('fill', chartData.valueColors.get(column))
                 .on('mouseenter', () => { 
                   if (!isDragging && !window.__draggingSplitter) {
-                    try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${leaf.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                    bandHover(leaf.data.name, true);
                   }
                 })
                 .on('mousemove', (ev) => { 
@@ -11302,7 +11284,7 @@ function drawTreeBody(){
                   }
                 })
                 .on('mouseleave', () => { 
-                  try{ const on = highlightedAccessions && highlightedAccessions.has(leaf.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${leaf.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } 
+                  bandHover(leaf.data.name, false); 
                   hideTip(); 
                 });
             }
@@ -11421,21 +11403,8 @@ function drawTreeBody(){
             const lowerWhisker = nonOutliers.length > 0 ? d3.min(nonOutliers) : min;
             const upperWhisker = nonOutliers.length > 0 ? d3.max(nonOutliers) : max;
             
-            const leafG = spanG.append('g');
-            
-            // Add highlight rectangle
-            const highlightY = leaf.x - (dynamicBarH / 2);
-            const highlightW = panelWidth;
-            leafG.append('rect')
-              .attr('class', 'df-leaf-highlight')
-              .attr('data-accession', leaf.data.name)
-              .attr('x', panelX)
-              .attr('y', highlightY)
-              .attr('width', Math.max(0, highlightW))
-              .attr('height', dynamicBarH)
-              .attr('fill', '#ff6b35')
-              .attr('opacity', (highlightedAccessions && highlightedAccessions.has(leaf.data.name)) ? 0.2 : 0)
-              .attr('pointer-events', 'none');
+            const leafG = spanG.append('g').attr('data-accession', leaf.data.name);   // the row's tip
+            ensureLayerBands(spanG, leaves, panelX, panelWidth, dynamicBarH);   // the column's highlight bands (made when needed)
             
             const boxColor = chartData.valueColors.get(column);
             const boxOpacity = (chartData.boxTransparency || 50) / 100;
@@ -11578,7 +11547,7 @@ function drawTreeBody(){
                          .attr('opacity', 0.7)
                          .on('mouseenter', () => { 
                            if (!isDragging && !window.__draggingSplitter) {
-                             try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${leaf.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                             bandHover(leaf.data.name, true);
                            }
                          })
                          .on('mousemove', (ev) => { 
@@ -11592,7 +11561,7 @@ function drawTreeBody(){
                            }
                          })
                          .on('mouseleave', () => { 
-                           try{ const on = highlightedAccessions && highlightedAccessions.has(leaf.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${leaf.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } 
+                           bandHover(leaf.data.name, false); 
                            hideTip(); 
                          });
                      }
@@ -11606,7 +11575,7 @@ function drawTreeBody(){
                        .attr('opacity', isOutlier ? 0.7 : 0.5)
                        .on('mouseenter', () => { 
                          if (!isDragging && !window.__draggingSplitter) {
-                           try{ d3.selectAll(`rect.df-leaf-highlight[data-accession="${leaf.data.name}"]`).attr('opacity', 0.2); }catch(_){}
+                           bandHover(leaf.data.name, true);
                          }
                        })
                        .on('mousemove', (ev) => { 
@@ -11620,7 +11589,7 @@ function drawTreeBody(){
                          }
                        })
                        .on('mouseleave', () => { 
-                         try{ const on = highlightedAccessions && highlightedAccessions.has(leaf.data.name); d3.selectAll(`rect.df-leaf-highlight[data-accession="${leaf.data.name}"]`).attr('opacity', on ? 0.2 : 0); }catch(_){ } 
+                         bandHover(leaf.data.name, false); 
                          hideTip(); 
                        });
                    }
@@ -11731,8 +11700,7 @@ function drawTreeBody(){
         const cx   = placeholderX + placeholderWidth / 2; // Center in placeholder area
         // Place vertically at the center of the visible viewport (not plot area)
         const tZ = d3.zoomTransform(svg.node());
-        const svgEl2 = document.getElementById('svg');
-        const viewH = svgEl2 ? svgEl2.clientHeight : 0;
+        const viewH = svgH;   // (read before the drawing was touched)
         let cy   = (viewH/2 - tZ.y) / Math.max(0.0001, tZ.k);
         // Optional: clamp to placeholder vertical bounds so it stays within the bar column
         cy = Math.max(topY + 14, Math.min(topY + phH - 14, cy));
@@ -12003,8 +11971,7 @@ function drawTreeBody(){
       const cx   = placeholderX + placeholderWidth / 2; // Center in placeholder area
       // Place vertically at the center of the visible viewport (not plot area)
       const tZ = d3.zoomTransform(svg.node());
-      const svgEl2 = document.getElementById('svg');
-      const viewH = svgEl2 ? svgEl2.clientHeight : 0;
+      const viewH = svgH;   // (read before the drawing was touched)
       let cy   = (viewH/2 - tZ.y) / Math.max(0.0001, tZ.k);
       // Optional: clamp to placeholder vertical bounds so it stays within the bar column
       cy = Math.max(topY + 14, Math.min(topY + phH - 14, cy));
@@ -12201,9 +12168,7 @@ function drawTreeBody(){
       .attr('pointer-events', 'none');
   }
 
-  // Clamp zoom bounds to tree (measures the whole drawing: not while a splitter is
-  // dragged; the redraw on release does it)
-  if (!panelDragPreview) updateZoomBounds();
+  // (the zoom bounds are measured by drawTree once the drawing is complete)
   
   // Update search highlights after tree is drawn
   if (currentSearchTerm) {
@@ -12650,7 +12615,7 @@ function drawTreeBody(){
 function updateZoomBounds(){
   if(!g.node()) return;
   const svgEl = document.getElementById('svg');
-  const w = svgEl.clientWidth, h = svgEl.clientHeight;
+  const w = drawSizes ? drawSizes.svgW : svgEl.clientWidth, h = drawSizes ? drawSizes.svgH : svgEl.clientHeight;
   let bbox = {x:0,y:0,width: w, height: h};
   try{ bbox = g.node().getBBox(); }catch(e){}
   
@@ -14650,7 +14615,7 @@ function updateSplitterLineHeights() {
   
   const actualTreeHeight = d3.max(leaves, d => d.x) - d3.min(leaves, d => d.x);
   const svg = document.getElementById('svg');
-  const svgHeight = dragGeom ? dragGeom.svgH : (svg ? svg.clientHeight : 0);
+  const svgHeight = dragGeom ? dragGeom.svgH : (drawSizes ? drawSizes.svgH : (svg ? svg.clientHeight : 0));
   const targetHeight = Math.max(actualTreeHeight, svgHeight);
   
   const splitterLines = g.selectAll('.svg-splitter');
@@ -18271,6 +18236,32 @@ function heatmapValueShown(hm, value) {
   if (window.tmHeatScale && tmHeatScale.isGradient(hm)) return true;
   return !!hm.valueVisibility.get(value);
 }
+// ---- a card's value list: its first rows, the rest on request
+// Every row holds a colour control. 20,500 of them in the side panel (a column where every
+// value is different) made WebKit resolve their styles for seconds on every redraw, listed
+// or hidden. A list longer than CARD_ROWS shows its first rows and a "Show all N" button
+// that adds the rest; the rows' controls are handled by the list itself (delegate), so the
+// rows added later work the same. The data (visibility, colours) always holds every value.
+const CARD_ROWS = 50;
+function cardRowsHtml(rows) {
+  if (rows.length <= CARD_ROWS) return rows.join('');
+  return rows.slice(0, CARD_ROWS).join('') + `<button type="button" class="card-more" title="${(rows.length - CARD_ROWS).toLocaleString()} more">Show all ${rows.length.toLocaleString()}</button>`;
+}
+function cardRowsMore(box, rows) {
+  const b = box.querySelector('.card-more');
+  if (!b) return;
+  b.addEventListener('click', () => { b.insertAdjacentHTML('beforebegin', rows.slice(CARD_ROWS).join('')); b.remove(); });
+}
+// one listener on the list for its rows' controls (a list filled again replaces it)
+function delegate(box, type, selector, fn) {
+  const key = type + ' ' + selector;
+  if (!box.__delegated) box.__delegated = {};
+  if (box.__delegated[key]) box.removeEventListener(type, box.__delegated[key]);
+  const h = (ev) => { const t = ev.target; if (t && t.matches && t.matches(selector)) fn(ev); };
+  box.__delegated[key] = h;
+  box.addEventListener(type, h);
+}
+
 function populateHeatmapCard(heatmapId, metadata) {
   // Store the heatmap data
   if (!heatmaps) {
@@ -18370,8 +18361,7 @@ function populateHeatmapCard(heatmapId, metadata) {
       `;
     } else if (sortedValues.length > 0) {
       const canGradient = window.tmHeatScale && tmHeatScale.stats(hm).numeric;
-      heatmapDiv.innerHTML = (canGradient ? `<div class="hs-mode pro-row"><span>Scale</span><span class="pro-radio-seg" role="radiogroup" aria-label="Heatmap scale"><label><input type="radio" name="hsMode${heatmapId}" class="hs-mode-radio" value="gradient"><span>Gradient</span></label><label><input type="radio" name="hsMode${heatmapId}" class="hs-mode-radio" value="categories" checked><span>Categories</span></label></span></div>` : '') + `
-        ${sortedValues.map(value => {
+      const valueRows = sortedValues.map(value => {
           const checked = hm.valueVisibility.get(value) ? 'checked' : '';
           const color = hm.valueColors.get(value) || '#ccc';
           return `<div class="heatmap-value-card pro-list-row" data-value="${value}">
@@ -18379,15 +18369,18 @@ function populateHeatmapCard(heatmapId, metadata) {
                     <span class="heatmap-value-name pro-list-name" title="${value}">${value}</span>
                     <input type="color" class="heatmap-value-color pro-swatch" data-value="${value}" value="${color}" title="Colour" aria-label="Colour of ${value}">
                   </div>`;
-        }).join('')}
+        });   // (each value a row: a checkbox and a colour)
+
+      heatmapDiv.innerHTML = (canGradient ? `<div class="hs-mode pro-row"><span>Scale</span><span class="pro-radio-seg" role="radiogroup" aria-label="Heatmap scale"><label><input type="radio" name="hsMode${heatmapId}" class="hs-mode-radio" value="gradient"><span>Gradient</span></label><label><input type="radio" name="hsMode${heatmapId}" class="hs-mode-radio" value="categories" checked><span>Categories</span></label></span></div>` : '') + `
+        ${cardRowsHtml(valueRows)}
       `;
+      cardRowsMore(heatmapDiv, valueRows);
     } else {
       heatmapDiv.innerHTML = '<i>No heatmap data available</i>';
     }
     
     // Add event listeners for checkboxes
-    heatmapDiv.querySelectorAll('.heatmap-value-toggle').forEach(checkbox => {
-      checkbox.addEventListener('change', ev => {
+    delegate(heatmapDiv, 'change', '.heatmap-value-toggle', ev => {
         const value = ev.target.getAttribute('data-value');
         hm.valueVisibility.set(value, ev.target.checked);
         
@@ -18401,7 +18394,6 @@ function populateHeatmapCard(heatmapId, metadata) {
         if (root) {
           drawTree();
         }
-      });
     });
     
     // Add event listener for master checkbox
@@ -18411,11 +18403,8 @@ function populateHeatmapCard(heatmapId, metadata) {
         const isChecked = ev.target.checked;
         
         // Update all individual checkboxes to match master checkbox
-        heatmapDiv.querySelectorAll('.heatmap-value-toggle').forEach(checkbox => {
-          checkbox.checked = isChecked;
-          const value = checkbox.getAttribute('data-value');
-          hm.valueVisibility.set(value, isChecked);
-        });
+        hm.valueVisibility.forEach((v, value) => hm.valueVisibility.set(value, isChecked));   // every value, listed or not yet
+        heatmapDiv.querySelectorAll('.heatmap-value-toggle').forEach(checkbox => { checkbox.checked = isChecked; });
         
         // Update legend to reflect visibility changes
         updateMetadataLegend();
@@ -18428,8 +18417,7 @@ function populateHeatmapCard(heatmapId, metadata) {
     }
     
     // Add event listeners for color pickers
-    heatmapDiv.querySelectorAll('.heatmap-value-color').forEach(colorPicker => {
-      colorPicker.addEventListener('input', ev => {
+    delegate(heatmapDiv, 'input', '.heatmap-value-color', ev => {
         const value = ev.target.getAttribute('data-value');
         hm.valueColors.set(value, ev.target.value);
         
@@ -18440,7 +18428,6 @@ function populateHeatmapCard(heatmapId, metadata) {
         if (root) {
           drawTree();
         }
-      });
     });
     
     // Initialize master checkbox state
@@ -18738,11 +18725,11 @@ function updateHeatmapMasterCheckbox(heatmapId) {
   
   if (!masterCheckbox || !heatmapDiv) return;
   
-  const individualCheckboxes = heatmapDiv.querySelectorAll('.heatmap-value-toggle');
-  if (individualCheckboxes.length === 0) return;
-  
-  const checkedCount = Array.from(individualCheckboxes).filter(cb => cb.checked).length;
-  const totalCount = individualCheckboxes.length;
+  const data = heatmaps && heatmaps.get(heatmapId);   // (from the data: the list may show only its first rows)
+  const vis = data && data.valueVisibility ? Array.from(data.valueVisibility.values()) : [];
+  if (vis.length === 0) return;
+  const checkedCount = vis.filter(Boolean).length;
+  const totalCount = vis.length;
   
   // Update master checkbox state
   if (checkedCount === 0) {
@@ -19047,8 +19034,7 @@ function populateHighlightCard(highlightId, metadata) {
         </div>
       `;
     } else if (sortedValues.length > 0) {
-      highlightDiv.innerHTML = `
-        ${sortedValues.map(value => {
+      const valueRows = sortedValues.map(value => {
           const checked = hl.valueVisibility.get(value) ? 'checked' : '';
           const color = hl.valueColors.get(value) || '#ccc';
           return `<div class="highlight-value-card pro-list-row" data-value="${value}">
@@ -19056,31 +19042,31 @@ function populateHighlightCard(highlightId, metadata) {
                     <span class="highlight-value-name pro-list-name" title="${value}">${value}</span>
                     <input type="color" class="highlight-value-color pro-swatch" data-value="${value}" value="${color}" title="Colour" aria-label="Colour of ${value}">
                   </div>`;
-        }).join('')}
+        });   // (each value a row: a checkbox and a colour)
+
+      highlightDiv.innerHTML = `
+        ${cardRowsHtml(valueRows)}
       `;
+      cardRowsMore(highlightDiv, valueRows);
     } else {
       highlightDiv.innerHTML = '<i>No highlight data available</i>';
     }
     
     // Add event listeners for checkboxes
-    highlightDiv.querySelectorAll('.highlight-value-toggle').forEach(checkbox => {
-      checkbox.addEventListener('change', ev => {
+    delegate(highlightDiv, 'change', '.highlight-value-toggle', ev => {
         const value = ev.target.getAttribute('data-value');
         hl.valueVisibility.set(value, ev.target.checked);
         updateHighlightMasterCheckbox(highlightId);
         updateMetadataLegend(); // Update legend to reflect visibility changes
         drawTree(); // Redraw to reflect visibility changes
-      });
     });
     
     // Add event listeners for color pickers
-    highlightDiv.querySelectorAll('.highlight-value-color').forEach(colorPicker => {
-      colorPicker.addEventListener('change', ev => {
+    delegate(highlightDiv, 'change', '.highlight-value-color', ev => {
         const value = ev.target.getAttribute('data-value');
         hl.valueColors.set(value, ev.target.value);
         updateMetadataLegend(); // Update legend to reflect color changes
         drawTree(); // Redraw to reflect color changes
-      });
     });
     
     // Add event listener for master checkbox
@@ -19215,11 +19201,11 @@ function updateHighlightMasterCheckbox(highlightId) {
   
   if (!masterCheckbox || !highlightDiv) return;
   
-  const individualCheckboxes = highlightDiv.querySelectorAll('.highlight-value-toggle');
-  if (individualCheckboxes.length === 0) return;
-  
-  const checkedCount = Array.from(individualCheckboxes).filter(cb => cb.checked).length;
-  const totalCount = individualCheckboxes.length;
+  const data = highlights && highlights.get(highlightId);   // (from the data: the list may show only its first rows)
+  const vis = data && data.valueVisibility ? Array.from(data.valueVisibility.values()) : [];
+  if (vis.length === 0) return;
+  const checkedCount = vis.filter(Boolean).length;
+  const totalCount = vis.length;
   
   // Update master checkbox state
   if (checkedCount === 0) {
@@ -19550,8 +19536,7 @@ function populateCladeCard(cladeId, metadata) {
         </div>
       `;
     } else if (sortedValues.length > 0) {
-      cladeDiv.innerHTML = `
-        ${sortedValues.map(value => {
+      const valueRows = sortedValues.map(value => {
           const checked = cl.valueVisibility.get(value) ? 'checked' : '';
           const color = cl.valueColors.get(value) || '#ccc';
           return `<div class="clade-value-card pro-list-row" data-value="${value}">
@@ -19559,33 +19544,33 @@ function populateCladeCard(cladeId, metadata) {
                     <span class="clade-value-name pro-list-name" title="${value}">${value}</span>
                     <input type="color" class="clade-value-color pro-swatch" data-value="${value}" value="${color}" title="Colour" aria-label="Colour of ${value}">
                   </div>`;
-        }).join('')}
+        });   // (each value a row: a checkbox and a colour)
+
+      cladeDiv.innerHTML = `
+        ${cardRowsHtml(valueRows)}
       `;
+      cardRowsMore(cladeDiv, valueRows);
     } else {
       cladeDiv.innerHTML = '<i>No clade data available</i>';
     }
     
     // Add event listeners for checkboxes
-    cladeDiv.querySelectorAll('.clade-value-toggle').forEach(checkbox => {
-      checkbox.addEventListener('change', ev => {
+    delegate(cladeDiv, 'change', '.clade-value-toggle', ev => {
         const value = ev.target.getAttribute('data-value');
         cl.valueVisibility.set(value, ev.target.checked);
         updateCladeMasterCheckbox(cladeId);
         updateMetadataLegend(); // Update legend to reflect visibility changes
         applyCladeColorsToTree(); // Apply clade colors to tree branches
         drawTree(); // Redraw to reflect visibility changes
-      });
     });
     
     // Add event listeners for color pickers
-    cladeDiv.querySelectorAll('.clade-value-color').forEach(colorPicker => {
-      colorPicker.addEventListener('change', ev => {
+    delegate(cladeDiv, 'change', '.clade-value-color', ev => {
         const value = ev.target.getAttribute('data-value');
         cl.valueColors.set(value, ev.target.value);
         updateMetadataLegend(); // Update legend to reflect color changes
         applyCladeColorsToTree(); // Apply clade colors to tree branches
         drawTree(); // Redraw to reflect color changes
-      });
     });
     
     // Add event listener for master checkbox
@@ -19812,11 +19797,11 @@ function updateCladeMasterCheckbox(cladeId) {
   
   if (!masterCheckbox || !cladeDiv) return;
   
-  const individualCheckboxes = cladeDiv.querySelectorAll('.clade-value-toggle');
-  if (individualCheckboxes.length === 0) return;
-  
-  const checkedCount = Array.from(individualCheckboxes).filter(cb => cb.checked).length;
-  const totalCount = individualCheckboxes.length;
+  const data = clades && clades.get(cladeId);   // (from the data: the list may show only its first rows)
+  const vis = data && data.valueVisibility ? Array.from(data.valueVisibility.values()) : [];
+  if (vis.length === 0) return;
+  const checkedCount = vis.filter(Boolean).length;
+  const totalCount = vis.length;
   
   // Update master checkbox state
   if (checkedCount === 0) {
@@ -20686,8 +20671,7 @@ function populateChartCard(chartId, metadata) {
         </div>
       `;
     } else if (dataColumns.length > 0) {
-      chartDiv.innerHTML = `
-        ${dataColumns.map(column => {
+      const valueRows = dataColumns.map(column => {
           const checked = ch.valueVisibility.get(column) ? 'checked' : '';
           const color = ch.valueColors.get(column) || '#ccc';
           const dataCount = ch.columnData.get(column)?.size || 0;
@@ -20696,15 +20680,18 @@ function populateChartCard(chartId, metadata) {
                     <span class="chart-value-name pro-list-name" title="${column}">${column}</span>
                     <input type="color" class="chart-value-color pro-swatch" data-column="${column}" value="${color}" title="Colour" aria-label="Colour of ${column}">
                   </div>`;
-        }).join('')}
+        });   // (each value a row: a checkbox and a colour)
+
+      chartDiv.innerHTML = `
+        ${cardRowsHtml(valueRows)}
       `;
+      cardRowsMore(chartDiv, valueRows);
     } else {
       chartDiv.innerHTML = '<i>No chart data available</i>';
     }
     
     // Add event listeners for checkboxes
-    chartDiv.querySelectorAll('.chart-value-toggle').forEach(checkbox => {
-      checkbox.addEventListener('change', ev => {
+    delegate(chartDiv, 'change', '.chart-value-toggle', ev => {
         const column = ev.target.getAttribute('data-column');
         ch.valueVisibility.set(column, ev.target.checked);
         
@@ -20718,7 +20705,6 @@ function populateChartCard(chartId, metadata) {
         if (root) {
           drawTree();
         }
-      });
     });
     
     // Add event listener for master checkbox
@@ -20728,11 +20714,8 @@ function populateChartCard(chartId, metadata) {
         const isChecked = ev.target.checked;
         
         // Update all individual checkboxes to match master checkbox
-        chartDiv.querySelectorAll('.chart-value-toggle').forEach(checkbox => {
-          checkbox.checked = isChecked;
-          const column = checkbox.getAttribute('data-column');
-          ch.valueVisibility.set(column, isChecked);
-        });
+        ch.valueVisibility.forEach((v, column) => ch.valueVisibility.set(column, isChecked));   // every column, listed or not yet
+        chartDiv.querySelectorAll('.chart-value-toggle').forEach(checkbox => { checkbox.checked = isChecked; });
         
         // Update legend to reflect visibility changes
         updateMetadataLegend();
@@ -20745,8 +20728,7 @@ function populateChartCard(chartId, metadata) {
     }
     
     // Add event listeners for color pickers
-    chartDiv.querySelectorAll('.chart-value-color').forEach(colorPicker => {
-      colorPicker.addEventListener('input', ev => {
+    delegate(chartDiv, 'input', '.chart-value-color', ev => {
         const column = ev.target.getAttribute('data-column');
         ch.valueColors.set(column, ev.target.value);
         
@@ -20757,7 +20739,6 @@ function populateChartCard(chartId, metadata) {
         if (root) {
           drawTree();
         }
-      });
     });
     
     // Initialize master checkbox state
@@ -21450,11 +21431,11 @@ function updateChartMasterCheckbox(chartId) {
   
   if (!masterCheckbox || !chartDiv) return;
   
-  const individualCheckboxes = chartDiv.querySelectorAll('.chart-value-toggle');
-  if (individualCheckboxes.length === 0) return;
-  
-  const checkedCount = Array.from(individualCheckboxes).filter(cb => cb.checked).length;
-  const totalCount = individualCheckboxes.length;
+  const data = charts && charts.get(chartId);   // (from the data: the list may show only its first rows)
+  const vis = data && data.valueVisibility ? Array.from(data.valueVisibility.values()) : [];
+  if (vis.length === 0) return;
+  const checkedCount = vis.filter(Boolean).length;
+  const totalCount = vis.length;
   
   // Update master checkbox state
   if (checkedCount === 0) {
