@@ -1735,6 +1735,7 @@ function refreshAllRAF() {
     // draws nearly everything on every move: such a drag is shown from the drawing as it
     // is (live), even when single redraws are quick - on drawings that are not small.
     if (root && panelDragPreview && geometry !== 'radial' && window.tmDragLive && !dragLiveSticky && !liveDragWorthIt() &&
+        !(window.tmFast && tmFast.active) &&   // (a large tree drawn as few elements has its own frames, js/fast-draw.js)
         lastDrawElements > LIVE_DRAG_MIN_ELEMENTS && Array.isArray(startWidths) &&
         panelWidths.filter((w, j) => w !== startWidths[j]).length > 2) {
       // the drawing shown now was drawn at the widths of the last frame: start from those
