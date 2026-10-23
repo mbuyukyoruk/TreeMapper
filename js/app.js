@@ -257,7 +257,7 @@ document.addEventListener('pointerdown', (e) => {
   if (el.closest && el.closest(
     'input, select, textarea, button, a, label, summary, details, ' +
     '[contenteditable], [role="button"], [role="slider"], [role="checkbox"], ' +
-    '.splitter, .svg-splitter-hit-area, .radial-splitter-hit-area, ' +
+    '.splitter, .svg-splitter-hit-area, .radial-splitter-hit-area, .fast-hit, ' +   // (.fast-hit: a large tree's hit areas, js/fast-draw.js; a press on one must not stop the mouse events a splitter drag needs)
     '.radial-splitter-handle, [style*="col-resize"], ' +
     '#clickDebugPanel'
   )) {
@@ -7022,7 +7022,11 @@ function drawTreeBody(){
     const _hl = document.getElementById('hideLabels');
     // labels on a large tree: only the rows in view, once a label is legible at this zoom (the
     // export draws them all; a zoom or pan draws them again for the new view: js/fast-draw.js)
-    const tipGroups = (_hl && _hl.checked) ? [] : tmFast.labelTips(shown.filter(d => !d.children && !d._children), cachedOptimalFontSize || (+labelSizeSel.value || 12), svgH);
+    // (the font is at most the room between the tips: known before any label is measured, so
+    // a first draw with labels does not draw them all only to find them illegible)
+    const tipsAll = shown.filter(d => !d.children && !d._children);
+    let gapEst = 12; if (tipsAll.length > 1) { let lo = Infinity, hi = -Infinity; for (const d of tipsAll) { if (d.x < lo) lo = d.x; if (d.x > hi) hi = d.x; } gapEst = (hi - lo) / (tipsAll.length - 1); }
+    const tipGroups = (_hl && _hl.checked) ? [] : tmFast.labelTips(tipsAll, Math.min(cachedOptimalFontSize || (+labelSizeSel.value || 12), gapEst), svgH);
     nodes = g.append('g').attr('class','nodes').attr('data-tree-part', '')
       .selectAll('g.node')
       .data(tipGroups)
@@ -10504,7 +10508,7 @@ function drawTreeBody(){
           });
         });
         if (window.tmGeneExtras && geneLabelQueue.length) { try { tmGeneExtras.drawBarLabels(dataframeId, leafG, geneLabelQueue); } catch (e) { console.warn(e); } }
-        syntenyRows.set(d, { g: leafG, bars: geneLabelQueue });
+        syntenyRows.set(d, { g: fastCol ? null : leafG, bars: geneLabelQueue });
         
         // Draw operon strokes if operon mode is enabled (behind bars)
         if (dataframe.operonState && dataframe.operonState.get('master')) {
@@ -10555,6 +10559,9 @@ function drawTreeBody(){
           }
         }
       });
+        if (fastCol && window.tmSynteny && syntenyRows.size) {   // synteny from the bars' geometry: the rows it collapses are left out of the column's paths
+          try { const dropped = new Set(); tmSynteny.draw(dataframeId, { g: spanG, rows: syntenyRows, fast: true, drop: (leaf) => dropped.add(leaf) }); if (dropped.size) tmFast.dropRows(spanG, dropped); } catch (e) { console.warn(e); }
+        }
         if (fastCol) tmFast.finish(spanG);   // the column's paths and hit area
         if (!fastCol && window.tmSynteny && syntenyRows.size) { try { tmSynteny.draw(dataframeId, { g: spanG, rows: syntenyRows }); } catch (e) { console.warn(e); } }
       };
@@ -11099,6 +11106,7 @@ function drawTreeBody(){
            break;
         case 'line':
           renderLineChart(leaves, chartData, spanG, panelX, panelWidth, chartScale, dynamicBarH);
+          if (window.tmFast && tmFast.active) tmFast.finish(spanG);
           break;
         case 'dot':
           renderDotChart(leaves, chartData, spanG, panelX, panelWidth, chartScale, dynamicBarH);
@@ -11373,11 +11381,17 @@ function drawTreeBody(){
             .attr('opacity', 0.8);
           
           // Draw circles at each data point
+          const leafByName = (window.tmFast && tmFast.active) ? new Map(leaves.map(l => [String(l.data.name), l])) : null;
           lineData.forEach(point => {
             ensureLayerBands(spanG, leaves, panelX, panelWidth, dynamicBarH);   // the column's highlight bands (made when needed)
             
             // Draw circle only if showDots is enabled
             if (chartData.showDots) {
+              if (leafByName) {   // a large tree: all points of one colour as one path
+                const r0 = chartData.dotSize || 3, lf = leafByName.get(String(point.accession));
+                if (lf) tmFast.item(spanG, { x: panelX, w: panelWidth, rowTol: dynamicBarH / 2, vmin: chartDomain[0], vmax: chartDomain[1], tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { x: point.y - r0, w: 2 * r0, y: point.x - r0, h: 2 * r0, color: point.color, path: tmFast.circlePath(point.y, point.x, r0), leaf: lf, column, value: point.value });
+                return;
+              }
               spanG.append('circle').attr('data-accession', point.accession)   // (the point itself: no group per point)
                 .attr('cx', point.y)
                 .attr('cy', point.x)
@@ -22673,9 +22687,7 @@ const hideLabelsEl = document.getElementById('hideLabels');
 if(hideLabelsEl){
   hideLabelsEl.addEventListener('change', (ev) => {
     const hideLabels = ev.target.checked;
-    toggleLabelsPanelVisibility(hideLabels);
-    // Update legend to hide/show highlight legends
-    updateMetadataLegend();
+    toggleLabelsPanelVisibility(hideLabels);   // (updates the legend itself)
   });
 }
 const showTipNodesEl = document.getElementById('showTipNodes');

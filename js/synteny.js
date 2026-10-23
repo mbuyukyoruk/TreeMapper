@@ -39,7 +39,9 @@
           for (var k = i + 1; k < j; k++) {
             var r = rows[k];
             // the row's own bars go; a thin line stands for "the same as above"
-            Array.prototype.forEach.call(r.g.node().querySelectorAll('rect:not(.df-leaf-highlight), path, line, text.gene-bar-label'), function (el) { el.remove(); });
+            // (a large tree drawn as few elements: the column leaves the row out of its paths)
+            if (r.g) Array.prototype.forEach.call(r.g.node().querySelectorAll('rect:not(.df-leaf-highlight), path, line, text.gene-bar-label'), function (el) { el.remove(); });
+            else if (ctx.drop) ctx.drop(r.leaf);
             r.collapsed = true;
             var x0 = Math.min.apply(null, rows[i].bars.map(function (b) { return b.x; })), x1 = Math.max.apply(null, rows[i].bars.map(function (b) { return b.x + b.w; }));
             G.append('line').attr('class', 'synteny-same').attr('x1', x0).attr('x2', x1).attr('y1', r.y).attr('y2', r.y).attr('stroke', 'var(--muted)').attr('stroke-width', 1).attr('stroke-dasharray', '2,3').attr('opacity', 0.7);
@@ -52,6 +54,7 @@
     }
     if (s.links) {
       var L = G.append('g').attr('class', 'synteny-links');
+      var batched = ctx.fast ? new Map() : null;   // (a large tree: all links of one colour as one path)
       for (var a = 0; a + 1 < rows.length; a++) {
         var up = rows[a], dn = rows[a + 1];
         if (up.collapsed || dn.collapsed) continue;
@@ -62,9 +65,11 @@
           var y1 = b.y + b.h, y2 = t.y, mid = (y1 + y2) / 2;
           if (y2 <= y1) return;
           var d = 'M' + b.x + ',' + y1 + ' C' + b.x + ',' + mid + ' ' + t.x + ',' + mid + ' ' + t.x + ',' + y2 + ' L' + (t.x + t.w) + ',' + y2 + ' C' + (t.x + t.w) + ',' + mid + ' ' + (b.x + b.w) + ',' + mid + ' ' + (b.x + b.w) + ',' + y1 + ' Z';
+          if (batched) { var acc = batched.get(b.color); if (!acc) { acc = []; batched.set(b.color, acc); } acc.push(d); return; }
           L.append('path').attr('class', 'synteny-link').attr('d', d).attr('fill', b.color).attr('fill-opacity', s.opacity).attr('stroke', 'none').attr('data-gene', b.gname).attr('pointer-events', 'none');
         });
       }
+      if (batched) batched.forEach(function (ds, color) { L.append('path').attr('class', 'synteny-link synteny-links-batched').attr('d', ds.join('')).attr('fill', color).attr('fill-opacity', s.opacity).attr('stroke', 'none').attr('pointer-events', 'none'); });
     }
   }
   function redraw(id) {
