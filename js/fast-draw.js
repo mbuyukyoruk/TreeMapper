@@ -368,10 +368,13 @@
   // what a group's content spans at the drag's start, and the fixed room on either side of it
   // in its panel: a redraw keeps that room and stretches the content to what is left, so the
   // frame does the same (a column's padding, the axis' margins, the tree's own gaps)
-  function spanOf(el, panel) {
+  function spanOf(el, panel, holder) {
     let bb = null; try { bb = el.getBBox(); } catch (e) {}
     if (!bb || !(bb.width > 0)) return null;
-    return { a: bb.x, s: bb.width, mL: bb.x - panel.x, mR: panel.x + panel.width - (bb.x + bb.width) };
+    let a = bb.x, s = bb.width;
+    // (a column the last redraw kept and moved or stretched carries that transform: the span as displayed)
+    try { const t = (holder || el).transform.baseVal; if (t && t.numberOfItems) { const M = t.consolidate().matrix; a = M.a * bb.x + M.e; s = M.a * bb.width; } } catch (e) {}
+    return { a, s, mL: a - panel.x, mR: panel.x + panel.width - (a + s) };
   }
   // the stretch of a span to its panel's new size, as a matrix
   function stretchOf(span, panel) {
@@ -438,6 +441,7 @@
     const svgEl = document.getElementById('svg');
     let ctm, bb; try { ctm = el.getScreenCTM(); bb = el.getBBox(); } catch (e) { return null; }
     lap('bbox');
+    const visibleOf = (p, st) => p.hasAttribute('data-fast-hidden') ? (p.getAttribute('data-fast-hidden') || 'visible') : st.visibility;
     if (!ctm || !bb || !(ctm.a > 0) || !(ctm.d > 0)) return null;
     const sr = svgEl.getBoundingClientRect(), inv = ctm.inverse();
     const dpr = window.devicePixelRatio || 1;
@@ -468,7 +472,7 @@
     const parts = [];
     heavy.forEach(p => {
       const st = getComputedStyle(p);
-      if (st.display === 'none' || st.visibility === 'hidden' || !(parseFloat(st.opacity) > 0)) return;
+      if (st.display === 'none' || visibleOf(p, st) === 'hidden' || !(parseFloat(st.opacity) > 0)) return;
       let rel; try { rel = inv.multiply(p.getScreenCTM()); } catch (e) { return; }
       const tr = (Math.abs(rel.a - 1) < 1e-9 && Math.abs(rel.d - 1) < 1e-9 && !rel.b && !rel.c && !rel.e && !rel.f) ? '' : ' transform="matrix(' + [rel.a, rel.b, rel.c, rel.d, rel.e, rel.f].join(',') + ')"';
       parts.push('<path d="' + p.getAttribute('d') + '"' + tr + ' ' + styleAttrs(st) + '/>');
@@ -522,10 +526,16 @@
     if (typeof layerReuse !== 'undefined' && layerReuse.byKey) layerReuse.byKey.forEach((e, key) => {
       if (!(e.el && e.el.isConnected && e.panelFn && Number.isFinite(e.x) && e.w > 0)) return;
       const content = e.el.firstElementChild;   // (the column's cells, bars or arcs; the axis and title follow it)
-      layers.push({ e, type: String(key).split(':')[0], span: (content && spanOf(content, { x: e.x, width: e.w })) || { a: e.x, s: e.w, mL: 0, mR: 0 }, drawnAt: null });
+      const p0 = e.panelFn(e.index) || { x: e.x, width: e.w };   // (the panel as it is now: a kept column was moved to it by the last redraw)
+      layers.push({ e, type: String(key).split(':')[0], span: (content && spanOf(content, p0, e.el)) || { a: p0.x, s: p0.width, mL: 0, mR: 0 }, drawnAt: null });
     });
     const baseOf = new Map(); parts.forEach(el => baseOf.set(el, el.getAttribute('transform') || '')); layers.forEach(L => baseOf.set(L.e.el, L.e.el.getAttribute('transform') || ''));
-    dragBase = { tree: treeSpan, parts, layers, texts: new Map(), baseOf };
+    // a tree without data: the dashed "add data" box and its button sit in the empty panel
+    let placeholder = null;
+    const phPanel = ps.find(p => String(p.type).startsWith('placeholder'));
+    const phBox = document.querySelector('#zoomable > rect.placeholder-box'), phBtn = document.querySelector('#zoomable > g.meta-add');
+    if (phPanel && phBox) placeholder = { box: phBox, btn: phBtn, x: +phBox.getAttribute('x'), w: +phBox.getAttribute('width'), px: phPanel.x, pw: phPanel.width, btnBase: phBtn ? (phBtn.getAttribute('transform') || '') : '' };
+    dragBase = { tree: treeSpan, parts, layers, texts: new Map(), baseOf, placeholder, treeK: 1, stretched: false, pauseT: 0 };
   };
   F.dragReady = function () { return !!dragBase; };
   // a group moved or stretched: its picture shown instead of its heavy paths
@@ -615,22 +625,52 @@
         if (tmMsa.liveResize(e.index, p)) { L.drawnAt = { x: p.x, width: p.width }; changed = true; return; }
       }
       const s2 = stretchOf(span, p), kk = s2.k, same = Math.abs(kk - 1) < 1e-9;
+      if (!same) b.stretched = true;
       if (same && Math.abs(s2.tx) < 1e-9) setT(e.el, '');
       else { showPicture(e.el); setT(e.el, same ? 'translate(' + s2.tx + ',0)' : 'matrix(' + kk + ',0,0,1,' + s2.tx + ',0)'); changed = true; }
       if (!same || b.texts.has(e.el)) placeTexts(e.el, same ? 1 : kk);
     });
+    // the empty panel's dashed box keeps its margins; its button stays centred
+    if (b.placeholder) {
+      const ph = b.placeholder, p = ps.find(q => String(q.type).startsWith('placeholder'));
+      if (p) {
+        const x = ph.x + (p.x - ph.px), w = Math.max(0, ph.w + (p.width - ph.pw));
+        ph.box.setAttribute('x', x); ph.box.setAttribute('width', w);
+        if (ph.btn) { const dx = (x + w / 2) - (ph.x + ph.w / 2); ph.btn.setAttribute('transform', (dx ? 'translate(' + dx + ',0)' : '') + (ph.btnBase ? ' ' + ph.btnBase : '')); }
+        if (p.x !== ph.px || p.width !== ph.pw) changed = true;
+      }
+    }
     // (nothing moved yet, e.g. the press itself: the splitters stay as drawn)
     if (changed) { try { drawSplittersInSVG(g, lastSplitterContentHeight, dragGeom ? dragGeom.canvasRect : null); updateSplitterLineHeights(); } catch (e) {} }
+    // while the pointer moves the stretched groups are approximate (the tree's picture
+    // stretched, dots and arrow heads too); when it pauses, the drawing is drawn for real at
+    // these widths and the drag goes on from there
+    b.treeK = k; if (!same_all(b)) b.stretched = true;
+    if (changed) { clearTimeout(b.pauseT); b.pauseT = setTimeout(() => { if (dragBase === b) pauseRedraw(b); }, 160); }
     return true;
   };
+  function same_all(b) { return Math.abs(b.treeK - 1) < 1e-9 && !b.stretched; }
+  function pauseRedraw(b) {
+    if (dragBase !== b || same_all(b)) return;
+    if (typeof drawTree !== 'function' || typeof panelDragPreview === 'undefined') return;
+    F.dragEnd();
+    const was = panelDragPreview;
+    try { panelDragPreview = false; if (typeof lastTreeKeepKey !== 'undefined') lastTreeKeepKey = null; drawTree(); }
+    catch (e) { console.warn(e); }
+    finally { panelDragPreview = was; }
+    try { if (typeof lastPreviewWidths !== 'undefined') lastPreviewWidths = panelWidths.slice(); } catch (e) {}
+    F.dragCapture();   // (the pictures for the drag's continuation are painted now, during the pause)
+  }
   // the release: the groups, their text and their heavy paths as they were (the redraw that
   // follows replaces most of them; a column kept by the redraw must be whole)
   F.dragEnd = function () {
     const b = dragBase; dragBase = null;
     if (!b) return;
+    clearTimeout(b.pauseT);
     const restore = (el) => { const base = b.baseOf.get(el) || ''; if (base) el.setAttribute('transform', base); else el.removeAttribute('transform'); };
     b.parts.forEach(restore);
     b.layers.forEach(L => restore(L.e.el));
+    if (b.placeholder) { const ph = b.placeholder; ph.box.setAttribute('x', ph.x); ph.box.setAttribute('width', ph.w); if (ph.btn) { if (ph.btnBase) ph.btn.setAttribute('transform', ph.btnBase); else ph.btn.removeAttribute('transform'); } }
     b.texts.forEach(texts => texts.forEach(({ t, base, vis }) => { if (base) t.setAttribute('transform', base); else t.removeAttribute('transform'); t.style.visibility = vis; }));
     if (dragPics) dragPics.forEach(hidePicture);
   };

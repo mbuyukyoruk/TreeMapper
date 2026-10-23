@@ -9994,6 +9994,7 @@ function drawTreeBody(){
       
       // Draw the existing placeholder dashed outline (keeping original functionality)
       g.append('rect')
+        .attr('class', 'placeholder-box')   // (moved with its panel in a large tree's splitter drag, js/fast-draw.js)
         .attr('x', placeholderX)
         .attr('y', Math.max(0, vTop))
         .attr('width', Math.max(0, placeholderWidth))

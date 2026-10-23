@@ -158,8 +158,12 @@ would overlap are left out; an alignment column is drawn again at its new
 width on every frame. The tree's branches and markers are painted into a
 picture when the pointer nears a splitter (WebKit painted 5 frames a second
 with 24,000 tips' branches as paths under a transform), so the frames are
-cheap; the release draws everything for real. A ring drag in the circular
-layout paints the rings. Everything stays SVG, so zoom,
+cheap. While the pointer moves the stretched groups are approximate (the
+tree's picture stretched, dots and arrow heads too); whenever it pauses, the
+drawing is drawn for real at those widths and the drag goes on from there, and
+the release draws everything for real. A tree without data moves its dashed
+"add data" box with the panel. A ring drag in the circular layout paints the
+rings. Everything stays SVG, so zoom,
 export, sessions, undo and the comparison tree are unchanged. Below the
 threshold the drawing is exactly as before. Test:
 `PAGE=TreeMapper-fast node regress/fastmode.js` in `TreeMapper_tests`.
