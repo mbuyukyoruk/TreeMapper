@@ -4478,18 +4478,21 @@ function computeStepsDown(root){
   });
 }
 
-function ladderize(node, dir){
+function ladderize(node, dir, depthOf){
+  // the deepest tip below every node, worked out once per ladderize (it was walked again for
+  // every comparison of every sort: seconds on a large tree)
+  if (!depthOf) { depthOf = new Map(); (function walk(n) { const k = (n.children && n.children.length) ? n.children : (n._children || []); let m = n.depth || 0; for (const c of k) { walk(c); const dc = depthOf.get(c); if (dc > m) m = dc; } depthOf.set(n, m); })(node); }
   const kids = (node.children && node.children.length) ? node.children : (node._children || []);
   if(kids.length === 0) return;
   const rotationCount = nodeRotationCounts.get(node) || 0;
   if(rotationCount % 2 !== 0) {
-  kids.forEach(c => ladderize(c, dir));
+  kids.forEach(c => ladderize(c, dir, depthOf));
     return;
   }
-  kids.forEach(c => ladderize(c, dir));
+  kids.forEach(c => ladderize(c, dir, depthOf));
   kids.sort((a, b) => {
-    const aMaxDepth = getSubtreeMaxDepth(a);
-    const bMaxDepth = getSubtreeMaxDepth(b);
+    const aMaxDepth = depthOf.get(a);
+    const bMaxDepth = depthOf.get(b);
     
     if(dir === 'increasing'){
       return bMaxDepth - aMaxDepth;
@@ -5029,6 +5032,16 @@ function layerBandSet(entry, name, on) {
 }
 function syncLayerBands(el, entry) {
   if (!el.isConnected) { layerBands.delete(el); return; }
+  if (window.tmFast && tmFast.active) {
+    // a large tree: the highlighted rows as one path; the hovered row its own rect (bandHover)
+    entry.shown.forEach((r, name) => { if (name !== hoveredBand) { r.remove(); entry.shown.delete(name); } });
+    let d = '';
+    if (highlightedAccessions) highlightedAccessions.forEach(name => { const y = entry.yOf.get(name); if (y !== undefined) d += 'M' + entry.x + ',' + y + 'h' + entry.w + 'v' + entry.h + 'h' + (-entry.w) + 'z'; });
+    if (!entry.pathEl) { entry.pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path'); entry.pathEl.setAttribute('class', 'df-leaf-highlight fast-bands'); entry.pathEl.setAttribute('fill', '#ff6b35'); entry.pathEl.setAttribute('opacity', 0.2); entry.pathEl.setAttribute('pointer-events', 'none'); entry.g.insertBefore(entry.pathEl, entry.g.firstChild); }
+    entry.pathEl.setAttribute('d', d);
+    if (hoveredBand) layerBandSet(entry, hoveredBand, true);
+    return;
+  }
   entry.shown.forEach((r, name) => { if (!bandWanted(name)) { r.remove(); entry.shown.delete(name); } });
   if (highlightedAccessions) highlightedAccessions.forEach(name => layerBandSet(entry, name, true));
   if (hoveredBand) layerBandSet(entry, hoveredBand, true);
@@ -7242,7 +7255,29 @@ function drawTreeBody(){
     const hideLabels = !!(_hideLabels && _hideLabels.checked);
     const labelsPanel = getLabelsPanelDimensions();
     const labelRight = labelsPanel.rightEdge - 8;
-    if(!hideLabels){
+    if(!hideLabels && fastMode){
+      // a large tree (js/fast-draw.js): a background only behind the tips with highlight data, batched by colour
+      const bgRows = [];
+      if (highlights && highlights.size > 0) {
+        let lo = Infinity, hi = -Infinity;
+        for (const leaf of leaves) { if (leaf.x < lo) lo = leaf.x; if (leaf.x > hi) hi = leaf.x; }
+        const avgGap = leaves.length > 1 ? (hi - lo) / (leaves.length - 1) : currentBarH;
+        const bgH = Math.max(currentBarH, Math.min(avgGap * 0.9, 20));
+        for (const d of leaves) {
+          const accession = normalizeAccession(d.data.name);
+          for (const [highlightId, highlightData] of highlights) {
+            if (highlightData.accessionToValue && highlightData.accessionToValue.has(accession)) {
+              const value = highlightData.accessionToValue.get(accession);
+              if (highlightData.valueVisibility && highlightData.valueVisibility.get(value)) {
+                bgRows.push({ x: labelRight - d.y + 7.5 - labelsPanel.width + d.y, y: d.x - labelSize / 2, w: labelsPanel.width, h: bgH, fill: highlightData.valueColors ? highlightData.valueColors.get(value) : '#ccc', op: (highlightData.transparency || 25) / 100 });
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (bgRows.length) tmFast.labelBgs(bgRows);
+    } else if(!hideLabels){
       // Add background rectangles positioned same as text labels
       leavesSel.append('rect')
         .attr('class', 'label-highlight-bg')
@@ -7374,6 +7409,7 @@ function drawTreeBody(){
     leavesSel.select('text').attr('x', (d)=> (labelRight - d.y));
     
 
+    if (!(fastMode && hideLabels)) {   // (a large tree with its labels hidden: nothing to measure or shorten)
     // Apply immediate truncation for initial display
     cachedImmediateTruncationLength = applyTruncation(leavesSel);
 
@@ -7404,6 +7440,7 @@ function drawTreeBody(){
     } else {
       labelFontPxOverride = cachedOptimalFontSize;
       // cachedTruncationLength = applyTruncation(leavesSel, cachedOptimalFontSize);
+    }
     }
 
     // guide lines to labels: now that the labels are final, each guide can end just
@@ -14751,6 +14788,15 @@ function setLegendOrderByLayer(on) {
   legendOrderByLayer = !!on;
   updateMetadataLegend();
 }
+// The legend lists at most this many rows per group at first (js/legend-tools.js offers "Show all");
+// rows beyond it are written hidden, so a legend of 20,000 values (a column where every value
+// differs) is not laid out on every rebuild: that took a second per rebuild in WebKit.
+const LEGEND_FIRST_ROWS = 30;
+function capLegendHtml(html) {
+  if (typeof html !== 'string' || !html) return html;
+  let i = 0;
+  return html.replace(/<div class="legend-item\b/g, m => (++i > LEGEND_FIRST_ROWS ? '<div hidden class="legend-item' : m));
+}
 function updateMetadataLegend() {
   if (!metadataLegend || !legendItems || !heatmapLegendItems) return;
   
@@ -15032,7 +15078,7 @@ function updateMetadataLegend() {
   }).join('');
   
   // Set gene legend items
-  legendItems.innerHTML = legendHTML;
+  legendItems.innerHTML = capLegendHtml(legendHTML);
   
   // Setup interactive legend after updating
   setTimeout(() => setupLegendInteractivity(), 0);
@@ -15141,7 +15187,7 @@ function updateMetadataLegend() {
   }
   
   // Set heatmap legend items
-  heatmapLegendItems.innerHTML = gradientHeatmapHTML + heatmapLegendHTML;
+  heatmapLegendItems.innerHTML = capLegendHtml(gradientHeatmapHTML + heatmapLegendHTML);
   
   // Show/hide heatmap legend title based on whether there are visible heatmap values
   const legendTitles = metadataLegend.querySelectorAll('.legend-title');
@@ -15230,7 +15276,7 @@ function updateMetadataLegend() {
   }
   
   // Set chart legend items
-  chartLegendItems.innerHTML = chartLegendHTML;
+  chartLegendItems.innerHTML = capLegendHtml(chartLegendHTML);
   
   // Show/hide chart legend title based on whether there are visible chart values
   const chartLegendTitle = legendTitles[4]; // Fifth legend title (index 4)
@@ -15324,7 +15370,7 @@ function updateMetadataLegend() {
   }
   
   // Set highlight legend items
-  highlightLegendItems.innerHTML = highlightLegendHTML;
+  highlightLegendItems.innerHTML = capLegendHtml(highlightLegendHTML);
   
   // Show/hide highlight legend title based on whether there are visible highlight values
   const highlightLegendTitle = legendTitles[2]; // Third legend title (index 2)
@@ -15428,7 +15474,7 @@ function updateMetadataLegend() {
   }
   
   // Set clade legend items
-  cladeLegendItems.innerHTML = cladeLegendHTML;
+  cladeLegendItems.innerHTML = capLegendHtml(cladeLegendHTML);
   
   // Show/hide clade legend title based on whether there are visible clade values
   const cladeLegendTitle = legendTitles[3]; // Fourth legend title (index 3)
@@ -15577,7 +15623,7 @@ function updateMetadataLegend() {
       ordered(df.geneOrder, genes).forEach(gene => { part += item('gene', gene, (df.geneColors && df.geneColors.get(gene)) || '#ccc', true); });
       if (part) geneHTML += sub(label) + part;
     });
-    legendItems.innerHTML = geneHTML;
+    legendItems.innerHTML = capLegendHtml(geneHTML);
     if (geneLegendTitle) geneLegendTitle.style.display = geneHTML ? 'block' : 'none';
     // heatmaps, highlights, clade groups: values in each layer's own order
     const valueLayers = (containerId, prefix, map, type, attrs, presentFn) => {
@@ -15591,9 +15637,9 @@ function updateMetadataLegend() {
       });
       return html;
     };
-    heatmapLegendItems.innerHTML = valueLayers('heatmapContainer', 'heatmap', heatmaps, 'heatmap', true, getHeatmapValuesInVisibleAccessions);
-    highlightLegendItems.innerHTML = valueLayers('highlightContainer', 'highlight', highlights, 'highlight', false, getHighlightValuesInVisibleAccessions);
-    cladeLegendItems.innerHTML = valueLayers('cladeContainer', 'clade', clades, 'clade', false, getCladeValuesInVisibleAccessions);
+    heatmapLegendItems.innerHTML = capLegendHtml(valueLayers('heatmapContainer', 'heatmap', heatmaps, 'heatmap', true, getHeatmapValuesInVisibleAccessions));
+    highlightLegendItems.innerHTML = capLegendHtml(valueLayers('highlightContainer', 'highlight', highlights, 'highlight', false, getHighlightValuesInVisibleAccessions));
+    cladeLegendItems.innerHTML = capLegendHtml(valueLayers('cladeContainer', 'clade', clades, 'clade', false, getCladeValuesInVisibleAccessions));
     // charts: their columns in the chart's own order
     let chartHTML = '';
     inCardOrder('chartContainer', 'chart', charts).forEach(([id, c, label]) => {
@@ -15601,7 +15647,7 @@ function updateMetadataLegend() {
       const cols = c.dataColumns.filter(col => c.valueVisibility.get(col));
       if (cols.length) chartHTML += sub(label) + cols.map(col => item('chart', col, c.valueColors.get(col) || '#ccc', true)).join('');
     });
-    chartLegendItems.innerHTML = chartHTML;
+    chartLegendItems.innerHTML = capLegendHtml(chartHTML);
     setTimeout(() => setupLegendInteractivity(), 0);
   }
   if (window.tmMsa) { try { tmMsa.fillLegend(); } catch (e) { console.warn(e); } }
