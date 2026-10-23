@@ -9258,6 +9258,11 @@ function drawTreeBody(){
               lineData.forEach(point => {
                 const x = point.radius * Math.cos(point.angle - Math.PI / 2);
                 const y = point.radius * Math.sin(point.angle - Math.PI / 2);
+                if (fastMode) {   // a large tree: all points of one colour as one path
+                  const r0d = chartData.dotSize || 3;
+                  tmFast.polar(chartGroup, { ringType: ring.type, r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, vmin: chartMin, vmax: chartMax, tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: ${it.value}` }, { a: point.angle, r0: point.radius - r0d, r1: point.radius + r0d, path: tmFast.circlePath(x, y, r0d), color: point.color, leaf: point.leaf, column, value: point.value });
+                  return;
+                }
                 
                 chartGroup.append('circle')
                   .attr('cx', x)
@@ -9532,6 +9537,22 @@ function drawTreeBody(){
                 boxEndAngle = angle + arcSpan / 2;
               }
               
+              if (fastMode) {   // a large tree: the boxes of one colour as one path, their lines as another
+                const fo = { ringType: ring.type, r0: ring.innerRadius, r1: ring.outerRadius, aTol: arcSpan / 2, vmin: chartMin, vmax: chartMax, tooltip: (it, l) => `<b>${l.data.name}</b><br>${it.column}: median ${it.median}` };
+                const arc = (ri, ro, a0, a1) => d3.arc()({ innerRadius: ri, outerRadius: ro, startAngle: a0, endAngle: a1 });
+                const midA = (boxStartAngle + boxEndAngle) / 2, P = (r, a) => [r * Math.cos(a - Math.PI / 2), r * Math.sin(a - Math.PI / 2)];
+                const Lp = (p, q) => 'M' + p[0].toFixed(2) + ',' + p[1].toFixed(2) + 'L' + q[0].toFixed(2) + ',' + q[1].toFixed(2);
+                tmFast.polar(chartGroup, fo, { a: angle, a0: boxStartAngle, a1: boxEndAngle, r0: Math.min(q1R, q3R), r1: Math.max(q1R, q3R), path: arc(Math.min(q1R, q3R), Math.max(q1R, q3R), boxStartAngle, boxEndAngle), color: boxColor, op: boxOpacity, leaf, column, median });
+                let fills = '', lines = '';
+                if (chartData.showMedianBox !== false) fills += arc(medianR - 0.5, medianR + 0.5, boxStartAngle, boxEndAngle);
+                if (chartData.showMeanBox !== false) { const m = P(meanR, midA), cs = 3, pa = midA + Math.PI / 2; lines += Lp([m[0] - cs * Math.cos(pa), m[1] - cs * Math.sin(pa)], [m[0] + cs * Math.cos(pa), m[1] + cs * Math.sin(pa)]) + Lp([m[0] - cs * Math.sin(pa), m[1] + cs * Math.cos(pa)], [m[0] + cs * Math.sin(pa), m[1] - cs * Math.cos(pa)]); }
+                if (chartData.showWhiskersBox !== false) { const cap = arcSpan * 0.1; lines += Lp(P(lowerWhiskerR, midA), P(q1R, midA)) + Lp(P(q3R, midA), P(upperWhiskerR, midA)); fills += arc(lowerWhiskerR - 0.5, lowerWhiskerR + 0.5, midA - cap, midA + cap) + arc(upperWhiskerR - 0.5, upperWhiskerR + 0.5, midA - cap, midA + cap); }
+                const rlo = Math.min(lowerWhiskerR, q1R), rhi = Math.max(upperWhiskerR, q3R);
+                if (fills) tmFast.polar(chartGroup, fo, { a: angle, a0: boxStartAngle, a1: boxEndAngle, r0: rlo, r1: rhi, path: fills, color: boxColor, leaf, column, median });
+                if (lines) tmFast.polar(chartGroup, fo, { a: angle, a0: boxStartAngle, a1: boxEndAngle, r0: rlo, r1: rhi, path: lines, stroke: boxColor, sw: 1, leaf, column, median });
+                if (chartData.showOutliersBox !== false) outliers.forEach(v => { const rr = chartScale(v), pt = P(rr, midA); tmFast.polar(chartGroup, fo, { a: angle, a0: boxStartAngle, a1: boxEndAngle, r0: rr - 2, r1: rr + 2, path: tmFast.circlePath(pt[0], pt[1], 2), color: boxColor, leaf, column, median }); });
+                return;
+              }
               // Draw box (Q1 to Q3)
               const boxArc = d3.arc()
                 .innerRadius(q1R)
