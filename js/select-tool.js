@@ -106,7 +106,7 @@
     }
     box.style.cssText = 'left:' + sel.left + 'px;top:' + sel.top + 'px;width:' + (sel.right - sel.left) + 'px;height:' + (sel.bottom - sel.top) + 'px';
     box.setAttribute('data-mode', drag.mode);
-    badge.textContent = (drag.mode === 'add' ? '+ ' : drag.mode === 'remove' ? '− ' : '') + n + ' tip' + (n === 1 ? '' : 's');
+    badge.textContent = (drag.mode === 'add' ? '+ ' : drag.mode === 'remove' ? '− ' : '') + n + (drag.feat != null ? ' row' : ' tip') + (n === 1 ? '' : 's');
     badge.style.left = (sel.right + 8) + 'px'; badge.style.top = (sel.bottom + 8) + 'px';
   }
   function hide() { if (box) { box.remove(); badge.remove(); box = badge = null; } }
@@ -116,7 +116,19 @@
     if (window.tmCanvasTool !== 'select' || window.tmSpacePan || e.button !== 0 || e.pointerType === 'touch') return;
     if (typeof root === 'undefined' || !root) return;
     if (e.target.closest && e.target.closest(NO_START)) return;
-    drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false, targets: null, frame: 0, last: null,
+    // a press within a column splitter's grip that landed on a bar drawn over it: the splitter's
+    // drag, as if the grip had been hit (the columns are painted above the grips)
+    var hits = svgEl.querySelectorAll('.svg-splitter-hit-area');
+    for (var hi = 0; hi < hits.length; hi++) {
+      var hr = hits[hi].getBoundingClientRect();
+      if (e.clientX >= hr.left && e.clientX <= hr.right && e.clientY >= hr.top && e.clientY <= hr.bottom) {
+        hits[hi].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY, button: 0 }));
+        return;
+      }
+    }
+    // a drag that starts over a dataframe column selects that layer's bars (feature-select.js)
+    var feat = (window.tmFeatSel && typeof tmFeatSel.layerAtScreenX === 'function') ? tmFeatSel.layerAtScreenX(e.clientX, e.clientY) : null;
+    drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false, targets: null, frame: 0, last: null, feat: feat,
       mode: e.shiftKey ? 'add' : (e.altKey ? 'remove' : 'replace') };
   });
   window.addEventListener('pointermove', function (e) {
@@ -124,7 +136,7 @@
     if (!drag.moved) {
       if (Math.abs(e.clientX - drag.x0) + Math.abs(e.clientY - drag.y0) < 4) return;   // small moves stay clicks
       drag.moved = true;
-      drag.targets = collectTargets();
+      drag.targets = drag.feat != null ? tmFeatSel.targets(drag.feat) : collectTargets();
     }
     drag.mode = e.shiftKey ? 'add' : (e.altKey ? 'remove' : drag.mode === 'replace' ? 'replace' : drag.mode);
     drag.last = e;
@@ -142,6 +154,15 @@
     hide();
     if (!d.moved) return;   // a click: the app's own click handling
     var sel = selRect.call(null, e, d), inside = namesIn(sel, d);
+    if (d.feat != null) {
+      // bars of a dataframe: the layer's feature selection (rows); a click elsewhere is left alone
+      var swallow0 = function (ev) { ev.stopPropagation(); ev.preventDefault(); svgEl.removeEventListener('click', swallow0, true); };
+      svgEl.addEventListener('click', swallow0, true);
+      setTimeout(function () { svgEl.removeEventListener('click', swallow0, true); }, 0);
+      tmFeatSel.apply(d.feat, inside, d.mode);
+      return;
+    }
+    if (window.tmFeatSel) tmFeatSel.clear();   // tips selected: no feature selection alongside
     var current = (typeof highlightedAccessions !== 'undefined') ? highlightedAccessions : new Set();
     var next;
     if (d.mode === 'add') { next = new Set(current); inside.forEach(function (n) { next.add(n); }); }
