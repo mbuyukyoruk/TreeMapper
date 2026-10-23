@@ -150,6 +150,8 @@ from y (or the angle in the circular layout), the bar from x (or the radius).
 The selection overlay, clade colours and marker colours redraw the few paths.
 Labels are drawn only for the rows in view once a label is at least 3.5 px
 tall on screen; a zoom or pan draws them again; the export draws every label.
+The zoom's limit grows with the tree (tips / 120, at least 20×) so that the
+rows of any tree can be zoomed to a legible height.
 A splitter drag shows live frames without a redraw: a column that only moves
 is translated; a column whose width changes has its cells, bars and axis line
 stretched to the new inner width (what a redraw gives), while its text, tick

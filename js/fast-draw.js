@@ -28,6 +28,8 @@
     document.querySelectorAll('[data-fast-hidden]').forEach(p => { p.style.visibility = p.getAttribute('data-fast-hidden') || ''; p.removeAttribute('data-fast-hidden'); });
     // the hovered row is forgotten with the drawing it was found in (the next pointer move finds it again)
     try { if (typeof hoveredBand !== 'undefined') hoveredBand = null; } catch (e) {}
+    // the zoom's limit: far enough in for rows to reach a legible height (20× suits 4,000 tips, not 24,000)
+    try { if (typeof zoom !== 'undefined' && zoom.scaleExtent) zoom.scaleExtent([0.5, F.active ? Math.max(20, Math.ceil(leaves.length / 120)) : 20]); } catch (e) {}
     if (!F.active) { F.rows = null; return false; }
     const rows = leaves.filter(l => Number.isFinite(l.x)).map(l => ({ y: l.x, leaf: l }));
     rows.sort((a, b) => a.y - b.y);
@@ -380,7 +382,7 @@
   function stretchOf(span, panel) {
     if (!span) return null;
     const s1 = Math.max(1, panel.width - span.mL - span.mR), a1 = panel.x + span.mL, k = s1 / span.s;
-    return { k, tx: a1 - span.a * k };
+    return { k, tx: a1 - span.a * k, ds: s1 - span.s };
   }
   const HEAVY_D = 1500;   // a path with more data than this (characters) goes into the picture
   const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -464,9 +466,6 @@
     const done = (href) => { if (pic.dead) return; im.setAttribute('href', href); pic.ready = true; if (pic.wanted) showPicture(el); };
     heavy[0].parentNode.insertBefore(im, heavy[0]);   // (what is drawn above the first heavy path stays above the picture)
     // painted on a canvas: the same paths, on the same pixel grid, no document to parse
-    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-    const ctx = cv.getContext('2d'); if (!ctx) return null;
-    const kx = W / (x1 - x0), ky = H / (y1 - y0);
     // the paths written to an SVG image and painted by the browser's own SVG renderer: a canvas
     // painting them itself blends sub-pixel rows differently in WebKit, and the swap would show
     const parts = [];
@@ -492,7 +491,7 @@
         pic.url = URL.createObjectURL(blob); done(pic.url);
       } catch (e) { /* (no picture: the paths stay) */ }
     };
-    img.onerror = () => { URL.revokeObjectURL(svgUrl); };
+    img.onerror = () => { URL.revokeObjectURL(svgUrl); pic.dead = true; im.remove(); if (dragPics) dragPics = dragPics.filter(q => q !== pic); };
     img.src = svgUrl;
     return pic;
   }
@@ -502,8 +501,9 @@
     document.querySelectorAll('image.fast-drag-picture').forEach(im => im.remove());
   }
   // the pictures made in advance (the splitter hovered), for this drawing and view
-  F.dragPrepare = function () {
-    if (!F.active || F.radial || dragBase) return;
+  F.dragPrepare = function () { if (!dragBase) prepareNow(); };
+  function prepareNow() {
+    if (!F.active || F.radial) return;
     const key = viewKey();
     if (dragPics && dragPicsKey === key) return;
     dropPictures();
@@ -513,12 +513,12 @@
     // column's paths stretched are exactly what a redraw gives, a picture of them is not quite)
     dragGroups().forEach(el => { if (!el.hasAttribute('data-tree-part')) return; const pic = paintPicture(el); if (pic) pics.push(pic); });
     dragPics = pics; dragPicsKey = key;
-  };
-  F.dragCapture = function () {
+  }
+  F.dragCapture = function (deferPictures) {
     dragBase = null;
     if (!F.active || F.radial || typeof getPanelPositions !== 'function') return;
     const ps = getPanelPositions(), tree = ps.find(p => p.type === 'tree'); if (!tree) return;
-    F.dragPrepare();
+    if (deferPictures) requestAnimationFrame(() => setTimeout(() => { if (dragBase) prepareNow(); }, 0)); else prepareNow();
     const parts = [...document.querySelectorAll('#zoomable [data-tree-part]')];
     const links = document.querySelector('#zoomable g.links[data-tree-part]');
     const treeSpan = (links && spanOf(links, tree)) || { a: tree.x + 48, s: Math.max(1, tree.width - 56), mL: 48, mR: 8 };
@@ -573,6 +573,11 @@
         if (seen.has(t) || t.closest('.svg-splitters')) return;
         seen.add(t);
         const base = t.getAttribute('transform') || '';
+        if (t.tagName === 'g') {   // (a group: anchored at its text's anchor point, else at the middle of its box)
+          const tx = t.querySelector('text');
+          if (tx && tx.parentNode === t) { x = +tx.getAttribute('x') || 0; y = +tx.getAttribute('y') || 0; }
+          else { try { const bb = t.getBBox(); x = bb.x + bb.width / 2; y = bb.y + bb.height / 2; } catch (e) {} }
+        }
         let ax = x, gx = x;
         try { const own = t.parentNode.getCTM().inverse().multiply(t.getCTM()); ax = own.a * x + own.c * y + own.e; const m = inv.multiply(t.getCTM()); gx = m.a * x + m.c * y + m.e; } catch (e) {}
         let w = 0; if (tick) { try { const tx = t.querySelector('text'); w = tx ? tx.getBBox().width : 0; } catch (e) {} }
@@ -625,7 +630,7 @@
         if (tmMsa.liveResize(e.index, p)) { L.drawnAt = { x: p.x, width: p.width }; changed = true; return; }
       }
       const s2 = stretchOf(span, p), kk = s2.k, same = Math.abs(kk - 1) < 1e-9;
-      if (!same) b.stretched = true;
+      if (Math.abs(s2.ds) > 3) b.stretched = true;   // (a redraw once the pointer pauses: not for a pixel or two)
       if (same && Math.abs(s2.tx) < 1e-9) setT(e.el, '');
       else { showPicture(e.el); setT(e.el, same ? 'translate(' + s2.tx + ',0)' : 'matrix(' + kk + ',0,0,1,' + s2.tx + ',0)'); changed = true; }
       if (!same || b.texts.has(e.el)) placeTexts(e.el, same ? 1 : kk);
@@ -645,13 +650,12 @@
     // while the pointer moves the stretched groups are approximate (the tree's picture
     // stretched, dots and arrow heads too); when it pauses, the drawing is drawn for real at
     // these widths and the drag goes on from there
-    b.treeK = k; if (!same_all(b)) b.stretched = true;
+    b.treeK = k; if (Math.abs(st.ds) > 3) b.stretched = true;
     if (changed) { clearTimeout(b.pauseT); b.pauseT = setTimeout(() => { if (dragBase === b) pauseRedraw(b); }, 160); }
     return true;
   };
-  function same_all(b) { return Math.abs(b.treeK - 1) < 1e-9 && !b.stretched; }
   function pauseRedraw(b) {
-    if (dragBase !== b || same_all(b)) return;
+    if (dragBase !== b || !b.stretched) return;
     if (typeof drawTree !== 'function' || typeof panelDragPreview === 'undefined') return;
     F.dragEnd();
     const was = panelDragPreview;
@@ -659,7 +663,7 @@
     catch (e) { console.warn(e); }
     finally { panelDragPreview = was; }
     try { if (typeof lastPreviewWidths !== 'undefined') lastPreviewWidths = panelWidths.slice(); } catch (e) {}
-    F.dragCapture();   // (the pictures for the drag's continuation are painted now, during the pause)
+    F.dragCapture(true);   // (the pictures for the drag's continuation are painted once the redraw is on screen)
   }
   // the release: the groups, their text and their heavy paths as they were (the redraw that
   // follows replaces most of them; a column kept by the redraw must be whole)
