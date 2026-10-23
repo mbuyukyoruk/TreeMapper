@@ -12861,6 +12861,9 @@ function drawTreeBody(){
   
   // Reapply permanent colors after tree is fully drawn
   reapplyPermanentColors();
+  // a large tree drawn as few elements: its hit areas would cover the splitters' hit areas (a press
+  // on one starts a text selection instead of a drag), so the splitters go on top
+  if (fastMode && !isRadial) { try { const sp = g.node().querySelector(':scope > g.svg-splitters'); if (sp) g.node().appendChild(sp); } catch (e) {} }
   
   // Schedule memory cleanup for large trees
   const finalNodeCount = root ? root.descendants().length : 0;
