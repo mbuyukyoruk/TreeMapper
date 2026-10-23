@@ -286,7 +286,8 @@
     });
     if (!(o.r1 > o.r0)) return;
     const ring = d3.arc()({ innerRadius: o.r0, outerRadius: o.r1, startAngle: 0, endAngle: 2 * Math.PI });
-    const hit = G.append('path').attr('class', 'fast-hit fast-hit-ring').attr('d', ring).attr('fill', 'transparent').attr('stroke', 'none');
+    // (below everything in the ring: its arcs and pictures take no pointer events, its scale bar and + button do)
+    const hit = G.insert('path', ':first-child').attr('class', 'fast-hit fast-hit-ring').attr('d', ring).attr('fill', 'transparent').attr('stroke', 'none');
     const find = (ev) => {
       const [px, py] = pointerIn(ev, col.el);
       const r = Math.hypot(px, py); let a = Math.atan2(px, -py); if (a < 0) a += 2 * Math.PI;   // (d3's arcs: 0 at 12 o'clock, clockwise)

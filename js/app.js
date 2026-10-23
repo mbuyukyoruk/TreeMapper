@@ -232,6 +232,7 @@ const zoom = d3.zoom()
   .on('zoom', (ev)=>{
     const t = ev.transform;
     g.attr('transform', "translate(" + t.x + "," + t.y + ") scale(" + t.k + ")");
+    if (geometry === 'radial') { try { syncRadialRings(t); } catch (e) {} }   // the rings move and scale with the tree
     try{ updateMetaAddButtonY(); }catch(e){}
     try{ updateSplitterLineHeights(); }catch(e){}
   })
@@ -13001,6 +13002,7 @@ function centerRadial(){
   const scale = maxTreeDimension > 0 ? Math.min(targetDiameter / maxTreeDimension, 1) : 1;
   const offsetX = radialCenterX;
   const offsetY = radialCenterY;
+  radialRingK = scale;   // (the rings were drawn for the tree at this scale: a zoom scales them relative to it)
   
   // Create transform that centers the root and scales the tree
   const transform = d3.zoomIdentity
@@ -26243,22 +26245,27 @@ if(clearAllColorsBtn){
   });
 }
 
+// The rings of the circular layout are drawn in screen units around the canvas centre, for the
+// tree as centerRadial() fits it (zoom scale radialRingK). Zooming or panning afterwards moved
+// the tree alone and left the rings behind; now the rings carry the same move and the relative
+// scale, so the whole figure zooms and pans as one.
+let radialRingK = 1;
+function syncRadialRings(t){
+  if(geometry !== 'radial') return;
+  const rl = svg.select('.radial-labels');
+  if (rl.empty()) return;
+  t = t || d3.zoomTransform(svg.node());
+  const k = radialRingK > 0 ? t.k / radialRingK : 1;
+  rl.attr('transform', `translate(${t.x}, ${t.y})` + (Math.abs(k - 1) > 1e-9 ? ` scale(${k})` : '') + ` rotate(${spinDeg})`);
+}
 function applySpin(){
   if(geometry !== 'radial' || !gSpin) return;
   gSpin.attr('transform', `rotate(${spinDeg})`);
   
-  // Also rotate the radial labels group
+  // Also rotate the radial labels group (keeping its move and scale from the zoom)
   const radialLabelsGroup = svg.select('.radial-labels');
   if (!radialLabelsGroup.empty()) {
-    // Get the current center position from the transform attribute
-    const currentTransform = radialLabelsGroup.attr('transform');
-    const translateMatch = currentTransform ? currentTransform.match(/translate\(([\d.]+),\s*([\d.]+)\)/) : null;
-    
-    if (translateMatch) {
-      const centerX = parseFloat(translateMatch[1]);
-      const centerY = parseFloat(translateMatch[2]);
-      radialLabelsGroup.attr('transform', `translate(${centerX}, ${centerY}) rotate(${spinDeg})`);
-    }
+    syncRadialRings();
   }
   keepAxisButtonsUpright();
 }
