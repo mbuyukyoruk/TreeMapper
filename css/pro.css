@@ -980,6 +980,7 @@ html.pro .pro-statusbar #status::before {
   content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: #22C55E; box-shadow: 0 0 0 3px rgba(34, 197, 94, .18);
 }
 #proCounts { font-family: var(--pro-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+html.pro .pro-version { color: var(--muted); font: 12px var(--pro-font); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pro-credit a { color: var(--accent); text-decoration: none; font-weight: 500; }
 .pro-credit a:hover { text-decoration: underline; }
 
