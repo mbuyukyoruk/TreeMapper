@@ -635,6 +635,19 @@
       if (obj2 && align) restoreAlignment(card2, obj2, align);
       card2.open = wasOpen;
     }
+    // the reorder renames the card but not every control inside it (the align switch and gene
+    // list kept the load-time number, so the next reload's lookups by id missed them and the
+    // gene list came back empty): ids and radio names ending in that number get the card's own
+    function renumberInside(card2, from, to) {
+      if (from == null || to == null || from === to) return;
+      var re = /^(.*?[^0-9])(\d+)$/;
+      Array.prototype.forEach.call(card2.querySelectorAll('[id], [name]'), function (el) {
+        ['id', 'name'].forEach(function (a) {
+          var v = el.getAttribute(a), m = v && re.exec(v);
+          if (m && +m[2] === from) el.setAttribute(a, m[1] + to);
+        });
+      });
+    }
     function restoreAlignment(card2, obj2, al) {
       var id2 = cardNumber(card2), meta = obj2.meta, genes = new Set();
       call(function () { var gc = getDataframeColumnIndices(meta).geneCol; (meta.rows || []).forEach(function (r) { genes.add(String(r[gc])); }); });
@@ -656,11 +669,13 @@
         card2 = await loadTable(text);
         if (!card2) error = 'the layer could not be built from the table' + (said.length ? ' (' + said[0] + ')' : '');
         else {
+          var loadedNum = cardNumber(card2);   // (the number the new layer was built with: its controls' ids end in it)
           box.insertBefore(card2, card);
           var oldId = cardNumber(card);
           if (oldId !== null) call(function () { window[DELETE[L.type]](oldId); });
           if (card.isConnected) card.remove();
           call(function () { window[REORDER[L.type]](); });
+          renumberInside(card2, loadedNum, cardNumber(card2));
         }
       } else {
         // only one layer of this kind: its loader replaces it
