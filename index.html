@@ -589,13 +589,17 @@
     <span class="pro-credit">Created by <a href="https://github.com/mbuyukyoruk" target="_blank" rel="noopener">Murat Buyukyoruk</a></span>
   </footer>
   <script>
-    // The version: the build stamp on the page's scripts (?v=YYYYMMDDHHMM, UTC), set at every release
+    // The version: the build stamp on the page's scripts (?v=YYYYMMDDHHMM, UTC), set at every release; shown in Mountain Time
     document.addEventListener('DOMContentLoaded', function () {
       var el = document.getElementById('proVersion'), s = document.querySelector('script[src*="app.js?v="]');
       var m = s && /\?v=(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(s.getAttribute('src'));
       if (!el || !m) return;
-      el.textContent = 'v' + m[1] + '.' + m[2] + '.' + m[3] + '-' + m[4] + m[5];
-      el.title = 'Version ' + m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5] + ' UTC (build ' + m.slice(1).join('') + ')';
+      var t = new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5])), p = {};
+      new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' })
+        .formatToParts(t).forEach(function (x) { p[x.type] = x.value; });
+      el.textContent = 'v' + p.year + '.' + p.month + '.' + p.day + '-' + p.hour + p.minute + ' MT';
+      el.title = 'Version ' + p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute + ' ' + p.timeZoneName + ' (build ' + m.slice(1).join('') + ')';
       window.TM_VERSION = el.textContent;
     });
   </script>
