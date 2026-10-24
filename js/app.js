@@ -236,6 +236,7 @@ const zoom = d3.zoom()
     if (geometry === 'radial') { try { syncRadialRings(t); } catch (e) {} }   // the rings move and scale with the tree
     try{ updateMetaAddButtonY(); }catch(e){}
     try{ updateSplitterLineHeights(); }catch(e){}
+    try{ updateSplitterPositions(); }catch(e){}
   })
   .on('end', (ev)=>{
     try { updatePanCursorClass(); } catch (e) {}
@@ -1187,7 +1188,7 @@ function createSplitters() {
     }
     splitterX -= SPLITTER_WIDTH;
     
-      splitter.style.left = splitterX + 'px';
+      { let t = { x: 0, k: 1 }; try { t = d3.zoomTransform(document.getElementById('svg')); } catch (e) {} splitter.style.left = (t.x + splitterX * t.k) + 'px'; }   // (through the view: see updateSplitterPositions)
       splitter.style.width = SPLITTER_HIT_WIDTH + 'px';
       splitter.style.marginLeft = -(SPLITTER_HIT_WIDTH - SPLITTER_WIDTH) / 2 + 'px';
       
@@ -1282,7 +1283,10 @@ function startDrag(e) {
 function drag(e) {
   if (!isDragging) return;
 
-  const deltaX = e.clientX - startX;
+  // (panel widths are in drawing units; the pointer moves in screen pixels: at a zoom of k a
+  // unit is k pixels on screen)
+  const zk = (() => { try { return d3.zoomTransform(document.getElementById('svg')).k || 1; } catch (err) { return 1; } })();
+  const deltaX = (e.clientX - startX) / zk;
   const i = currentSplitter;
   const leftIndex = i;
   const rightIndex = i + 1;
@@ -1297,35 +1301,19 @@ function drag(e) {
 
   const newWidths = [...startWidths];
 
-  if (deltaX > 0) {
-    const maxGrow = stealableRight(rightIndex, startWidths);
-    const grow = Math.min(deltaX, maxGrow);
-
-    newWidths[leftIndex] = startWidths[leftIndex] + grow;
-
-    let remaining = grow;
-    for (let j = rightIndex; j < panelCount && remaining > 0; j++) {
-      const minWidth = getMinPanelWidth(j);
-      const can = Math.max(0, startWidths[j] - minWidth);
-      const take = Math.min(can, remaining);
-      newWidths[j] = startWidths[j] - take;
-      remaining -= take;
-    }
-  } else if (deltaX < 0) {
-    const want = -deltaX;
-    const maxGrow = stealableLeft(leftIndex, startWidths);
-    const grow = Math.min(want, maxGrow);
-
-    newWidths[rightIndex] = startWidths[rightIndex] + grow;
-
-    let remaining = grow;
-    for (let j = leftIndex; j >= 0 && remaining > 0; j--) {
-      const minWidth = getMinPanelWidth(j);
-      const can = Math.max(0, startWidths[j] - minWidth);
-      const take = Math.min(can, remaining);
-      newWidths[j] = startWidths[j] - take;
-      remaining -= take;
-    }
+  // The splitter follows the pointer: the panels on the side it moves into give up width
+  // (nearest first, down to their minimum) and the panels on the other side take it (nearest
+  // first, up to their maximum: a panel of fixed width passes it on), so the splitter stops
+  // only where nothing on one side can give or take any more.
+  if (deltaX !== 0) {
+    const grower = deltaX > 0 ? Array.from({ length: leftIndex + 1 }, (_, j) => leftIndex - j) : Array.from({ length: panelCount - rightIndex }, (_, j) => rightIndex + j);
+    const giver = deltaX > 0 ? Array.from({ length: panelCount - rightIndex }, (_, j) => rightIndex + j) : Array.from({ length: leftIndex + 1 }, (_, j) => leftIndex - j);
+    const canTake = grower.reduce((sum, j) => { const mx = getMaxPanelWidth(j); return sum + (mx == null ? Infinity : Math.max(0, mx - startWidths[j])); }, 0);
+    const canGive = giver.reduce((sum, j) => sum + Math.max(0, startWidths[j] - getMinPanelWidth(j)), 0);
+    let amount = Math.min(Math.abs(deltaX), canTake, canGive), left = amount;
+    for (const j of grower) { if (left <= 0) break; const mx = getMaxPanelWidth(j); const take = Math.min(left, mx == null ? Infinity : Math.max(0, mx - startWidths[j])); newWidths[j] = startWidths[j] + take; left -= take; }
+    left = amount;
+    for (const j of giver) { if (left <= 0) break; const give = Math.min(left, Math.max(0, startWidths[j] - getMinPanelWidth(j))); newWidths[j] = startWidths[j] - give; left -= give; }
   }
 
   for (let i = 0; i < newWidths.length; i++) {
@@ -1699,14 +1687,17 @@ function updatePanelPositions() {
 function updateSplitterPositions() {
   // Only update splitter positions in rectangular mode
   if (geometry !== 'rect') return;
-  
+  // (the page's splitters sit over the drawing's, which are zoomed and panned with it: placed
+  // through the same view, so a press on a splitter takes that splitter at any zoom)
+  let t = { x: 0, k: 1 };
+  try { t = d3.zoomTransform(document.getElementById('svg')); } catch (e) {}
   let currentX = 0;
   
   for (let i = 0; i < panelCount - 1; i++) {
     currentX += panelWidths[i] + SPLITTER_WIDTH;
     // Safety check: ensure splitter exists before accessing style
     if (splitters[i]) {
-    splitters[i].style.left = (currentX - SPLITTER_WIDTH) + 'px';
+    splitters[i].style.left = (t.x + (currentX - SPLITTER_WIDTH) * t.k) + 'px';
     }
   }
 }
