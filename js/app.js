@@ -1276,8 +1276,8 @@ function startDrag(e) {
     });
   }
   
-  document.addEventListener('mousemove', drag);
-  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('mousemove', drag, true);   // (on the way down: see mousemove.radialSplitter)
+  document.addEventListener('mouseup', endDrag, true);
 }
 
 function drag(e) {
@@ -1373,8 +1373,8 @@ function endDrag() {
   if (window.tmDragLive) tmDragLive.reset();
   if (window.tmFast && tmFast.dragEnd) tmFast.dragEnd();   // a large tree's live frames: the drawing as it was, then the redraw below
   currentSplitter = null;
-  document.removeEventListener('mousemove', drag);
-  document.removeEventListener('mouseup', endDrag);
+  document.removeEventListener('mousemove', drag, true);
+  document.removeEventListener('mouseup', endDrag, true);
   
   _dragContainerWidth = 0;
   
@@ -2626,111 +2626,26 @@ function handleRadialMouseMove(event) {
   // Get maximum allowed total radius
   const maxAllowedRadius = getMaxAllowedTotalRadius();
 
+  // The splitter follows the pointer: the rings inside it (nearest first) grow or shrink by
+  // the pointer's move, each within its limits; the rings outside it (nearest first) give or
+  // take as much, so the whole keeps its size where it can. Outward, the whole may also grow
+  // into the room left in the view; inward, what the outer rings cannot take leaves the
+  // whole smaller. Nothing else changes, so the splitter stops only at a real limit.
+  const inner = Array.from({ length: innerIndex + 1 }, (_, j) => innerIndex - j);
+  const outer = Array.from({ length: Math.max(0, radialRings.length - outerIndex) }, (_, j) => outerIndex + j);
+  const room = (j) => Math.max(0, getMaxRingWidth(j) - startWidths[j]);
+  const spare = (j) => Math.max(0, startWidths[j] - getMinRingWidth(j));
+  const sum = (list, f) => list.reduce((t, j) => t + f(j), 0);
+  const share = (list, amount, f, sign) => { let left = amount; for (const j of list) { if (left <= 0) break; const d = Math.min(left, f(j)); newWidths[j] = startWidths[j] + sign * d; left -= d; } };
   if (delta > 0) {
-    // Dragging outward - inner ring grows, outer rings shrink
-    const maxWidth = getMaxRingWidth(innerIndex);
-    const maxPossibleGrowth = maxWidth - startWidths[innerIndex];
-    const maxSteal = stealableOuter(outerIndex, startWidths);
-    
-    // How much do we want to grow?
-    const requestedGrow = delta;
-    
-    // How much can the inner ring actually grow?
-    const innerCanGrow = Math.min(requestedGrow, maxPossibleGrowth);
-    
-    // Grow inner ring
-    newWidths[innerIndex] = startWidths[innerIndex] + innerCanGrow;
-    
-    // Steal from outer rings
-    let remaining = Math.min(innerCanGrow, maxSteal);
-    for (let j = outerIndex; j < radialRings.length && remaining > 0; j++) {
-      const minWidth = getMinRingWidth(j);
-      const can = Math.max(0, startWidths[j] - minWidth);
-      const take = Math.min(can, remaining);
-      newWidths[j] = startWidths[j] - take;
-      remaining -= take;
-    }
-    
-    // If current ring reached max width and we still have delta to apply, grow more inner rings
-    let extraDelta = requestedGrow - innerCanGrow;
-    if (extraDelta > 0 && innerIndex > 0) {
-      for (let j = innerIndex - 1; j >= 0 && extraDelta > 0; j--) {
-        const maxWidth = getMaxRingWidth(j);
-        const canGrow = Math.max(0, maxWidth - newWidths[j]);
-        const grow = Math.min(canGrow, extraDelta);
-        newWidths[j] = newWidths[j] + grow;
-        extraDelta -= grow;
-      }
-    }
+    const free = Math.max(0, maxAllowedRadius - calculateTotalRadiusFromWidths(startWidths));
+    const amount = Math.min(delta, sum(inner, room), sum(outer, spare) + free);
+    share(inner, amount, room, +1);
+    share(outer, Math.min(amount, sum(outer, spare)), spare, -1);   // (the rest, if any, from the room left: amount <= what they can give + free)
   } else if (delta < 0) {
-    // Dragging inward - outer ring grows, inner rings shrink
-    const want = -delta;
-    const maxShrink = stealableInner(innerIndex, startWidths);
-    const shrink = Math.min(want, maxShrink);
-    
-    // Try to grow outer ring (if it exists)
-    let outerGrowth = 0;
-    if (outerIndex < radialRings.length) {
-      const maxWidth = getMaxRingWidth(outerIndex);
-      const maxGrowth = maxWidth - startWidths[outerIndex];
-      outerGrowth = Math.min(shrink, maxGrowth);
-      newWidths[outerIndex] = startWidths[outerIndex] + outerGrowth;
-      
-      // If outer ring reached max and we still have space to give, give to inner rings
-      let extraGrowth = shrink - outerGrowth;
-      if (extraGrowth > 0) {
-        for (let j = innerIndex; j >= 0 && extraGrowth > 0; j--) {
-          const maxWidth = getMaxRingWidth(j);
-          const canGrow = Math.max(0, maxWidth - newWidths[j]);
-          const grow = Math.min(canGrow, extraGrowth);
-          newWidths[j] = newWidths[j] + grow;
-          extraGrowth -= grow;
-        }
-      }
-    }
-    
-    // Steal from inner rings
-    let remaining = shrink;
-    for (let j = innerIndex; j >= 0 && remaining > 0; j--) {
-      const minWidth = getMinRingWidth(j);
-      const can = Math.max(0, startWidths[j] - minWidth);
-      const take = Math.min(can, remaining);
-      newWidths[j] = startWidths[j] - take;
-      remaining -= take;
-    }
-  }
-
-  // Apply min/max constraints
-  for (let i = 0; i < newWidths.length; i++) {
-    const minWidth = getMinRingWidth(i);
-    const maxWidth = getMaxRingWidth(i);
-    newWidths[i] = Math.max(minWidth, Math.min(maxWidth, newWidths[i]));
-  }
-
-  // Check if total radius exceeds container dimensions
-  const totalRadius = calculateTotalRadiusFromWidths(newWidths);
-  if (totalRadius > maxAllowedRadius) {
-    // Scale down all widths proportionally to fit within container
-    const scale = maxAllowedRadius / totalRadius;
-    for (let i = 0; i < newWidths.length; i++) {
-      const minWidth = getMinRingWidth(i);
-      // Scale but respect minimum widths
-      newWidths[i] = Math.max(minWidth, Math.floor(newWidths[i] * scale));
-    }
-    
-    // After scaling, check total again and adjust if needed
-    const adjustedTotal = calculateTotalRadiusFromWidths(newWidths);
-    if (adjustedTotal > maxAllowedRadius) {
-      // Shrink from outermost ring inward until we fit
-      let excess = adjustedTotal - maxAllowedRadius;
-      for (let i = newWidths.length - 1; i >= 0 && excess > 0; i--) {
-        const minWidth = getMinRingWidth(i);
-        const canShrink = Math.max(0, newWidths[i] - minWidth);
-        const shrink = Math.min(canShrink, excess);
-        newWidths[i] -= shrink;
-        excess -= shrink;
-      }
-    }
+    const amount = Math.min(-delta, sum(inner, spare));
+    share(inner, amount, spare, -1);
+    share(outer, amount, room, +1);
   }
 
   // Update the actual width storage
@@ -2793,8 +2708,10 @@ function handleRadialMouseUp() {
 }
 
 // Add global event listeners
-d3.select(document).on('mousemove.radialSplitter', handleRadialMouseMove);
-d3.select(document).on('mouseup.radialSplitter', handleRadialMouseUp);
+// (on the way down: elements of the drawing stop their own mouse moves from bubbling, e.g. a
+// ring's arcs for their tooltips, and the drag must not stop when the pointer crosses them)
+d3.select(document).on('mousemove.radialSplitter', handleRadialMouseMove, { capture: true });
+d3.select(document).on('mouseup.radialSplitter', handleRadialMouseUp, { capture: true });
 
 // Window resize handler
 window.addEventListener('resize', () => {
