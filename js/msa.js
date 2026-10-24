@@ -861,48 +861,35 @@
       layer.append('path').attr('class', 'msa-band').attr('d', arc()).attr('fill', acc).attr('fill-opacity', 0.16).attr('stroke', acc).attr('stroke-width', 1);
     });
     var R = ring.outerRadius;
-    // the last picture shown, when it is of the same rows at the same angles (a ring resize):
-    // kept underneath until the new one is shown
+    // the last picture shown, when it is of the same rows at the same angles
     var rowsKey = rowOf.join(','), angKey = n + ':' + leaves[0].a.toFixed(6) + ':' + leaves[n - 1].a.toFixed(6) + ':' + span.toFixed(9);
     var shown = m._ringShown, shownNode = shown && shown.node;
     var same = !!(shownNode && shown.ver === m._ver && shown.rowsKey === rowsKey && shown.angKey === angKey && shown.colorKey === ringColorKey(m));
-    var job, dragging = typeof radialIsDragging !== 'undefined' && radialIsDragging;
-    m._ringWant = { r0: r0, r1: r1 };
-    // the last picture shown stays underneath until a newer one is shown (no blank frame)
-    var under = same && !shownNode.isConnected ? shownNode : null;
-    if (under) { under.classList.add('msa-prev'); layer.node().appendChild(under); fitRing(under, r0, r1); }
-    var making = m._ringMaking, mk = making && making.job.img.node();
-    if (same && dragging && mk && !mk.isConnected && making.ver === m._ver && making.rowsKey === rowsKey && making.angKey === angKey) {
-      // while a ring is resized and the drawing redrawn on every move: the picture still being
-      // made (for the ring of a moment ago) is kept, fitted, until it is shown; then the next
-      // one is made for the ring as it is then. (A new picture on every move would be thrown
-      // away by the next move before it is shown.)
-      layer.node().appendChild(mk);
-      fitRing(mk, r0, r1);
-      job = making.job;
+    var dragging = typeof radialIsDragging !== 'undefined' && radialIsDragging;
+    var img = layer.append('image').attr('class', 'msa-ring-img').attr('x', -R).attr('y', -R).attr('width', 2 * R).attr('height', 2 * R)
+      .attr('preserveAspectRatio', 'none').attr('data-r0', r0).attr('data-r1', r1).style('pointer-events', 'none');
+    var gapAngles = span * r0 >= 5;   // rows far enough apart: a gap between them
+    var job = { m: m, leaves: leaves, rowOf: rowOf, lay: lay, r0: r0, r1: r1, R: R, span: span, fill: gapAngles ? 0.9 : 1, img: img, res: 0, rowsKey: rowsKey, angKey: angKey };
+    m._ring = job;
+    if (dragging) {
+      // a ring being resized: painted live (the layer is in the page once the drawing is)
+      img.style('visibility', 'hidden');
+      var layerNode = layer.node();
+      var paint = function () { if (m._ring === job && !paintLive(m, job, layerNode)) { img.style('visibility', null); renderRing(job, desiredRes(R)); } };
+      if (layerNode.isConnected) paint(); else Promise.resolve().then(paint);
     } else {
-      var img = layer.append('image').attr('class', 'msa-ring-img').attr('x', -R).attr('y', -R).attr('width', 2 * R).attr('height', 2 * R)
-        .attr('preserveAspectRatio', 'none').attr('data-r0', r0).attr('data-r1', r1).style('pointer-events', 'none');
-      var gapAngles = span * r0 >= 5;   // rows far enough apart: a gap between them
-      job = { m: m, leaves: leaves, rowOf: rowOf, lay: lay, r0: r0, r1: r1, R: R, span: span, fill: gapAngles ? 0.9 : 1, img: img, res: 0, rowsKey: rowsKey, angKey: angKey };
-      // while a ring is resized, at a resolution that keeps a move quick (sharp again on release)
-      ringPicture(job, dragging);
-      var rec = { job: job, ver: m._ver, rowsKey: rowsKey, angKey: angKey };
-      m._ringMaking = rec;
+      // the earlier picture (or the live canvas) stays until the new one is shown (no blank frame)
+      var under = !m._live && same && !shownNode.isConnected ? shownNode : null;
+      if (under) { under.classList.add('msa-prev'); layer.node().insertBefore(under, img.node()); fitRing(under, r0, r1); }
+      renderRing(job, desiredRes(R));
       whenLoaded([job.img], false, function () {
-        if (m._ringMaking === rec) m._ringMaking = null;
-        var node = job.img.node(), old = m._ringShown && m._ringShown.node;
-        // the picture shown before goes where it lies beside this one
-        if (old && old !== node && old.parentNode && old.parentNode === node.parentNode) { unfit(old); old.parentNode.removeChild(old); }
-        if (node.isConnected) unfit(node);
-        m._ringShown = { job: job, node: node, r0: job.r0, r1: job.r1, ver: rec.ver, rowsKey: rowsKey, angKey: angKey, colorKey: ringColorKey(m) };
-        // still resizing and the ring moved on meanwhile: the next picture, for the ring now
-        var w = m._ringWant;
-        if (node.isConnected && m._ring === job && typeof radialIsDragging !== 'undefined' && radialIsDragging && w && (Math.abs(w.r0 - job.r0) > 0.5 || Math.abs(w.r1 - job.r1) > 0.5))
-          liveRing(m.id, { innerRadius: w.r0 - 4, outerRadius: w.r1 + 4 });
+        if (under) dropRingImg(under);
+        var node = job.img.node();
+        if (m._ring === job) dropLive(m);
+        if (node.isConnected || !m._ringShown || m._ringShown.job !== job)
+          m._ringShown = { job: job, node: node, r0: r0, r1: r1, ver: m._ver, rowsKey: rowsKey, angKey: angKey, colorKey: ringColorKey(m) };
       });
     }
-    m._ring = job;
     m._geo = { kind: 'radial', node: layer.node(), lay: lay, leaves: leaves, r0: r0 };
     // hover / click on the ring
     var hitArc = d3.arc().innerRadius(r0).outerRadius(r1).startAngle(0).endAngle(2 * Math.PI);
@@ -988,46 +975,92 @@
     cp.firstChild.setAttribute('d', annulus(r0 / sc, r1 / sc));   // (in the picture's own units: before its scale)
     im.setAttribute('clip-path', 'url(#' + cp.id + ')');
   }
-  // while a ring is resized (a large tree's live frames, js/fast-draw.js): the ring drawn
-  // again for its radii now, as a column is (liveResize); one picture in the making at a
-  // time, and until it is shown the picture before it is fitted to the ring
+  // While a ring is resized the alignment ring is painted straight onto a canvas over the
+  // drawing on every move, at the screen's resolution, for the ring as it is then (as a
+  // column is drawn again on every move); no picture is made, encoded and decoded, which took
+  // most of a move's time. The ring's own picture is hidden meanwhile; the release draws it
+  // and the canvas goes once it is shown.
+  function paintLive(m, job, layerNode) {
+    var svgEl = svg.node(), host = svgEl && svgEl.parentNode, ctm = layerNode && layerNode.isConnected ? layerNode.getScreenCTM() : null;
+    if (!host || !ctm) return false;
+    var k = Math.hypot(ctm.a, ctm.b), rot = Math.atan2(ctm.b, ctm.a), dpr = window.devicePixelRatio || 1;
+    var Rs = job.R * k, S = Math.max(1, Math.ceil(2 * Rs * dpr));
+    if (!(k > 0) || S > 6000) return false;
+    var cv = m._live;
+    if (!cv || cv.parentNode !== host) {
+      if (cv && cv.parentNode) cv.parentNode.removeChild(cv);
+      cv = m._live = document.createElement('canvas');
+      cv.className = 'msa-ring-live'; cv.setAttribute('aria-hidden', 'true');
+      host.insertBefore(cv, svgEl.nextSibling);
+    }
+    var hr = host.getBoundingClientRect();
+    var left = ctm.e - hr.left - host.clientLeft + host.scrollLeft - Rs, top = ctm.f - hr.top - host.clientTop + host.scrollTop - Rs;
+    cv.style.cssText = 'position:absolute;pointer-events:none;left:' + left + 'px;top:' + top + 'px;width:' + (2 * Rs) + 'px;height:' + (2 * Rs) + 'px;';
+    if (cv.width !== S || cv.height !== S) { cv.width = S; cv.height = S; m._liveImg = null; }
+    var ctx = cv.getContext('2d'), im = m._liveImg;
+    if (!im || im.width !== S) im = m._liveImg = ctx.createImageData(S, S);
+    var buf = new Uint32Array(im.data.buffer); buf.fill(0);
+    var T = Math.max(360, Math.ceil(2 * Math.PI * S));
+    fillRing(job, S, buf, Math.round(rot / (2 * Math.PI) * T));
+    ctx.putImageData(im, 0, 0);
+    cv.setAttribute('data-r0', job.r0); cv.setAttribute('data-r1', job.r1);
+    return true;
+  }
+  function dropLive(m) {
+    if (m._live && m._live.parentNode) m._live.parentNode.removeChild(m._live);
+    m._live = null; m._liveImg = null;
+  }
+  // a large tree's live frames (js/fast-draw.js) and the live drag frames (js/drag-live.js):
+  // the ring as it is now
   function liveRing(id, ring) {
     var m = msas.get(id), j = m && m._ring;
     if (!j || !j.img.node() || !j.img.node().isConnected) return false;
-    var r0 = ring.innerRadius + 4, r1 = ring.outerRadius - 4;
-    j.want = { r0: r0, r1: r1, R: ring.outerRadius };
-    var L = j.img.node().parentNode;
-    L.querySelectorAll(':scope > image.msa-ring-img').forEach(function (im) { fitRing(im, r0, r1); });
-    if (j.making || (Math.abs(r0 - j.r0) < 0.5 && Math.abs(r1 - j.r1) < 0.5)) return true;
-    j.r0 = r0; j.r1 = r1; j.R = ring.outerRadius; j.lay = columnLayout(m, Math.max(1, r1 - r0));
-    j.making = true;
-    ringPicture(j, true);
-    whenLoaded([j.img], false, function () {
-      j.making = false;
-      var w = j.want;
-      if (w && j.img.node().isConnected) liveRing(id, { innerRadius: w.r0 - 4, outerRadius: w.R });
-    });
+    var r0 = ring.innerRadius + 4, r1 = ring.outerRadius - 4, L = j.img.node().parentNode;
+    if (Math.abs(r0 - j.r0) > 1e-6 || Math.abs(r1 - j.r1) > 1e-6 || Math.abs(ring.outerRadius - j.R) > 1e-6) {
+      j.r0 = r0; j.r1 = r1; j.R = ring.outerRadius; j.lay = columnLayout(m, Math.max(1, r1 - r0));
+    }
+    if (!paintLive(m, j, L)) return false;
+    L.querySelectorAll(':scope > image.msa-ring-img').forEach(function (im) { im.style.visibility = 'hidden'; });
     return true;
-  }
-  // a ring picture made; while moving, at the resolution that takes about RING_MOVE_MS (from
-  // how long the last pictures took per pixel), at most the screen's
-  var RING_MOVE_MS = 20;
-  function ringPicture(job, moving) {
-    var m = job.m, want = desiredRes(job.R), res = want;
-    if (moving && m._ringPxMs > 0) res = Math.max(0.25, Math.min(want, Math.sqrt(RING_MOVE_MS / m._ringPxMs) / (2 * job.R)));
-    var t0 = performance.now();
-    renderRing(job, res);
-    var S = Math.max(1, Math.ceil(2 * job.R * res));
-    m._ringPxMs = (performance.now() - t0) / (S * S);
   }
   function desiredRes(R) {
     var k = d3.zoomTransform(svg.node()).k || 1, dpr = window.devicePixelRatio || 1;
     return Math.max(0.5, Math.min(k * dpr, MAX_RING_PX / (2 * R)));
   }
   // the ring picture: for every pixel of the ring, the cell under it
-  function renderRing(job, res) {
-    var m = job.m, R = job.R, S = Math.max(1, Math.ceil(2 * R * res)), sc = S / (2 * R);
-    var lay = job.lay, r0 = job.r0, r1 = job.r1, n = job.leaves.length;
+  // per picture size: each pixel's distance from the centre and its angle bin (of T), the
+  // same for every picture of that size (a ring resize draws many)
+  var ringGeo = null;
+  function ringGeometry(S, T) {
+    if (ringGeo && ringGeo.S === S && ringGeo.T === T) return ringGeo;
+    var n = S * S, dist = new Float32Array(n), bin = new Int32Array(n), ctr = S / 2, k = 0;
+    for (var py = 0; py < S; py++) {
+      var y = py + 0.5 - ctr;
+      for (var px = 0; px < S; px++, k++) {
+        var x = px + 0.5 - ctr, th = Math.atan2(x, -y); if (th < 0) th += 2 * Math.PI;
+        dist[k] = Math.sqrt(x * x + y * y); bin[k] = Math.min(T - 1, Math.floor(th / (2 * Math.PI) * T));
+      }
+    }
+    ringGeo = { S: S, T: T, dist: dist, bin: bin };
+    return ringGeo;
+  }
+  // each sequence as character codes (read per pixel)
+  function seqCodes(m) {
+    if (m._codes && m._codes.seqs === m.seqs) return m._codes.rows;
+    var rows = m.seqs.map(function (q) { var a = new Uint8Array(q.length); for (var i = 0; i < q.length; i++) a[i] = q.charCodeAt(i); return a; });
+    m._codes = { seqs: m.seqs, rows: rows };
+    return rows;
+  }
+  function dropRingImg(node) {
+    if (!node) return;
+    unfit(node);
+    if (node.parentNode) node.parentNode.removeChild(node);
+  }
+  // the ring's cells into buf (S x S pixels for the square -R..R; `shift`: angle bins the
+  // picture is turned by on screen)
+  function fillRing(job, S, buf, shift) {
+    var m = job.m, R = job.R, sc = S / (2 * R);
+    var lay = job.lay, r0 = job.r0, r1 = job.r1;
     // angle -> row
     var T = Math.max(360, Math.ceil(2 * Math.PI * R * sc * 2)), rowAt = new Int32Array(T).fill(-1);
     var half = job.span * job.fill / 2;
@@ -1051,27 +1084,31 @@
       colAt[q] = c;
     }
     var plan = colourPlan(m, shownRows(job.rowOf)), mode = plan.mode, cons = plan.cons, lut = lutOf(m).px, greyPx = lutOf(m).grey;
-    var url = pictureURL(S, S, function (buf) {
-      var ri2 = r0 * r0 * sc * sc, ro2 = r1 * r1 * sc * sc, ctr = S / 2;
-      for (var py = 0; py < S; py++) {
-        var y = py + 0.5 - ctr, y2 = y * y;
-        if (y2 > ro2) continue;
-        var xo = Math.sqrt(ro2 - y2), xa = Math.max(0, Math.floor(ctr - xo)), xb = Math.min(S - 1, Math.ceil(ctr + xo));
-        for (var px = xa; px <= xb; px++) {
-          var x = px + 0.5 - ctr, d2 = x * x + y2;
-          if (d2 < ri2 || d2 >= ro2) continue;
-          var col = colAt[Math.floor(Math.sqrt(d2) - r0 * sc)];
-          if (!col) continue;
-          var th = Math.atan2(x, -y); if (th < 0) th += 2 * Math.PI;
-          var row = rowAt[Math.min(T - 1, Math.floor(th / (2 * Math.PI) * T))];
-          if (row < 0) continue;
-          var ch = m.seqs[row].charCodeAt(col - 1);
-          if (ch === 45) continue;
-          var md = mode[col];
-          buf[py * S + px] = md === 1 || (md === 2 && cons[col] === ch) ? (lut[ch] || lut[88]) : greyPx;
-        }
+    var G = ringGeometry(S, T), codes = seqCodes(m);
+    var ro2 = r1 * r1 * sc * sc, ctr = S / 2, ri = r0 * sc, ro = r1 * sc, dist = G.dist, bin = G.bin;
+    shift = ((shift || 0) % T + T) % T;
+    for (var py = 0; py < S; py++) {
+      var y = py + 0.5 - ctr, y2 = y * y;
+      if (y2 > ro2) continue;
+      var xo = Math.sqrt(ro2 - y2), xa = Math.max(0, Math.floor(ctr - xo)), xb = Math.min(S - 1, Math.ceil(ctr + xo));
+      for (var px = xa, k = py * S + xa; px <= xb; px++, k++) {
+        var d = dist[k];
+        if (d < ri || d >= ro) continue;
+        var col = colAt[(d - ri) | 0];
+        if (!col) continue;
+        var bk = bin[k] - shift; if (bk < 0) bk += T;
+        var row = rowAt[bk];
+        if (row < 0) continue;
+        var ch = codes[row][col - 1];
+        if (ch === 45) continue;
+        var md = mode[col];
+        buf[k] = md === 1 || (md === 2 && cons[col] === ch) ? (lut[ch] || lut[88]) : greyPx;
       }
-    });
+    }
+  }
+  function renderRing(job, res) {
+    var m = job.m, R = job.R, S = Math.max(1, Math.ceil(2 * R * res)), r0 = job.r0, r1 = job.r1;
+    var url = pictureURL(S, S, function (buf) { fillRing(job, S, buf, 0); });
     var oldImg = job.img.attr('href') ? job.img : null;
     if (oldImg) {
       // the new picture next to the old one; the old goes once the new one is shown
@@ -1082,7 +1119,7 @@
       job.img = ni;
     }
     job.img.attr('href', url).attr('data-res', +res.toFixed(3));
-    if (oldImg) whenLoaded([job.img], false, function () { unfit(oldImg.node()); oldImg.remove(); if (m._ringShown && m._ringShown.job === job) { m._ringShown.node = job.img.node(); m._ringShown.r0 = r0; m._ringShown.r1 = r1; } });
+    if (oldImg) whenLoaded([job.img], false, function () { dropRingImg(oldImg.node()); if (m._ringShown && m._ringShown.job === job) { m._ringShown.node = job.img.node(); m._ringShown.r0 = r0; m._ringShown.r1 = r1; } });
     job.res = res;
   }
 

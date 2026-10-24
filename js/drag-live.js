@@ -1476,8 +1476,9 @@
     lift.svgItems.forEach(function (it) {
       if (it.kind === 'path') it.el.setAttribute('d', mappedD(it, f));
       else if (it.kind === 'scale') {
-        var na = f(it.ra * it.u) / it.u, nb = f(it.rb * it.u) / it.u;
-        if (it.msa > 0 && window.tmMsa && tmMsa.liveRing && tmMsa.liveRing(it.msa, { innerRadius: na - 4, outerRadius: nb + 4 })) return;
+        // (the ring's edges are mapped; its picture sits 4 units inside them, js/msa.js)
+        var na = f((it.ra - 4) * it.u) / it.u, nb = f((it.rb + 4) * it.u) / it.u;
+        if (it.msa > 0 && window.tmMsa && tmMsa.liveRing && tmMsa.liveRing(it.msa, { innerRadius: na, outerRadius: nb })) return;
         var sc = f(it.rm) / it.rm;
         it.el.setAttribute('transform', 'scale(' + fmt(sc) + ')' + (it.t0 ? ' ' + it.t0 : ''));
       } else {

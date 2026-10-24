@@ -401,8 +401,9 @@
   // written here: the browser's encoder took 0.7 s per picture in WebKit, this takes a few ms
   // per megabyte (stored blocks, no compression).
   const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; } return t; })();
-  function pngBlob(cv) {
-    const W = cv.width, H = cv.height, rgba = cv.getContext('2d').getImageData(0, 0, W, H).data;
+  function pngBlob(cv) { return pngOf(cv.width, cv.height, cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data); }
+  // (also for the alignment ring's pictures while a ring is resized: js/msa.js)
+  function pngOf(W, H, rgba) {
     const rowLen = W * 4 + 1, raw = H * rowLen, nBlocks = Math.ceil(raw / 65535), zlen = 2 + raw + nBlocks * 5 + 4;
     const out = new Uint8Array(8 + 25 + 13 + 16 + 12 + zlen + 12);   // (sRGB and gAMA chunks: the colours decoded as on the page)
     const u32 = (v, at) => { out[at] = v >>> 24; out[at + 1] = (v >>> 16) & 255; out[at + 2] = (v >>> 8) & 255; out[at + 3] = v & 255; };
@@ -741,5 +742,6 @@
     return true;
   };
 
+  window.tmPngOf = pngOf;
   window.tmFast = F;
 })();
