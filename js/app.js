@@ -719,6 +719,8 @@ function calculateOptimalFontSize(leavesSel) {
 // every redraw of a splitter drag cost several milliseconds (once per character tried when
 // labels are shortened). The same text in the same font always has the same width.
 const labelWidthCache = new Map();
+const labelHeightCache = new Map();   // (circular labels' fitting: js drawTree)
+const axisTitleBoxCache = new Map();   // (an axis title's box around its anchor: renderAxisTitle)
 // The drawing's font family (asked once: asking the page's styles after a change makes it
 // work them all out again, which cost milliseconds on every redraw of a drag)
 let drawingFontCache = null;
@@ -727,9 +729,9 @@ function drawingFontFamily(svgEl) {
   return drawingFontCache;
 }
 // (a web font loaded after a first measurement: measure again)
-if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { labelWidthCache.clear(); drawingFontCache = null; });
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { labelWidthCache.clear(); labelHeightCache.clear(); axisTitleBoxCache.clear(); drawingFontCache = null; });
 function measuredLabelWidth(svgEl, el, text) {
-  const key = el.style.fontSize + '|' + el.style.fontWeight + '|' + text;
+  const key = el.style.fontSize + '|' + el.style.fontWeight + '|' + el.style.fontStyle + '|' + el.style.fontFamily + '|' + text;
   let w = labelWidthCache.get(key);
   if (w === undefined) {
     el.textContent = text;
@@ -740,6 +742,19 @@ function measuredLabelWidth(svgEl, el, text) {
     labelWidthCache.set(key, w);
   }
   return w;
+}
+
+// A text's width in the drawing's font (the axes and titles in a circular layout's opening):
+// measured once per text and size, then remembered. Measuring puts a text element in the
+// drawing and makes the browser lay the drawing out, which on a large drawing took much of
+// each redraw in Safari, and a ring drag redraws on every move with the same texts.
+let measureTextEl = null;
+function cachedTextWidth(text, fontSize, fontWeight) {
+  const svgEl = document.getElementById('svg');
+  if (!svgEl) return 0;
+  if (!measureTextEl) { measureTextEl = document.createElementNS('http://www.w3.org/2000/svg', 'text'); measureTextEl.style.visibility = 'hidden'; }
+  measureTextEl.style.fontSize = fontSize; measureTextEl.style.fontWeight = fontWeight || 'normal';
+  return measuredLabelWidth(svgEl, measureTextEl, String(text));
 }
 
 function applyTruncation(leavesSel, fontSize) {
@@ -3020,7 +3035,15 @@ function renderAxisTitle(g, key, widthPx) {
     const tx = tg.append('text').attr('class', 'axis-title-text')
       .attr('x', cx).attr('y', y).attr('text-anchor', atStart ? 'start' : 'middle').attr('dominant-baseline', 'middle')
       .attr('fill', 'var(--tree)').attr('font-size', '12px').attr('font-weight', '600').text(title);
-    let bb = null; try { bb = tx.node().getBBox(); } catch (e) {}
+    // (the title's box around its anchor, measured once per title: measuring lays the drawing
+    // out, and a circular layout's ring drag redraws the titles in its opening on every move)
+    const bk = (atStart ? 's|' : 'm|') + title;
+    let bb = null, rel = axisTitleBoxCache.get(bk);
+    if (rel) bb = { x: cx + rel.dx, y: y + rel.dy, width: rel.w, height: rel.h };
+    else {
+      try { bb = tx.node().getBBox(); } catch (e) {}
+      if (bb && bb.width) { if (axisTitleBoxCache.size > 2000) axisTitleBoxCache.clear(); axisTitleBoxCache.set(bk, { dx: bb.x - cx, dy: bb.y - y, w: bb.width, h: bb.height }); }
+    }
     if (!bb || !bb.width) bb = { x: atStart ? cx : cx - title.length * 3.5, y: y - 7, width: title.length * 7, height: 14 };
     box.attr('x', bb.x - 6).attr('y', bb.y - 3).attr('width', bb.width + 12).attr('height', bb.height + 6);
     hit.attr('x', bb.x - 10).attr('y', Math.min(bb.y, y - 8) - 6).attr('width', bb.width + 10 + 16 + 8 + 8).attr('height', Math.max(bb.height, 16) + 12);
@@ -7604,17 +7627,9 @@ function drawTreeBody(){
             const titleX = titleRadius * Math.cos(titleAngle - Math.PI / 2);
             const titleY = titleRadius * Math.sin(titleAngle - Math.PI / 2);
             
-            // Create temporary text element to measure width
-            const svgEl = document.getElementById('svg');
-            const testElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            testElement.style.fontSize = '12px';
-            testElement.style.fontWeight = 'bold';
-            testElement.style.visibility = 'hidden';
-            testElement.textContent = columnTitle;
-            svgEl.appendChild(testElement);
-            
+            // (widths measured once per text: cachedTextWidth)
             let displayText = columnTitle;
-            let textWidth = testElement.getComputedTextLength ? testElement.getComputedTextLength() : testElement.getBBox().width;
+            let textWidth = cachedTextWidth(columnTitle, '12px', 'bold');
             
             // Truncate text if it exceeds available arc length
             if (textWidth > availableArcLength && columnTitle.length > 3) {
@@ -7624,8 +7639,7 @@ function drawTreeBody(){
               
               while (left < right) {
                 const mid = Math.floor((left + right + 1) / 2);
-                testElement.textContent = columnTitle.substring(0, mid) + ellipsis;
-                textWidth = testElement.getComputedTextLength ? testElement.getComputedTextLength() : testElement.getBBox().width;
+                textWidth = cachedTextWidth(columnTitle.substring(0, mid) + ellipsis, '12px', 'bold');
                 
                 if (textWidth <= availableArcLength) {
                   left = mid;
@@ -7636,8 +7650,6 @@ function drawTreeBody(){
               
               displayText = columnTitle.substring(0, left) + ellipsis;
             }
-            
-            svgEl.removeChild(testElement);
             
             // Draw the title text - horizontal, starting at 12 o'clock position
             heatmapGroup.append('text')
@@ -7732,22 +7744,12 @@ function drawTreeBody(){
           const scaleBarAngle = 0; // Exactly at 12 o'clock (in radians)
           const numTicks = 4;
           
-          // Create temporary text elements to measure widest tick label
-          const svgEl = document.getElementById('svg');
-          const testElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          testElement.style.fontSize = '10px';
-          testElement.style.fontWeight = 'normal';
-          testElement.style.visibility = 'hidden';
-          svgEl.appendChild(testElement);
-          
+          // The widest tick label (widths measured once per text: cachedTextWidth)
           let maxTickWidth = 0;
           for (let i = 0; i <= numTicks; i++) {
             const tickValue = (maxCum * i) / numTicks;
-            testElement.textContent = tickValue.toFixed(2);
-            const textWidth = testElement.getComputedTextLength ? testElement.getComputedTextLength() : testElement.getBBox().width;
-            maxTickWidth = Math.max(maxTickWidth, textWidth);
+            maxTickWidth = Math.max(maxTickWidth, cachedTextWidth(tickValue.toFixed(2), '10px'));
           }
-          svgEl.removeChild(testElement);
           
           // Calculate required angular space (text width + margin)
           const requiredWidth = maxTickWidth + 10; // 10px margin
@@ -8164,21 +8166,8 @@ function drawTreeBody(){
           
           let maxLabelWidth = 0;
           if (openingAngleDeg > 0) {
-            // Measure the widest tick label
-            const svgEl = document.getElementById('svg');
-            const testElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            testElement.style.fontSize = '10px';
-            testElement.style.fontWeight = 'normal';
-            testElement.style.visibility = 'hidden';
-            svgEl.appendChild(testElement);
-            
-            tickValues.forEach(tickValue => {
-              testElement.textContent = tickValue.toFixed(0);
-              const width = testElement.getComputedTextLength ? testElement.getComputedTextLength() : testElement.getBBox().width;
-              maxLabelWidth = Math.max(maxLabelWidth, width);
-            });
-            
-            svgEl.removeChild(testElement);
+            // The widest tick label (widths measured once per text: cachedTextWidth)
+            tickValues.forEach(tickValue => { maxLabelWidth = Math.max(maxLabelWidth, cachedTextWidth(tickValue.toFixed(0), '10px')); });
           }
           
           // Calculate required angular space for scale bar (label width + margins)
@@ -8810,20 +8799,8 @@ function drawTreeBody(){
             const tickValues = axis.scale().ticks(4);
             
             let maxLabelWidth = 0;
-            const svgEl = document.getElementById('svg');
-            const testElement = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            testElement.style.fontSize = '10px';
-            testElement.style.fontWeight = 'normal';
-            testElement.style.visibility = 'hidden';
-            svgEl.appendChild(testElement);
-            
-            tickValues.forEach(tickValue => {
-              testElement.textContent = tickValue.toFixed(0);
-              const width = testElement.getComputedTextLength ? testElement.getComputedTextLength() : testElement.getBBox().width;
-              maxLabelWidth = Math.max(maxLabelWidth, width);
-            });
-            
-            svgEl.removeChild(testElement);
+            // The widest tick label (widths measured once per text: cachedTextWidth)
+            tickValues.forEach(tickValue => { maxLabelWidth = Math.max(maxLabelWidth, cachedTextWidth(tickValue.toFixed(0), '10px')); });
             
             const labelMargin = 10;
             const requiredWidth = maxLabelWidth + labelMargin;
@@ -9745,8 +9722,12 @@ function drawTreeBody(){
             labelLeavesSel.each(function(d) {
               const text = textContent.get(d);
               if (text && sampleCount < 10) { // Sample first 10 labels
-                testElement.textContent = text;
-                totalTextHeight += testElement.getBBox().height;
+                // (heights remembered per text and size: measuring makes the browser lay the
+                // drawing out, and this runs for every size tried on every redraw)
+                const hk = fontSize + '|' + testElement.style.fontWeight + '|' + text;
+                let h = labelHeightCache.get(hk);
+                if (h === undefined) { testElement.textContent = text; h = testElement.getBBox().height; if (labelHeightCache.size > 20000) labelHeightCache.clear(); labelHeightCache.set(hk, h); }
+                totalTextHeight += h;
                 sampleCount++;
               }
             });
@@ -9766,6 +9747,7 @@ function drawTreeBody(){
         }
         
         // Draw each label following the radial path
+        let radialLabelFont = null;   // (the labels' font, for measuring: read once per drawing)
         labelLeavesSel.each(function(d) {
           const angle = d.a || 0; // Angle in radians (from computeRadialAnglesInPlace)
           
@@ -9804,10 +9786,16 @@ function drawTreeBody(){
             .style('cursor', 'pointer')
             .datum(d); // Attach data for event handling
           
-          // Truncate if text is too long for available width
+          // Truncate if text is too long for available width (widths measured once per text
+          // and font, then remembered: measuring each label as it is drawn made the browser
+          // lay the drawing out again for every label, on every redraw)
           const textNode = textElement.node();
           if (textNode) {
-            const textWidth = textNode.getComputedTextLength();
+            if (!radialLabelFont) { const svgEl0 = document.getElementById('svg'); radialLabelFont = { svg: svgEl0, el: document.createElementNS('http://www.w3.org/2000/svg', 'text'), family: getComputedStyle(labelGroup.node()).fontFamily }; radialLabelFont.el.style.visibility = 'hidden'; }
+            const fm = radialLabelFont.el;
+            fm.style.fontSize = optimalFontSize + 'px'; fm.style.fontWeight = styles.fontWeight || ''; fm.style.fontStyle = styles.fontStyle || ''; fm.style.fontFamily = radialLabelFont.family;
+            const widthOf = (t) => measuredLabelWidth(radialLabelFont.svg, fm, t);
+            const textWidth = widthOf(text);
             if (textWidth > availableLabelWidth && text.length > 3) {
               // Truncate with ellipsis
               const ellipsis = '...';
@@ -9819,8 +9807,7 @@ function drawTreeBody(){
               while (left < right) {
                 const mid = Math.floor((left + right + 1) / 2);
                 truncated = text.substring(0, mid) + ellipsis;
-                textElement.text(truncated);
-                const newWidth = textNode.getComputedTextLength();
+                const newWidth = widthOf(truncated);
                 
                 if (newWidth <= availableLabelWidth) {
                   left = mid;
