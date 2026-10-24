@@ -613,7 +613,7 @@
       }
     });
     // (nothing of the screen pictures is left behind)
-    clone.querySelectorAll('image.msa-img, image.msa-ring-img, .msa-prev, clipPath.msa-ring-fit, .msa-ring-bands').forEach(function (n) { n.remove(); });
+    clone.querySelectorAll('image.msa-img, image.msa-ring-img, .msa-prev, clipPath.msa-ring-fit').forEach(function (n) { n.remove(); });
     return done;
   }
 
@@ -862,36 +862,47 @@
     });
     var R = ring.outerRadius;
     // the last picture shown, when it is of the same rows at the same angles (a ring resize):
-    // scaled so that its middle radius follows the ring
+    // kept underneath until the new one is shown
     var rowsKey = rowOf.join(','), angKey = n + ':' + leaves[0].a.toFixed(6) + ':' + leaves[n - 1].a.toFixed(6) + ':' + span.toFixed(9);
     var shown = m._ringShown, shownNode = shown && shown.node;
     var same = !!(shownNode && shown.ver === m._ver && shown.rowsKey === rowsKey && shown.angKey === angKey && shown.colorKey === ringColorKey(m));
-    var job;
-    if (same && typeof radialIsDragging !== 'undefined' && radialIsDragging && (m._ringMs || 0) > 60) {
-      // while a ring is resized, a new picture is made on every move unless the last one took
-      // long to make: then the picture shown is scaled and the real one is made on release
-      layer.node().appendChild(shownNode);
-      fitRing(shownNode, r0, r1);
-      job = m._ring;
+    var job, dragging = typeof radialIsDragging !== 'undefined' && radialIsDragging;
+    m._ringWant = { r0: r0, r1: r1 };
+    // the last picture shown stays underneath until a newer one is shown (no blank frame)
+    var under = same && !shownNode.isConnected ? shownNode : null;
+    if (under) { under.classList.add('msa-prev'); layer.node().appendChild(under); fitRing(under, r0, r1); }
+    var making = m._ringMaking, mk = making && making.job.img.node();
+    if (same && dragging && mk && !mk.isConnected && making.ver === m._ver && making.rowsKey === rowsKey && making.angKey === angKey) {
+      // while a ring is resized and the drawing redrawn on every move: the picture still being
+      // made (for the ring of a moment ago) is kept, fitted, until it is shown; then the next
+      // one is made for the ring as it is then. (A new picture on every move would be thrown
+      // away by the next move before it is shown.)
+      layer.node().appendChild(mk);
+      fitRing(mk, r0, r1);
+      job = making.job;
     } else {
       var img = layer.append('image').attr('class', 'msa-ring-img').attr('x', -R).attr('y', -R).attr('width', 2 * R).attr('height', 2 * R)
         .attr('preserveAspectRatio', 'none').attr('data-r0', r0).attr('data-r1', r1).style('pointer-events', 'none');
       var gapAngles = span * r0 >= 5;   // rows far enough apart: a gap between them
       job = { m: m, leaves: leaves, rowOf: rowOf, lay: lay, r0: r0, r1: r1, R: R, span: span, fill: gapAngles ? 0.9 : 1, img: img, res: 0, rowsKey: rowsKey, angKey: angKey };
-      // the earlier picture stays underneath until the new one is shown (no blank frame)
-      var under = same && !shownNode.isConnected ? shownNode : null;
-      if (under) { under.classList.add('msa-prev'); layer.node().insertBefore(under, img.node()); fitRing(under, r0, r1); }
-      var tPic = performance.now();
-      renderRing(job, desiredRes(R));
-      m._ringMs = performance.now() - tPic;
-      m._ring = job;
+      // while a ring is resized, at a resolution that keeps a move quick (sharp again on release)
+      ringPicture(job, dragging);
+      var rec = { job: job, ver: m._ver, rowsKey: rowsKey, angKey: angKey };
+      m._ringMaking = rec;
       whenLoaded([job.img], false, function () {
-        if (under) { unfit(under); if (under.parentNode) under.parentNode.removeChild(under); }
-        var node = job.img.node();
-        if (node.isConnected || !m._ringShown || m._ringShown.job !== job)
-          m._ringShown = { job: job, node: node, r0: r0, r1: r1, ver: m._ver, rowsKey: rowsKey, angKey: angKey, colorKey: ringColorKey(m) };
+        if (m._ringMaking === rec) m._ringMaking = null;
+        var node = job.img.node(), old = m._ringShown && m._ringShown.node;
+        // the picture shown before goes where it lies beside this one
+        if (old && old !== node && old.parentNode && old.parentNode === node.parentNode) { unfit(old); old.parentNode.removeChild(old); }
+        if (node.isConnected) unfit(node);
+        m._ringShown = { job: job, node: node, r0: job.r0, r1: job.r1, ver: rec.ver, rowsKey: rowsKey, angKey: angKey, colorKey: ringColorKey(m) };
+        // still resizing and the ring moved on meanwhile: the next picture, for the ring now
+        var w = m._ringWant;
+        if (node.isConnected && m._ring === job && typeof radialIsDragging !== 'undefined' && radialIsDragging && w && (Math.abs(w.r0 - job.r0) > 0.5 || Math.abs(w.r1 - job.r1) > 0.5))
+          liveRing(m.id, { innerRadius: w.r0 - 4, outerRadius: w.r1 + 4 });
       });
     }
+    m._ring = job;
     m._geo = { kind: 'radial', node: layer.node(), lay: lay, leaves: leaves, r0: r0 };
     // hover / click on the ring
     var hitArc = d3.arc().innerRadius(r0).outerRadius(r1).startAngle(0).endAngle(2 * Math.PI);
@@ -949,77 +960,65 @@
   }
   var MAX_RING_PX = 4096;
   function ringColorKey(m) { var l = lutOf(m); return l.sig + '|' + l.grey; }   // (a ring picture made with other colours is not reused)
-  // a ring picture drawn for other radii, shown on the ring r0..r1. The picture itself is
-  // scaled so that its middle radius follows and cut to the ring; over it, thin bands of the
-  // same picture, each scaled for its own radius and cut to its place, so that every radius
-  // lands within a pixel or two of where a redraw puts it and the edges are exact
-  var fitClipN = 0, FIT_BANDS = 16, SVGNS = 'http://www.w3.org/2000/svg';
+  // a ring picture drawn for other radii, shown on the ring r0..r1 until its new picture is
+  // ready: scaled so that its middle radius follows, cut to the ring
+  var fitClipN = 0, SVGNS = 'http://www.w3.org/2000/svg';
   function annulus(i, o) {
     return 'M' + o + ',0A' + o + ',' + o + ' 0 1,1 ' + (-o) + ',0A' + o + ',' + o + ' 0 1,1 ' + o + ',0Z' +
       'M' + i + ',0A' + i + ',' + i + ' 0 1,0 ' + (-i) + ',0A' + i + ',' + i + ' 0 1,0 ' + i + ',0Z';
   }
-  function clipFor(host, before) {
-    var cp = document.createElementNS(SVGNS, 'clipPath');
-    cp.id = 'msa-ring-fit-' + (++fitClipN); cp.setAttribute('class', 'msa-ring-fit');
-    var pth = document.createElementNS(SVGNS, 'path'); pth.setAttribute('clip-rule', 'evenodd');
-    cp.appendChild(pth); host.insertBefore(cp, before);
-    return cp;
-  }
-  function placeFit(el, cp, sc, i, o) {
-    el.setAttribute('transform', 'scale(' + sc + ')');
-    cp.firstChild.setAttribute('d', annulus(i / sc, o / sc));   // (in the picture's own units: before its scale)
-    el.setAttribute('clip-path', 'url(#' + cp.id + ')');
-  }
   function unfit(im) {
-    im.removeAttribute('transform'); im.removeAttribute('clip-path'); im.style.visibility = '';
-    if (im.__fit) { im.__fit.nodes.forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); }); im.__fit = null; }
+    im.removeAttribute('transform'); im.removeAttribute('clip-path');
+    if (im.__fitClip && im.__fitClip.parentNode) im.__fitClip.parentNode.removeChild(im.__fitClip);
+    im.__fitClip = null;
   }
   function fitRing(im, r0, r1) {
     var a = +im.getAttribute('data-r0'), b = +im.getAttribute('data-r1');
-    if (!(a + b > 0) || !(b > a) || !im.parentNode) return;
+    if (!(a + b > 0) || !im.parentNode) return;
     if (Math.abs(r0 - a) < 1e-6 && Math.abs(r1 - b) < 1e-6) { unfit(im); return; }
-    var F = im.__fit, href = im.getAttribute('href');
-    if (!F || !F.cp.isConnected || F.href !== href) {
-      if (F) unfit(im);
-      F = im.__fit = { cp: clipFor(im.parentNode, im), bands: [], href: href, nodes: [] };
-      F.nodes.push(F.cp);
-      var g = document.createElementNS(SVGNS, 'g'); g.setAttribute('class', 'msa-ring-bands'); g.setAttribute('pointer-events', 'none');
-      im.parentNode.insertBefore(g, im.nextSibling); F.nodes.push(g);
-      for (var k = 0; k < FIT_BANDS; k++) {
-        var bi = document.createElementNS(SVGNS, 'image');
-        bi.setAttribute('class', 'msa-ring-band');
-        ['x', 'y', 'width', 'height', 'preserveAspectRatio', 'data-r0', 'data-r1'].forEach(function (n) { bi.setAttribute(n, im.getAttribute(n)); });
-        bi.setAttribute('href', href);
-        F.bands.push({ el: bi, cp: clipFor(g, null) });
-        g.appendChild(bi);
-      }
-      // the picture itself only until the bands are shown (its gaps would show through theirs)
-      var F0 = F;
-      whenLoaded(F.bands.map(function (B) { return d3.select(B.el); }), false, function () { if (im.__fit === F0) im.style.visibility = 'hidden'; });
+    var sc = (r0 + r1) / (a + b), cp = im.__fitClip;
+    if (!cp || cp.parentNode !== im.parentNode) {
+      if (cp && cp.parentNode) cp.parentNode.removeChild(cp);
+      cp = im.__fitClip = document.createElementNS(SVGNS, 'clipPath');
+      cp.id = 'msa-ring-fit-' + (++fitClipN); cp.setAttribute('class', 'msa-ring-fit');
+      var pth = document.createElementNS(SVGNS, 'path'); pth.setAttribute('clip-rule', 'evenodd');
+      cp.appendChild(pth); im.parentNode.insertBefore(cp, im);
     }
-    var f = function (r) { return r0 + (r - a) * (r1 - r0) / (b - a); };
-    placeFit(im, F.cp, (r0 + r1) / (a + b), r0, r1);
-    F.bands.forEach(function (B, k) {
-      var sa = a + (b - a) * k / FIT_BANDS, sb = a + (b - a) * (k + 1) / FIT_BANDS;
-      // (the first and last bands are exact at the ring's edges, the others at their middle;
-      // a quarter pixel of overlap: no seam between bands)
-      var at = k === 0 ? a : k === FIT_BANDS - 1 ? b : (sa + sb) / 2;
-      placeFit(B.el, B.cp, f(at) / at, Math.max(r0, f(sa) - 0.25), Math.min(r1, f(sb) + 0.25));
-    });
+    im.setAttribute('transform', 'scale(' + sc + ')');
+    cp.firstChild.setAttribute('d', annulus(r0 / sc, r1 / sc));   // (in the picture's own units: before its scale)
+    im.setAttribute('clip-path', 'url(#' + cp.id + ')');
   }
-  // while a ring is resized (a large tree's live frames, js/fast-draw.js): the ring's pictures
-  // fitted to its radii now; with `redraw`, its picture drawn again for them (shown once loaded)
-  function liveRing(id, ring, redraw) {
+  // while a ring is resized (a large tree's live frames, js/fast-draw.js): the ring drawn
+  // again for its radii now, as a column is (liveResize); one picture in the making at a
+  // time, and until it is shown the picture before it is fitted to the ring
+  function liveRing(id, ring) {
     var m = msas.get(id), j = m && m._ring;
     if (!j || !j.img.node() || !j.img.node().isConnected) return false;
     var r0 = ring.innerRadius + 4, r1 = ring.outerRadius - 4;
-    if (redraw && (Math.abs(r0 - j.r0) > 0.5 || Math.abs(r1 - j.r1) > 0.5)) {
-      j.r0 = r0; j.r1 = r1; j.R = ring.outerRadius; j.lay = columnLayout(m, Math.max(1, r1 - r0));
-      renderRing(j, desiredRes(j.R));
-    }
+    j.want = { r0: r0, r1: r1, R: ring.outerRadius };
     var L = j.img.node().parentNode;
     L.querySelectorAll(':scope > image.msa-ring-img').forEach(function (im) { fitRing(im, r0, r1); });
+    if (j.making || (Math.abs(r0 - j.r0) < 0.5 && Math.abs(r1 - j.r1) < 0.5)) return true;
+    j.r0 = r0; j.r1 = r1; j.R = ring.outerRadius; j.lay = columnLayout(m, Math.max(1, r1 - r0));
+    j.making = true;
+    ringPicture(j, true);
+    whenLoaded([j.img], false, function () {
+      j.making = false;
+      var w = j.want;
+      if (w && j.img.node().isConnected) liveRing(id, { innerRadius: w.r0 - 4, outerRadius: w.R });
+    });
     return true;
+  }
+  // a ring picture made; while moving, at the resolution that takes about RING_MOVE_MS (from
+  // how long the last pictures took per pixel), at most the screen's
+  var RING_MOVE_MS = 20;
+  function ringPicture(job, moving) {
+    var m = job.m, want = desiredRes(job.R), res = want;
+    if (moving && m._ringPxMs > 0) res = Math.max(0.25, Math.min(want, Math.sqrt(RING_MOVE_MS / m._ringPxMs) / (2 * job.R)));
+    var t0 = performance.now();
+    renderRing(job, res);
+    var S = Math.max(1, Math.ceil(2 * job.R * res));
+    m._ringPxMs = (performance.now() - t0) / (S * S);
   }
   function desiredRes(R) {
     var k = d3.zoomTransform(svg.node()).k || 1, dpr = window.devicePixelRatio || 1;
@@ -1078,7 +1077,7 @@
       // the new picture next to the old one; the old goes once the new one is shown
       var ni = d3.select(oldImg.node().cloneNode(false));
       ni.attr('x', -R).attr('y', -R).attr('width', 2 * R).attr('height', 2 * R).attr('data-r0', r0).attr('data-r1', r1).attr('transform', null).attr('clip-path', null);
-      ni.node().__fit = null;
+      ni.node().__fitClip = null;
       oldImg.node().parentNode.insertBefore(ni.node(), oldImg.node().nextSibling);
       job.img = ni;
     }

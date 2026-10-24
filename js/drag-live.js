@@ -1267,10 +1267,12 @@
         // label guides run from 8 px beyond their tip to 2 px before the ring after it
         if (okp) { out.push({ el: c, kind: 'path', M: Mc, Minv: invert(Mc), o: o, d0: c.getAttribute('d'), guide: c.classList.contains('label-guides') }); return; }
       }
-      // an alignment ring picture (centred on the centre): scaled so that its middle radius follows
+      // an alignment ring picture (centred on the centre): drawn again for the ring's new radii
+      // (js/msa.js tmMsa.liveRing); else scaled so that its middle radius follows
       if (c.tagName === 'image' && c.classList.contains('msa-ring-img')) {
-        var rm = (num(c.getAttribute('data-r0'), 0) + num(c.getAttribute('data-r1'), 0)) / 2 * (uniformScale(Mc) || 1);
-        if (rm > 0) { out.push({ el: c, kind: 'scale', rm: rm, t0: c.getAttribute('transform') }); return; }
+        var u = uniformScale(Mc) || 1, ra = num(c.getAttribute('data-r0'), 0), rb = num(c.getAttribute('data-r1'), 0), rm = (ra + rb) / 2 * u;
+        var lay = c.closest('.radial-msa'), mid = lay ? +lay.getAttribute('data-msa-id') : NaN;
+        if (rm > 0) { out.push({ el: c, kind: 'scale', rm: rm, u: u, ra: ra, rb: rb, msa: mid, t0: c.getAttribute('transform') }); return; }
       }
       // anything else is moved as a whole to its new distance from the centre: text by
       // the point it is written from (labels start at the inner edge of their ring),
@@ -1474,6 +1476,8 @@
     lift.svgItems.forEach(function (it) {
       if (it.kind === 'path') it.el.setAttribute('d', mappedD(it, f));
       else if (it.kind === 'scale') {
+        var na = f(it.ra * it.u) / it.u, nb = f(it.rb * it.u) / it.u;
+        if (it.msa > 0 && window.tmMsa && tmMsa.liveRing && tmMsa.liveRing(it.msa, { innerRadius: na - 4, outerRadius: nb + 4 })) return;
         var sc = f(it.rm) / it.rm;
         it.el.setAttribute('transform', 'scale(' + fmt(sc) + ')' + (it.t0 ? ' ' + it.t0 : ''));
       } else {
