@@ -86,6 +86,7 @@ let radialRings = [];
 let radialCenterX = 0;
 let radialCenterY = 0;
 let radialIsDragging = false;
+let radialPauseTimer = 0;   // a large tree's ring drag: the pause redraw (js/fast-draw.js radialDragPause)
 let radialCurrentSplitter = null;
 let radialStartRadius = 0;
 let radialStartMouseDistance = 0;
@@ -2756,7 +2757,12 @@ function handleRadialMouseMove(event) {
       radialTreeUpdatePending = false;
       if (!radialIsDragging) return;   // released meanwhile: the release draws
       if (root && window.tmDragLive && tmDragLive.radialReady && tmDragLive.radialReady() && tmDragLive.frameRadial()) return;
-      if (root && window.tmFast && tmFast.active && tmFast.radialDragFrame()) return;
+      if (root && window.tmFast && tmFast.active && tmFast.radialDragFrame()) {
+        // a pause of the pointer: what is only fitted while moving is drawn again for real
+        clearTimeout(radialPauseTimer);
+        radialPauseTimer = setTimeout(() => { if (radialIsDragging && window.tmFast && tmFast.radialDragPause) tmFast.radialDragPause(); }, 160);
+        return;
+      }
       if (typeof drawTree === 'function' && root) {
         // Reset font cache to force recalculation with new circumference
         if (typeof resetFontTruncationCache === 'function') {
@@ -2789,6 +2795,7 @@ function handleRadialMouseUp() {
     
     radialIsDragging = false;
     radialCurrentSplitter = null;
+    clearTimeout(radialPauseTimer);
     
     // Redraw tree with new panel dimensions
     if (typeof drawTree === 'function') {

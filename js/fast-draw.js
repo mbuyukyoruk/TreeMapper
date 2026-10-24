@@ -697,7 +697,14 @@
       const o = g.__fastRing.opts, r0 = rings0.find(r => r.type === o.ringType) || rings0.find(r => Math.abs(r.inner - o.r0) < 1e-6 && Math.abs(r.outer - o.r1) < 1e-6);
       return { el: g, items: g.__fastRing.items, ring0: r0, hidden: false };
     });
-    ringBase = { rings0, parts, rings };
+    // alignment rings (a picture each, js/msa.js tmMsa.liveRing): fitted to their ring every
+    // frame; their highlight bands scaled so that their middle radius follows
+    const msas = [...document.querySelectorAll('#svg .radial-msa')].map(L => {
+      const im = L.querySelector(':scope > image.msa-ring-img'); if (!im) return null;
+      const bands = [...L.querySelectorAll(':scope > path.msa-band')].map(el => ({ el, t0: el.getAttribute('transform') }));
+      return { id: +L.getAttribute('data-msa-id'), type: 'msa' + L.getAttribute('data-msa-id'), rm: (+im.getAttribute('data-r0') + +im.getAttribute('data-r1')) / 2, bands, drawn: null };
+    }).filter(Boolean);
+    ringBase = { rings0, parts, rings, msas };
   };
   F.radialDragFrame = function () {
     const b = ringBase; if (!b || typeof radialRings === 'undefined') return false;
@@ -725,7 +732,25 @@
       if (!im) { im = document.createElementNS('http://www.w3.org/2000/svg', 'image'); im.setAttribute('class', 'fast-drag-picture'); im.setAttribute('pointer-events', 'none'); R.el.appendChild(im); }
       im.setAttribute('x', -o1); im.setAttribute('y', -o1); im.setAttribute('width', 2 * o1); im.setAttribute('height', 2 * o1); im.setAttribute('href', cv.toDataURL('image/png'));
     });
+    b.msas.forEach(M => {
+      const r1 = radialRings.find(r => r.type === M.type); if (!r1 || !(M.rm > 0)) return;
+      if (window.tmMsa && tmMsa.liveRing) tmMsa.liveRing(M.id, r1, false);
+      const sc = ((r1.innerRadius + 4) + (r1.outerRadius - 4)) / 2 / M.rm;
+      M.bands.forEach(({ el, t0 }) => { if (el.isConnected) el.setAttribute('transform', 'scale(' + sc + ')' + (t0 ? ' ' + t0 : '')); });
+    });
     return true;
+  };
+  // the pointer paused on a ring drag: the alignment rings drawn again for their radii now
+  // (the other rings are painted for them on every frame already)
+  F.radialDragPause = function () {
+    const b = ringBase; if (!b || typeof radialRings === 'undefined') return;
+    b.msas.forEach(M => {
+      const r1 = radialRings.find(r => r.type === M.type); if (!r1) return;
+      const key = r1.innerRadius.toFixed(1) + ':' + r1.outerRadius.toFixed(1);
+      if (M.drawn === key) return;
+      M.drawn = key;
+      if (window.tmMsa && tmMsa.liveRing) tmMsa.liveRing(M.id, r1, true);
+    });
   };
 
   window.tmFast = F;
