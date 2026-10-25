@@ -111,12 +111,15 @@
       var S = F.scale;
       if (S && S.len > 0) {
         var col = (G.filter(function (g) { return g[0] === 'l'; })[0] || [])[5] || (theme === 'dark' ? '#b9c4cc' : '#3a4650');
-        var fs = 12 / ((F.R && F.R.outer) || 392) * R * GAP_TEXT, x1 = 0.9 * R, x0 = x1 - S.len * R, y = 0.84 * R, tk = fs * 0.35;
+        var fs = 12 / ((F.R && F.R.outer) || 392) * R * GAP_TEXT, y = 0.84 * R, tk = fs * 0.35;
+        h.font = '500 ' + fs.toFixed(2) + 'px ' + fam;
+        var half = Math.max(S.len * R, S.title ? h.measureText(S.title).width : 0) / 2, mid = 0.92 * R - half;
+        var x0 = mid - S.len * R / 2, x1 = mid + S.len * R / 2;
         h.globalAlpha = alpha; h.strokeStyle = col; h.fillStyle = col; h.lineWidth = Math.max(1, fs * 0.14);
         h.beginPath(); h.moveTo(x0, y); h.lineTo(x1, y); h.moveTo(x0, y - tk); h.lineTo(x0, y + tk); h.moveTo(x1, y - tk); h.lineTo(x1, y + tk); h.stroke();
         h.textAlign = 'center'; h.textBaseline = 'alphabetic'; h.font = '600 ' + fs.toFixed(2) + 'px ' + fam;
         h.fillText(S.value.toFixed(2), (x0 + x1) / 2, y - tk - fs * 0.35);
-        if (S.title) { h.textAlign = 'right'; h.textBaseline = 'hanging'; h.font = '500 ' + fs.toFixed(2) + 'px ' + fam; h.fillText(S.title, x1, y + tk + fs * 0.35); }
+        if (S.title) { h.textBaseline = 'hanging'; h.font = '500 ' + fs.toFixed(2) + 'px ' + fam; h.fillText(S.title, (x0 + x1) / 2, y + tk + fs * 0.35); }
       }
       h.restore();
     }

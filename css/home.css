@@ -69,11 +69,10 @@ html.pro.tm-home.tm-moving.tm-out .pro-app::before { opacity: 0; }
    the traces, the grid and the figure below the page (negative), the page, the workspace after
    it, the flying figure above everything (60) */
 .tm-home button { font: inherit; color: inherit; }
-.th-aurora, .th-traces, .th-sparks, .th-edges { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; pointer-events: none; }
+.th-aurora, .th-traces, .th-sparks { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; pointer-events: none; }
 .th-aurora { z-index: -4; }
 .th-traces { z-index: -3; }
 .th-sparks { z-index: -3; }
-.th-edges { z-index: -2; }
 .th-grid {   /* a fine dot grid, painted once with the page */
   position: fixed; inset: 0; z-index: -2; pointer-events: none;
   background: radial-gradient(var(--th-grid) 1px, transparent 1.3px) 0 0 / 24px 24px;
@@ -181,6 +180,17 @@ html.pro[data-theme="dark"] .th-way-quiet:hover { background: rgba(45, 212, 191,
 html.pro[data-theme="dark"] .th-error { color: #FF8A8E; }
 .th-error:empty { display: none; }
 
+/* ---------- the notes beside the headline (wide windows, the end of the scroll; js/home.js) ---------- */
+.th-side { display: none; }
+@media (min-width: 1180px) and (min-height: 640px) {
+  .th-side:not([hidden]) { display: grid; position: absolute; z-index: 1; grid-template-columns: 36px 1fr; gap: 12px; align-items: center; padding: 14px 16px;
+    background: var(--th-panel); border: 1px solid var(--th-line); border-radius: 16px; box-shadow: var(--th-shadow); will-change: transform; }
+  .th-side-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--th-accent-ink); background: rgba(20, 184, 166, .12); }
+  .th-side b { display: block; font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+  .th-side span > span { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.45; margin-top: 2px; text-wrap: pretty; }
+}
+html.pro.tm-away .tm-home .th-side { opacity: 0 !important; }
+
 /* ---------- panels ---------- */
 .th-panel { background: var(--th-panel); border: 1px solid var(--th-line); border-radius: 20px; box-shadow: var(--th-shadow); padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; transition: box-shadow .35s ease, border-color .35s ease; }
 .th-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; outline: none; }
@@ -254,7 +264,7 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
 .th-empty[hidden] { display: none; }
 .th-empty { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: center; padding: 8px; margin: 0; border-radius: 12px; border: 1px dashed var(--th-line-strong); font-size: 13px; color: var(--muted); }
 .th-empty span:first-child { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--th-chip); }
-.th-foot { font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 4px; }
+.th-foot { font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 14px; padding: 2px 4px; }
 .th-foot a, .th-foot button { color: var(--muted) !important; text-decoration: none; border: 0; background: none; padding: 0; cursor: pointer; font-size: 12.5px !important; }
 .th-foot a:hover, .th-foot button:hover { color: var(--th-ink) !important; }
 .th-foot a.th-me { color: var(--th-accent-ink) !important; }
@@ -279,6 +289,13 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
   .th-left { left: 28px; }
   .th-right { right: 28px; }
   .th-right #thRecentPanel { min-height: 0; flex: 0 1 auto; }
+  /* (the right column runs to the bottom of the window, js/home.js: the mock example's card and
+     its window take the room, the picture covering the window from its top left) */
+  .th-right > .th-panel:first-child { flex: 1 1 auto; min-height: 0; }
+  .th-right .th-mock { flex: 1 1 auto; min-height: 0; }
+  .th-right .th-win { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .th-right .th-win-crop { flex: 1 1 auto; aspect-ratio: auto; min-height: 160px; }
+  .th-right .th-foot { margin-top: -4px; }
 }
 @media (min-width: 1180px) and (max-width: 1360px) and (min-height: 640px) {
   .th-left, .th-right { width: 312px; }
@@ -309,14 +326,14 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
 /* the order (js/home.js sets the delays): opening, the page goes first and the panels follow;
    going home, the panels go first and the page follows. The hero's parts and the side columns
    are moved by the scroll (inline transforms), so leaving moves their wrappers. */
-html.pro.tm-moving .tm-home .th-top, html.pro.tm-moving .tm-home .th-hero, html.pro.tm-moving .tm-home .th-cols, html.pro.tm-moving .tm-home .th-slot, html.pro.tm-moving .th-aurora, html.pro.tm-moving .th-grid, html.pro.tm-moving .th-traces, html.pro.tm-moving .th-sparks, html.pro.tm-moving .th-edges {
+html.pro.tm-moving .tm-home .th-top, html.pro.tm-moving .tm-home .th-hero, html.pro.tm-moving .tm-home .th-cols, html.pro.tm-moving .tm-home .th-slot, html.pro.tm-moving .th-aurora, html.pro.tm-moving .th-grid, html.pro.tm-moving .th-traces, html.pro.tm-moving .th-sparks {
   transition: transform calc(var(--th-slow, 1) * .48s) cubic-bezier(.65, 0, .35, 1) calc(var(--th-slow, 1) * var(--th-home-delay, 0s)),
               opacity calc(var(--th-slow, 1) * .4s) cubic-bezier(.65, 0, .35, 1) calc(var(--th-slow, 1) * var(--th-home-delay, 0s));
 }
 html.pro.tm-away .tm-home .th-top { transform: translateY(-40px); opacity: 0; }
 html.pro.tm-away .tm-home .th-hero { transform: translateY(-60px); opacity: 0; }
 html.pro.tm-away .tm-home .th-cols { transform: translateY(60px); opacity: 0; }
-html.pro.tm-bgaway .th-aurora, html.pro.tm-bgaway .th-grid, html.pro.tm-bgaway .th-traces, html.pro.tm-bgaway .th-sparks, html.pro.tm-bgaway .th-edges { opacity: 0; }
+html.pro.tm-bgaway .th-aurora, html.pro.tm-bgaway .th-grid, html.pro.tm-bgaway .th-traces, html.pro.tm-bgaway .th-sparks { opacity: 0; }
 html.pro.tm-away .tm-home { pointer-events: none; }
 /* the workspace's panels come in from their edges */
 html.pro.tm-moving .pro-topbar, html.pro.tm-moving .sidepanel, html.pro.tm-moving .pro-legend-panel, html.pro.tm-moving .pro-statusbar, html.pro.tm-moving .pro-center {

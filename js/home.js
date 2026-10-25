@@ -165,7 +165,6 @@
     var W = vw(), H = vh(), wide = WIDE.matches;
     // (the columns' own place and width first, as the stylesheet has them)
     [colL, colR].forEach(function (c) { c.style.left = c.style.right = c.style.width = c.style.height = ''; });
-    edgeKey = '';
     if (wide) {
       var D = Math.round(H * 0.75);
       var lw = colL.offsetWidth, lx = colL.offsetLeft, rx = colR.offsetLeft;   // (absolute in the view)
@@ -201,7 +200,11 @@
       // the columns at the end: below the launcher where they fit, else as high as they need
       // (beside the headline), their middles near the figure's centre, within the window
       var place = function (h) { return Math.max(76, Math.min(H - 16 - h, Math.max(gBot1 + 14, c1 - h / 2))); };
-      var pL = place(colL.offsetHeight), pR = place(colR.offsetHeight);
+      // (the right column starts right below the launcher, so its mock example's window has the room)
+      var pL = place(colL.offsetHeight), pR = Math.min(place(colR.offsetHeight), Math.max(76, gBot1 + 14));
+      // the right column runs on to the bottom of the window: the mock example's window takes the
+      // room (css/home.css)
+      colR.style.height = Math.max(colR.offsetHeight, H - 16 - pR) + 'px';
       // the areas beside the headline left free by the columns: little trees grow into them from
       // the window's edges as the page is scrolled (one each side, js/home.js edges())
       var hw = Math.max(tW * sT, gW * sG) / 2 + 28;
@@ -277,65 +280,27 @@
   new MutationObserver(function () { lastDraw = lastPulse = null; ringStrips(); traces(); if (isHome()) frame(); else if (state === 'opening' || state === 'closing') drawFigure(cur.open, cur.mask); }).observe(html, { attributes: true, attributeFilter: ['data-theme'] });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (isHome()) relayout(); });
 
-  // the little trees beside the headline at the end of the scroll: one each side, a small
-  // rectangular tree growing in from the window's edge (its branches drawn out as far as the scroll
-  // has come), its tips in the RT families' colours; quiet, behind the page
-  var edgeC = $('thEdges'), edgeKey = '', edgeTrees = null;
-  function edgeTree(seed, n) {
-    var R = rng(seed), tips = [];
-    // a random binary topology over n tips: each node splits its tips in two
-    function build(lo, hi, depth) {
-      if (hi - lo === 1) return { tip: lo, depth: depth };
-      var m = lo + 1 + Math.floor(R() * (hi - lo - 1));
-      return { kids: [build(lo, m, depth + 1), build(m, hi, depth + 1)], depth: depth };
-    }
-    var t = build(0, n, 0), maxD = 0;
-    (function md(x) { maxD = Math.max(maxD, x.depth); if (x.kids) x.kids.forEach(md); })(t);
-    return { root: t, n: n, maxD: maxD, cols: [] };
-  }
+  // beside the headline at the end of the scroll: two small notes about TreeMapper itself (it runs
+  // in the browser; what it exports), each sliding in from its edge of the window as the page is
+  // scrolled, on a panel of its own; shown only where the side panels leave room
+  var sideEls = [$('thSideL'), $('thSideR')];
   function edges(p) {
-    if (!edgeC) return;
-    var on = M && M.wide && M.edges;
-    var k = on ? (p.toFixed(3) + theme() + M.W + 'x' + M.H) : 'off';
-    if (k === edgeKey) return; edgeKey = k;
-    var W = vw(), H = vh(), d = dpr(), g = edgeC.getContext('2d');
-    if (edgeC.width !== Math.round(W * d) || edgeC.height !== Math.round(H * d)) { edgeC.width = Math.round(W * d); edgeC.height = Math.round(H * d); }
-    g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, W, H);
-    if (!on) return;
-    if (!edgeTrees) edgeTrees = [edgeTree(73, 9), edgeTree(311, 8)];
-    var grow = smooth(0.35, 1, p), dark = theme() === 'dark';
-    var fam = FIG ? FIG.families.map(function (f) { return f[1]; }) : ['#009E73', '#E69F00', '#D55E00', '#0072B2', '#CC79A7'];
-    M.edges.forEach(function (A, i) {
-      var h = A.y1 - A.y0, w = Math.abs(A.x1 - A.x0);
-      if (h < 90 || w < 120 || grow <= 0) return;
-      var T = edgeTrees[i], dir = A.x1 > A.x0 ? 1 : -1;
-      // the tree's box: from the edge (16 px in) to near the headline, its tips spread over the area
-      var x0 = A.x0 + dir * 16, span = (w - 40) * 0.92, yTop = A.y0 + h * 0.12, yH = h * 0.76;
-      var X = function (depth) { return x0 + dir * span * (depth / (T.maxD + 1)); };
-      var Y = function (tip) { return yTop + yH * (tip + 0.5) / T.n; };
-      // how far out it has grown (from the edge)
-      var reach = x0 + dir * span * grow;
-      g.save();
-      g.beginPath(); if (dir > 0) g.rect(0, 0, reach, H); else g.rect(reach, 0, W - reach, H); g.clip();
-      g.lineWidth = 1.6; g.lineCap = 'round';
-      g.strokeStyle = dark ? 'rgba(170, 225, 232, 0.30)' : 'rgba(13, 60, 70, 0.22)';
-      var tipsAt = [];
-      (function draw(nd, px) {
-        var x = nd.kids ? X(nd.depth + 1) : X(T.maxD + 1), y;
-        if (nd.kids) {
-          var ys = nd.kids.map(function (c) { return draw(c, x); });
-          y = (ys[0] + ys[1]) / 2;
-          g.beginPath(); g.moveTo(x, ys[0]); g.lineTo(x, ys[1]); g.stroke();
-        } else { y = Y(nd.tip); tipsAt.push([x, y, nd.tip]); }
-        g.beginPath(); g.moveTo(px, y); g.lineTo(x, y); g.stroke();
-        return y;
-      })(T.root, x0);
-      tipsAt.forEach(function (t) {
-        if ((dir > 0 && t[0] > reach) || (dir < 0 && t[0] < reach)) return;
-        g.fillStyle = fam[(t[2] + i * 2) % fam.length]; g.globalAlpha = dark ? 0.9 : 0.8;
-        g.beginPath(); g.arc(t[0], t[1], 3.2, 0, Math.PI * 2); g.fill();
-      });
-      g.restore();
+    sideEls.forEach(function (el, i) {
+      if (!el) return;
+      var A = M && M.wide && M.edges ? M.edges[i] : null;
+      var w = A ? Math.min(300, Math.abs(A.x1 - A.x0) - 56) : 0, h = el.offsetHeight || 96;
+      if (!A || w < 200 || Math.min(M.edges[0].y1, M.edges[1].y1) - A.y0 < h + 8) { el.hidden = true; return; }
+      el.hidden = false; el.style.width = w + 'px';
+      // settled: in the middle of its area; before that, out past its edge of the window
+      // (both at one height: level with the headline's middle, within the area)
+      var mid = M.title.top + M.title.dy + M.title.h * M.title.s / 2;
+      var dir = A.x1 > A.x0 ? 1 : -1, cx = (A.x0 + A.x1) / 2, left = cx - w / 2;
+      var top = clamp(mid - el.offsetHeight / 2, M.edges[0].y0, Math.min(M.edges[0].y1, M.edges[1].y1) - el.offsetHeight);
+      if (top + el.offsetHeight > A.y1) { el.hidden = true; return; }
+      var u = EASE(smooth(0.45, 1, p)), off = dir > 0 ? -(left + w + 24) : (M.W - left + 24);
+      el.style.left = left + 'px'; el.style.top = top + 'px';
+      el.style.transform = 'translateX(' + ((1 - u) * off).toFixed(1) + 'px)';
+      el.style.opacity = (0.25 + 0.75 * u).toFixed(3);
     });
   }
 
@@ -797,7 +762,7 @@
     // the canvas area, written with the picture by examples-build/home_shots.js)
     var cut = String(crop.getAttribute('data-crop') || '0,0,1,1').split(',').map(Number);
     var k1 = cut[2] * c.width / iw;
-    var b = { left: c.left + cut[0] * c.width, top: c.top + cut[1] * c.height, width: iw * k1, height: ih * k1 };
+    var b = { left: c.left + cut[0] * c.width, top: c.top + cut[1] * c.height, width: iw * k1, height: Math.min(ih * k1, c.bottom - c.top - cut[1] * c.height) };
     fly2 = document.createElement('div'); fly2.className = 'th-fly'; fly2.setAttribute('aria-hidden', 'true');
     var im = new Image(); im.src = img.currentSrc || img.src; im.alt = ''; im.width = iw; im.height = ih;
     fly2.appendChild(im);
