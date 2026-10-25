@@ -14,8 +14,9 @@ On GitHub, create a new repository named `TreeMapper-reports`. Make it **Private
 
 ## 2. A token that can only file reports there
 
-GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** →
-Generate new token:
+Open <https://github.com/settings/personal-access-tokens/new>. That is your **account**
+settings, not the repository's: your profile picture → Settings → Developer settings (at the
+bottom of the left sidebar) → Personal access tokens → Fine-grained tokens → Generate new token.
 
 - **Repository access:** Only select repositories → `TreeMapper-reports`
 - **Permissions → Repository permissions:** Issues: *Read and write*; Contents: *Read and write*
