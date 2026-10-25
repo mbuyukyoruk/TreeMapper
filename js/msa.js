@@ -891,6 +891,13 @@
       });
     }
     m._geo = { kind: 'radial', node: layer.node(), lay: lay, leaves: leaves, r0: r0 };
+    // the reference sequence: its slice of the ring outlined (as its row is in the rectangular layout)
+    var rr = refRow(m), ri = rr >= 0 ? rowOf.indexOf(rr) : -1;
+    if (ri >= 0) {
+      var half = span * (gapAngles ? 0.9 : 1) / 2, pad = 1.5 / Math.max(r0, 1);
+      var refArc = d3.arc().innerRadius(r0 - 1.5).outerRadius(r1 + 1.5).startAngle(leaves[ri].a - half - pad).endAngle(leaves[ri].a + half + pad).cornerRadius(1);
+      layer.append('path').attr('class', 'msa-ref-row').attr('d', refArc()).attr('fill', 'none').attr('stroke', acc).attr('stroke-width', 1.5).attr('pointer-events', 'none');
+    }
     // hover / click on the ring
     var hitArc = d3.arc().innerRadius(r0).outerRadius(r1).startAngle(0).endAngle(2 * Math.PI);
     var hit = layer.append('path').attr('class', 'meta-click msa-hit').attr('d', hitArc()).attr('fill', 'transparent').style('pointer-events', 'auto').style('cursor', 'pointer');
