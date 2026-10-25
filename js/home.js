@@ -272,7 +272,7 @@
       var ri = F.rings.map(function (r) { return r.type; }).indexOf(li.getAttribute('data-ring')); if (ri < 0) return;
       var c = li.querySelector('canvas');
       if (!c) { c = document.createElement('canvas'); c.setAttribute('aria-hidden', 'true'); li.insertBefore(c, li.firstChild); }
-      var W = 88, H = 28; c.width = W; c.height = H;
+      var W = 360, H = 32; c.width = W; c.height = H;
       var g = c.getContext('2d'), pal = F.pal[theme()], A = F.arcs, ring = F.rings[ri];
       g.fillStyle = theme() === 'dark' ? '#0C1116' : '#FFFFFF'; g.fillRect(0, 0, W, H);
       if (ring.type.indexOf('dataframe') === 0) {
