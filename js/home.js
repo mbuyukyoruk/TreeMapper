@@ -48,7 +48,9 @@
 
   // ------------------------------------------------------------------ the page's state
   // 'home' -> 'opening' (flying / waiting) -> 'app' -> 'closing' -> 'home'
-  var state = 'home';
+  // (a reload in the workspace starts there: the <head> leaves html.tm-home off for it)
+  var state = html.classList.contains('tm-home') ? 'home' : 'app';
+  function inWorkspace(on) { try { if (on) sessionStorage.setItem('tm-workspace', '1'); else sessionStorage.removeItem('tm-workspace'); } catch (e) {} }
   function isHome() { return state === 'home'; }
 
   // ------------------------------------------------------------------ the figure
@@ -742,7 +744,7 @@
   }
   function finishOpen() {
     if (state !== 'opening') return;
-    state = 'app'; quiet = false;
+    state = 'app'; quiet = false; inWorkspace(true);
     html.classList.remove('tm-home', 'tm-moving', 'tm-away', 'tm-bgaway', 'tm-out', 'tm-hide-drawing', 'tm-reduced', 'tm-wait-content', 'tm-loading');
     figEl.style.opacity = '0'; figEl.hidden = true; figEl.classList.remove('th-wait');
     dropCardFlight();
@@ -989,7 +991,7 @@
     var done = async function () {
       html.classList.remove('tm-moving', 'tm-away', 'tm-bgaway', 'tm-out', 'tm-hide-drawing', 'tm-reduced', 'tm-wait-content', 'tm-loading');
       figEl.style.opacity = ''; cPulse.style.opacity = '';
-      state = 'home';
+      state = 'home'; inWorkspace(false);
       frame();   // (exactly where the flight ended: the same measurements)
       if (after) await after();
       lastExample = '';
@@ -1103,13 +1105,16 @@
     else $('thReport').addEventListener('click', function () { tmReport.show(); });
     if (!(window.tmIntake && tmIntake.paste)) $('thPaste').remove();
     renderRecent(); ringStrips();
-    relayout();
+    if (isHome()) relayout();
   });
   window.addEventListener('load', function () { hookWorkspace(); if (isHome()) relayout(); });
   // (a reload starts at the top: the page asks the browser not to restore the scroll, see the <head>)
   if (window.scrollY) window.scrollTo(0, 0);
   window.addEventListener('pageshow', function (e) { if (e.persisted && isHome()) { window.scrollTo(0, 0); relayout(); } });
-  traces(); measure(); frame(); startBackground();
+  if (isHome()) { traces(); measure(); frame(); startBackground(); }
+  else { figEl.hidden = true; figEl.style.opacity = '0'; }
+  // leaving or reloading with a tree open asks first (the browser's own "Leave page?")
+  window.addEventListener('beforeunload', function (e) { if (state === 'app' && hasTree()) { e.preventDefault(); e.returnValue = ''; } });
   window.tmHome = {
     open: openExample, show: function () { homeClicked(); }, state: function () { return state; },
     figure: function () { return { cx: cur.cx, cy: cur.cy, r: cur.r, rot: cur.rot, open: cur.open, mask: cur.mask }; },   // where the figure is (window px) and how it is drawn
