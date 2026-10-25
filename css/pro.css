@@ -1451,6 +1451,12 @@ html.pro .rp-summary { display: flex; flex-direction: column; gap: 4px; padding:
 html.pro .rp-line b { color: var(--text); font-weight: 600; margin-right: 4px; }
 html.pro .rp-opt { margin: 0; }
 html.pro .rp-opt > span { font-size: 12.5px; }
+html.pro .rp-hp { position: absolute; left: -10000px; width: 1px; height: 1px; opacity: 0; }
+html.pro .rp-status { min-height: 18px; font-size: 12.5px; color: var(--muted); }
+html.pro .rp-status.rp-ok { color: var(--accent); font-weight: 600; }
+html.pro .rp-status.rp-err { color: #dc2626; }
+html.pro .cm-actions .rp-save { margin-right: auto; }
+html.pro .rp-card [hidden] { display: none !important; }   /* (buttons set their own display) */
 
 /* Feature selection on a dataframe column (feature-select.js): the selection toolbar in feature mode */
 html.pro .clade-toolbar .feat-ctl { display: none; }

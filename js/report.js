@@ -2,12 +2,19 @@
 // problem" opens a dialog that gathers what a bug report needs: the app version, the
 // browser, the page errors and the last status messages (both kept from page load on),
 // the session (tree, data and settings; the data can be left out) and the drawing as SVG,
-// with the user's description, into one .treemapper-report.json file. Opening that file
-// (Open, drop, From URL) restores the session it holds, so the problem can be seen.
+// with the user's description, and sends it to the author: a Cloudflare Worker
+// (report-worker/) files it as an issue in a private GitHub repository, with the report
+// file (.treemapper-report.json) stored beside it. Opening that file (Open, drop, From URL)
+// restores the session it holds, so the problem can be seen. If sending fails the dialog
+// offers the file to save instead. Without a REPORT_ENDPOINT the status bar has no button.
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var FORMAT = 'treemapper-report', KEEP = 60;
+  // where reports go: the deployed Worker's address (report-worker/README.md)
+  var REPORT_ENDPOINT = '';
+  var endpoint = function () { return window.TM_REPORT_ENDPOINT || REPORT_ENDPOINT; };
+  var MAX_FILE_B64 = 11 * 1024 * 1024;   // (the Worker takes up to 12 MB of base64)
   var errors = [], actions = [], t0 = Date.now();
   function stamp() { return Math.round((Date.now() - t0) / 100) / 10; }   // seconds since load
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -34,7 +41,7 @@
   // the report: { format, savedAt, version, app, browser, description, errors, actions, session | settings, svg }
   function build(opts) {
     var r = { format: FORMAT, version: 1, savedAt: new Date().toISOString(), app: version(), description: opts.description || '' };
-    r.browser = { userAgent: navigator.userAgent, language: navigator.language, viewport: [window.innerWidth, window.innerHeight], devicePixelRatio: window.devicePixelRatio, theme: document.documentElement.getAttribute('data-theme') || 'light', url: location.href.split('?')[0] };
+    r.browser = { userAgent: navigator.userAgent, language: navigator.language, viewport: [window.innerWidth, window.innerHeight], devicePixelRatio: window.devicePixelRatio, theme: document.documentElement.getAttribute('data-theme') || 'light', url: location.protocol === 'file:' ? 'a local copy (file)' : location.href.split('?')[0] };   // (not the path on the user's computer)
     r.tree = (typeof root !== 'undefined' && root) ? { tips: root.leaves().length, layers: layers() } : null;
     r.errors = errors.slice(); r.actions = actions.slice();
     if (window.tmSession && typeof root !== 'undefined' && root) {
@@ -62,12 +69,14 @@
     modal.innerHTML = '<div class="pro-modal-card rp-card" role="dialog" aria-modal="true" aria-labelledby="rpTitle">' +
       '<div class="pro-panel-head"><span class="pro-panel-title" id="rpTitle">Report a problem</span><button type="button" class="pro-icon-btn pro-icon-btn-sm" id="rpClose" aria-label="Close"><svg class="pro-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
       '<div class="pro-modal-body rp-body">' +
-      '<p class="ds-muted rp-intro">Saves one file with everything needed to look into the problem. Attach it to your message to the author (the link in the status bar); nothing is sent anywhere by itself.</p>' +
+      '<p class="ds-muted rp-intro">Sends your description to the author with what is needed to look into the problem: the app version, your browser and any errors on this page. It goes to the author’s private GitHub repository, not to a public page.</p>' +
       '<label class="rp-field"><span class="pro-file-label">What happened, and what you expected</span><textarea id="rpText" class="pro-textarea rp-text" spellcheck="true" placeholder="What you did, what you saw, what you expected…"></textarea></label>' +
       '<div class="rp-summary" id="rpSummary"></div>' +
-      '<label class="pro-row rp-opt"><span>Include the tree and the data layers <span class="cm-opt">(needed to reproduce; leave off if the data is confidential — the settings are still included)</span></span><input type="checkbox" id="rpData" class="pro-switch" checked data-session-skip></label>' +
+      '<label class="pro-row rp-opt"><span>Include my tree and data layers <span class="cm-opt">(needed to reproduce the problem; sent privately to the author. Leave off if the data is confidential: the settings are still sent)</span></span><input type="checkbox" id="rpData" class="pro-switch" checked data-session-skip></label>' +
       '<label class="pro-row rp-opt"><span>Include the drawing (SVG)</span><input type="checkbox" id="rpSvg" class="pro-switch" checked data-session-skip></label>' +
-      '<div class="cm-actions"><button type="button" class="pro-btn" id="rpCancel">Cancel</button><button type="button" class="pro-btn pro-btn-primary" id="rpSave">Save the report</button></div>' +
+      '<input type="text" id="rpWebsite" class="rp-hp" tabindex="-1" autocomplete="off" aria-hidden="true">' +   // (people never see it: a form that fills it is a bot)
+      '<div class="rp-status" id="rpStatus" role="status" aria-live="polite"></div>' +
+      '<div class="cm-actions"><button type="button" class="pro-btn rp-save" id="rpSave" hidden>Save it as a file</button><button type="button" class="pro-btn" id="rpCancel">Cancel</button><button type="button" class="pro-btn pro-btn-primary" id="rpSend">Send report</button></div>' +
       '</div></div>';
     document.body.appendChild(modal);
     var close = function () { modal.hidden = true; };
@@ -79,9 +88,60 @@
       var name = 'treemapper-report-' + new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-') + '.treemapper-report.json';
       download(JSON.stringify(r), name);
       close();
-      setStatus('Report saved as ' + name + ' · attach it to your message');
+      setStatus('Report saved as ' + name);
     });
+    $('rpSend').addEventListener('click', function () { send(); });
     return modal;
+  }
+  // ------------------------------------------------------------------ sending
+  function say(text, kind) { var el = $('rpStatus'); el.textContent = text; el.className = 'rp-status' + (kind ? ' rp-' + kind : ''); }
+  function base64Of(text) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () { var u = String(fr.result); res(u.slice(u.indexOf(',') + 1)); };
+      fr.onerror = function () { rej(fr.error); };
+      fr.readAsDataURL(new Blob([text], { type: 'application/json' }));
+    });
+  }
+  var sending = false;
+  async function send() {
+    if (sending) return;
+    var description = $('rpText').value.trim();
+    if (description.length < 3) { say('Please describe what happened first.', 'err'); $('rpText').focus(); return; }
+    sending = true;
+    var btn = $('rpSend'); btn.disabled = true; $('rpCancel').disabled = true; $('rpSave').hidden = true;
+    say('Sending…');
+    var opts = { description: description, includeData: $('rpData').checked && !$('rpData').disabled, includeSvg: $('rpSvg').checked && !$('rpSvg').disabled };
+    try {
+      var r = build(opts), b64 = await base64Of(JSON.stringify(r)), note = '';
+      if (b64.length > MAX_FILE_B64 && (opts.includeData || opts.includeSvg)) {
+        // too large to send whole: the drawing left out first, then the data
+        if (opts.includeSvg) { opts.includeSvg = false; r = build(opts); b64 = await base64Of(JSON.stringify(r)); note = ' (without the drawing: too large)'; }
+        if (b64.length > MAX_FILE_B64) { opts.includeData = false; r = build(opts); b64 = await base64Of(JSON.stringify(r)); note = ' (without the tree and data: too large to send)'; }
+      }
+      var meta = { description: description, app: r.app, browser: r.browser, tree: r.tree,
+        errors: r.errors.slice(-20).map(function (e) { return { t: e.t, message: String(e.message).slice(0, 500), where: e.where, stack: e.stack ? String(e.stack).slice(0, 800) : undefined }; }),
+        actions: r.actions.slice(-20), hasData: !!r.session, hasSvg: !!r.svg, website: $('rpWebsite').value };
+      var fd = new FormData();
+      fd.append('meta', JSON.stringify(meta));
+      fd.append('file', new Blob([b64], { type: 'text/plain' }), 'report.b64');
+      var ctl = window.AbortController ? new AbortController() : null, timer = ctl ? setTimeout(function () { ctl.abort(); }, 60000) : 0;
+      var res = await fetch(endpoint(), { method: 'POST', body: fd, signal: ctl ? ctl.signal : undefined });
+      clearTimeout(timer);
+      var j = null; try { j = await res.json(); } catch (e) {}
+      if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || ('the service answered ' + res.status));
+      say('Sent' + note + '. Thank you' + (j.number ? ': report #' + j.number : '') + '.', 'ok');
+      $('rpText').value = '';
+      btn.hidden = true; $('rpCancel').textContent = 'Close';
+      setStatus('Report sent' + (j.number ? ' (#' + j.number + ')' : ''));
+    } catch (e) {
+      var why = e && e.name === 'AbortError' ? 'no answer from the report service' : (e && e.message ? e.message : String(e));
+      if (/Failed to fetch|NetworkError|Load failed|network/i.test(why)) why = 'no connection to the report service';
+      say('Could not send the report: ' + why + '. You can save it as a file instead.', 'err');
+      $('rpSave').hidden = false;
+    } finally {
+      sending = false; btn.disabled = false; $('rpCancel').disabled = false;
+    }
   }
   function summary() {
     var hasTree = typeof root !== 'undefined' && root, parts = [];
@@ -95,11 +155,12 @@
     ensure(); $('rpSummary').innerHTML = summary();
     var hasTree = typeof root !== 'undefined' && root;
     $('rpData').disabled = !hasTree; $('rpSvg').disabled = !hasTree;
+    say(''); $('rpSave').hidden = true; $('rpSend').hidden = false; $('rpCancel').textContent = 'Cancel';
     modal.hidden = false; $('rpText').focus();
   }
   var foot = document.querySelector('.pro-statusbar'), keys = $('proKeysBtn');
-  if (foot) {
-    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'pro-status-link'; btn.id = 'proReportBtn'; btn.title = 'Save a file with what is needed to look into a problem'; btn.textContent = 'Report a problem';
+  if (foot && endpoint()) {   // (no report service set up: no button)
+    var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'pro-status-link'; btn.id = 'proReportBtn'; btn.title = 'Send a problem report to the author'; btn.textContent = 'Report a problem';
     if (keys && keys.parentNode === foot) foot.insertBefore(btn, keys.nextSibling); else foot.appendChild(btn);
     btn.addEventListener('click', show);
   }
@@ -118,5 +179,5 @@
       return origLoad(fileOrText);
     };
   }
-  window.tmReport = { build: build, show: show, errors: function () { return errors.slice(); }, actions: function () { return actions.slice(); } };
+  window.tmReport = { build: build, show: show, send: send, errors: function () { return errors.slice(); }, actions: function () { return actions.slice(); } };
 })();
