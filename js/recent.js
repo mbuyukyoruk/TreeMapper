@@ -1,5 +1,5 @@
 // Recent sessions (loaded after session.js). Each session opened or saved is remembered in this
-// browser only (IndexedDB), with its content, so the welcome screen can open it again:
+// browser only (IndexedDB), with its content, so the home page (js/home.js) can open it again:
 // the 6 most recent, one entry per file name, sessions over 25 MB skipped. Examples are not
 // remembered. Nothing is sent anywhere.
 //   tmRecent.list()    -> Promise of [{ id, name, when, tips, layers: [type], layout, size }]

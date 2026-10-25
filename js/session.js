@@ -220,7 +220,7 @@
     var tab = document.querySelector('.bootstrap-tab.active'); if (tab) settings.__supportTab = tab.getAttribute('data-tab');
     var treeTitle = call(function () { return treeAxisTitle; }); if (treeTitle) settings.__treeAxisTitle = treeTitle;
     if (window.tmLegendOrder && tmLegendOrder.get()) settings.__legendByLayer = true;
-    settings.__theme = document.documentElement.getAttribute('data-theme') || 'light';
+    // (the light or dark theme is the viewer's, not the session's: not saved, and ignored in older sessions)
     settings.__legendHidden = document.body.classList.contains('pro-legend-hidden');
     settings.__layout = (typeof geometry !== 'undefined' && geometry === 'radial') ? 'radial' : 'rect';
     // the circular layout's ring widths (tree radius, labels, then each layer's ring)
@@ -344,9 +344,12 @@
     while (root === before && t < ms) { await wait(50); t += 50; }
     await wait(50);
   }
-  // opts: { name } for a session given as text, { example: id } for a welcome-screen example
+  // opts: { name } for a session given as text, { example: id } for a home-page example
   // (not remembered as a recent session). Opening and saving are announced as the document
   // events tm-session-opened / tm-session-saved, with { name, text, example } (js/recent.js).
+  // The home page (js/home.js) follows an opening through tm-session-loading (it has begun:
+  // the file is a session and nothing was refused) and tm-session-ready ({ ok }: it is over,
+  // opened or not).
   async function load(fileOrText, opts) {
     if (busy) return;
     var s;
@@ -359,6 +362,9 @@
     if (root && !confirm('Open this session? The current tree and data will be replaced.')) return;
 
     busy = true;
+    var announced = false;
+    function ready(ok) { if (announced) return; announced = true; document.dispatchEvent(new CustomEvent('tm-session-ready', { detail: { ok: !!ok, example: opts && opts.example } })); }
+    document.dispatchEvent(new CustomEvent('tm-session-loading', { detail: { example: opts && opts.example } }));
     // linked data: fetch what the session holds only as a URL
     var fetchProblems = [];
     async function fill(src, what) {
@@ -369,12 +375,13 @@
     }
     await fill(s.tree, 'the tree');
     for (var li = 0; li < (s.layers || []).length; li++) await fill(s.layers[li], 'the ' + s.layers[li].type + ' ' + (s.layers[li].name || ''));
-    if (typeof s.tree.text !== 'string') { busy = false; alert('Could not open the session: ' + fetchProblems[0]); call(function () { setStatus('Could not open the session'); }); return; }
+    if (typeof s.tree.text !== 'string') { busy = false; alert('Could not open the session: ' + fetchProblems[0]); call(function () { setStatus('Could not open the session'); }); ready(false); return; }
     s.layers = (s.layers || []).filter(function (l) { return typeof l.text === 'string'; });
     if (window.tmUndo) tmUndo.suspend(true);
     var origConfirm = window.confirm, origAlert = window.alert, origDraw = window.drawTree, needDraw = false;
     window.confirm = function () { return true; };
     window.alert = function (m) { console.warn('[session]', m); };
+    var openedOk = false;
     var problems = fetchProblems.slice(), T0 = performance.now(), timings = {};
     function mark(n) { var t = performance.now(); timings[n] = Math.round(t - T0); T0 = t; }
     // while replaying, redraws and legend rebuilds are deferred to one at the end
@@ -417,10 +424,6 @@
       if (st.__supportTab) { var t = document.querySelector('.bootstrap-tab[data-tab="' + st.__supportTab + '"]'); if (t && !t.classList.contains('active')) t.click(); }
       call(function () { treeAxisTitle = st.__treeAxisTitle || ''; });
       if (window.tmLegendOrder) tmLegendOrder.set(!!st.__legendByLayer);
-      if (st.__theme) {
-        var dark = st.__theme === 'dark', tg = $('themeToggle');
-        if (tg && tg.checked !== dark) tg.click();
-      }
       document.body.classList.toggle('pro-legend-hidden', !!st.__legendHidden);
       var lt = $('proLegendToggle'); if (lt) lt.setAttribute('aria-pressed', String(!st.__legendHidden));
       realDraw();
@@ -548,6 +551,7 @@
       call(function () { setStatus('Session opened' + (problems.length ? ' (with problems: ' + problems.join('; ') + ')' : '')); });
       call(function () { document.dispatchEvent(new CustomEvent('tm-session-opened', { detail: { name: (fileOrText && fileOrText.name) || (opts && opts.name) || 'Session', text: text, example: opts && opts.example } })); });
       if (problems.length) origAlert('The session was opened, but:\n- ' + problems.join('\n- '));
+      openedOk = true;
     } catch (e) {
       realDraw();
       origAlert('Could not open the session: ' + e.message);
@@ -557,6 +561,7 @@
       window.confirm = origConfirm; window.alert = origAlert;
       busy = false;
       if (window.tmUndo) { tmUndo.suspend(false); tmUndo.clear(); }
+      ready(openedOk && !!root);
     }
   }
 

@@ -1,0 +1,313 @@
+/* =====================================================================
+   TreeMapper home page (js/home.js). A page of its own, shown before the workspace: the
+   workspace is hidden from the first paint (html.tm-home, set in the <head>) and comes in
+   only through the transition when something is opened.
+
+   Composition: a centred headline and launcher over the reverse transcriptase figure, which
+   rises from the bottom of the window like a dome. Scrolling (about 600 px) brings it up,
+   turns it and settles it between the two panels below the fold: examples on the left,
+   recent sessions on the right, as the workspace has its layers panel and legend either side
+   of the canvas. The figure lives in a fixed layer (#thFigure) so the same element can fly
+   into the workspace. Behind everything a slowly drifting light (#thAurora, a tiny canvas
+   scaled up) keeps the page alive.
+   Tokens come from pro.css (--text, --muted, --accent, --pro-font ...); light and dark are
+   designed together. 8 px grid; radii 10 / 14 / 20.
+   ===================================================================== */
+html.pro {
+  --th-bg: #EDF2F2; --th-ink: #0D1519;
+  --th-panel: rgba(255, 255, 255, .90); --th-panel-solid: #FFFFFF; --th-panel-2: #F4F7F7;
+  --th-line: rgba(13, 32, 38, .10); --th-line-strong: rgba(13, 32, 38, .18);
+  --th-shadow: 0 1px 0 rgba(255, 255, 255, .9) inset, 0 24px 48px -28px rgba(10, 40, 46, .35), 0 2px 6px -2px rgba(10, 40, 46, .10);
+  --th-grid: rgba(13, 32, 38, .07);
+  --th-glow: rgba(11, 130, 118, .22);
+  --th-accent-ink: #0B7A6F;
+  --th-chip: rgba(13, 32, 38, .05);
+}
+html.pro .tm-home { display: none; }
+html.pro[data-theme="dark"] {
+  --th-bg: #04070A; --th-ink: #EEF3F5;
+  --th-panel: rgba(12, 17, 22, .86); --th-panel-solid: #0C1116; --th-panel-2: #121921;
+  --th-line: rgba(255, 255, 255, .08); --th-line-strong: rgba(255, 255, 255, .16);
+  --th-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 30px 60px -30px rgba(0, 0, 0, .9);
+  --th-grid: rgba(255, 255, 255, .045);
+  --th-glow: rgba(45, 212, 191, .16);
+  --th-accent-ink: #5EEAD4;
+  --th-chip: rgba(255, 255, 255, .05);
+}
+
+/* ---------- the page and the workspace behind it ---------- */
+html.pro.tm-home, html.pro.tm-home body { height: auto; min-height: 100%; }
+html.pro.tm-home body { overflow-x: hidden; overflow-y: auto; background: var(--th-bg, #04070A); }
+html.pro.tm-home .tm-home { display: block; }
+/* the workspace: laid out at the window's size (so a session renders behind the page) but not shown */
+/* (fixed and isolated always, so nothing about its box or layers changes when the page goes:
+   a change there made Safari paint the whole drawing again, a blank moment at the end) */
+html.pro .pro-app { position: fixed; inset: 0; isolation: isolate; }
+html.pro.tm-home .pro-app { visibility: hidden; pointer-events: none; }
+html.pro.tm-home.tm-moving .pro-app { visibility: visible; }
+/* the workspace's own background, under its panels (a layer, so it can fade in) */
+html.pro .pro-app::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--pro-aurora), var(--pro-bg); }
+html.pro.tm-home .pro-app::before { opacity: 0; }
+html.pro.tm-home.tm-moving .pro-app::before { opacity: 1; transition: opacity calc(var(--th-slow, 1) * .45s) ease-in-out; }   /* (as the page's own light fades, so there is no dark gap) */
+html.pro.tm-home.tm-moving.tm-out .pro-app::before { opacity: 0; }
+
+.tm-home {
+  position: relative; min-height: 100vh; color: var(--th-ink);   /* (no background of its own: the body has it, and the layers below sit under it) */
+  font: 15px/1.5 var(--pro-font); -webkit-font-smoothing: antialiased; letter-spacing: -0.005em;
+}
+/* (--th-slow on <html> slows every part of the transition alike, for checking it frame by frame) */
+/* layers (no stacking context on .tm-home, so the figure can fly above the workspace): the light,
+   the grid and the figure below the page (negative), the page, the workspace after it, the
+   flying figure above everything (60) */
+.tm-home button { font: inherit; color: inherit; }
+.th-aurora { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -3; pointer-events: none; }
+.th-grid {   /* a fine dot grid, painted once with the page (the moving light is the aurora) */
+  position: absolute; inset: 0; z-index: -2; pointer-events: none;
+  background: radial-gradient(var(--th-grid) 1px, transparent 1.3px) 0 0 / 24px 24px;
+}
+
+/* ---------- the figure (fixed layer; js/home.js places, turns and flies it) ---------- */
+.th-figure { position: fixed; left: 0; top: 0; z-index: -1; pointer-events: none; border-radius: 50%; transform-origin: 0 0; will-change: transform; }
+.th-figure canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.th-figure #thFigPulse { width: auto; height: auto; }   /* (sized and placed by js/home.js: the tree's disc only) */
+.th-figure::before {   /* a soft light under the figure */
+  content: ""; position: absolute; inset: 18%; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--th-glow), transparent 72%); transform: scale(1.6);
+}
+/* on the light page the figure sits on a lit plate, so its colours stay crisp and deep */
+html.pro:not([data-theme="dark"]) .th-figure::before { inset: -2%; transform: none; background: radial-gradient(closest-side, rgba(255, 255, 255, .96) 0%, rgba(255, 255, 255, .9) 78%, rgba(255, 255, 255, 0) 100%); box-shadow: none; }
+.th-figure.th-wait::after {   /* waiting for a session at the end of the flight: a slow breath of light round the figure */
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(45, 212, 191, .3), 0 0 70px 8px rgba(45, 212, 191, .22);
+  animation: th-breathe 1.6s ease-in-out infinite;
+}
+@keyframes th-breathe { 0%, 100% { opacity: .25; transform: scale(.98); } 50% { opacity: 1; transform: scale(1.02); } }
+html.pro.tm-moving .th-figure { z-index: 60; }   /* above the workspace while it flies */
+
+/* ---------- top bar ---------- */
+.th-top {
+  position: relative; height: 64px; display: flex; align-items: center; gap: 12px;
+  padding: 0 28px; max-width: 1600px; margin: 0 auto;
+}
+.th-brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 17px; letter-spacing: -0.02em; }
+.th-brand .pro-logo { width: 32px; height: 32px; border-radius: 10px; }
+.th-ver { font: 500 11.5px/1 var(--pro-mono); color: var(--muted); padding: 5px 8px; border: 1px solid var(--th-line); border-radius: 7px; background: var(--th-chip); font-variant-numeric: tabular-nums; }
+.th-top-nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.th-navlink {
+  height: 34px; padding: 0 12px; border: 0; border-radius: 9px; background: none; cursor: pointer;
+  font-weight: 500 !important; font-size: 13.5px !important; color: var(--muted) !important; text-decoration: none; display: inline-flex; align-items: center;
+}
+.th-navlink:hover { color: var(--th-ink) !important; background: var(--th-chip); }
+.th-theme { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--th-line); background: var(--th-panel); display: grid; place-items: center; cursor: pointer; color: var(--muted) !important; margin-left: 6px; }
+.th-theme:hover { color: var(--th-ink) !important; border-color: var(--th-line-strong); }
+.th-theme .th-sun { display: none; }
+html.pro[data-theme="dark"] .th-theme .th-sun { display: block; }
+html.pro[data-theme="dark"] .th-theme .th-moon { display: none; }
+
+/* ---------- hero ---------- */
+.th-hero { position: relative; text-align: center; padding: 20px 24px 0; max-width: 1100px; margin: 0 auto; }
+.th-eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 500 12.5px/1 var(--pro-font); color: var(--muted); padding: 7px 12px 7px 8px; border-radius: 99px; border: 1px solid var(--th-line); background: var(--th-panel); box-shadow: var(--th-shadow); }
+.th-eyebrow i { width: 18px; height: 18px; border-radius: 6px; display: grid; place-items: center; background: rgba(20, 184, 166, .14); color: var(--th-accent-ink); font-style: normal; }
+.th-title {
+  margin: 20px 0 0; font-weight: 700; font-size: clamp(40px, 5.2vw, 78px); line-height: .98; letter-spacing: -0.048em;
+  text-wrap: balance;
+}
+.th-title span {
+  background: linear-gradient(96deg, #10B981 0%, #14B8A6 30%, #0EA5E9 62%, #6366F1 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  padding-bottom: .08em;   /* (the descender of "y" inside the clip) */
+}
+html.pro[data-theme="dark"] .th-title span { background-image: linear-gradient(96deg, #34D399 0%, #2DD4BF 30%, #38BDF8 64%, #818CF8 100%); }
+.th-ex-sub, .th-rings li, .th-src { text-wrap: pretty; }
+.th-lead { margin: 18px auto 0; max-width: 800px; font-size: 17px; line-height: 1.55; color: var(--muted); text-wrap: pretty; }
+.th-lead b { color: var(--th-ink); font-weight: 600; }
+
+/* the launcher: one bar to drop or open, then the other ways in */
+.th-launch {
+  margin: 24px auto 0; width: min(780px, 100%); display: flex; align-items: center; gap: 14px; text-align: left;
+  padding: 10px 10px 10px 10px; border-radius: 20px; background: var(--th-panel); border: 1px solid var(--th-line-strong);
+  box-shadow: var(--th-shadow), 0 0 0 6px rgba(20, 184, 166, .0); transition: box-shadow .2s ease, border-color .2s ease, transform .2s ease;
+}
+.th-launch-ico { width: 48px; height: 48px; flex: none; border-radius: 14px; display: grid; place-items: center; color: var(--th-accent-ink); background: rgba(20, 184, 166, .12); border: 1px dashed rgba(20, 184, 166, .55); }
+.th-launch-text { flex: 1; min-width: 0; }
+.th-launch-text b { display: block; font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; }
+.th-launch-text > span { display: block; font-size: 13.5px; color: var(--muted); }
+.th-open { height: 48px !important; padding: 0 20px !important; font-size: 15px !important; border-radius: 13px !important; gap: 8px; }
+.tm-home.th-dragging .th-launch { border-color: var(--accent); box-shadow: var(--th-shadow), 0 0 0 6px rgba(20, 184, 166, .22); transform: scale(1.01); }
+.th-ways { margin: 12px auto 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.th-way {
+  height: 38px; padding: 0 14px 0 11px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  border-radius: 11px; border: 1px solid var(--th-line); background: var(--th-panel); box-shadow: var(--th-shadow);
+  font-size: 13.5px !important; font-weight: 550 !important; color: var(--th-ink) !important; transition: border-color .15s ease, transform .15s ease;
+}
+.th-way .pro-ico { color: var(--th-accent-ink); }
+.th-way:hover { border-color: var(--th-line-strong); transform: translateY(-1px); }
+.th-way-quiet { background: none; box-shadow: none; border-color: var(--th-line); color: var(--th-ink) !important; opacity: .86; }
+.th-way-quiet .pro-ico { color: var(--muted); }
+.th-way-quiet:hover { border-color: var(--th-line); }
+.th-phone-only { display: none; }
+.tm-home.th-over-figure { cursor: pointer; }
+.th-figure::before { transition: opacity .25s ease; opacity: .8; }
+.tm-home.th-over-figure .th-figure::before { opacity: 1; }   /* (the light under it brightens; no filter on so large a layer) */
+.th-error { margin: 14px auto 0; max-width: 640px; font-size: 13.5px; color: #D93036; min-height: 0; }
+html.pro[data-theme="dark"] .th-error { color: #FF8A8E; }
+.th-error:empty { display: none; }
+
+/* ---------- the stage: examples | figure | recent sessions ---------- */
+.th-stage {
+  position: relative; display: grid; grid-template-columns: 344px minmax(0, 1fr) 344px; gap: 24px;
+  max-width: 1600px; margin: 0 auto; padding: 24px 28px; margin-top: var(--th-stage-gap, 96px);
+  min-height: 100vh;   /* (so the last scroll position shows the whole stage, and only it) */
+}
+.th-stage { align-items: start; }
+.th-slot { align-self: stretch; }
+.th-panel { background: var(--th-panel); border: 1px solid var(--th-line); border-radius: 20px; box-shadow: var(--th-shadow); padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.th-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.th-slot { min-height: 100%; }
+.th-h2 { margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 600 11.5px/1 var(--pro-font); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.th-h2 .th-mini { text-transform: none; letter-spacing: 0; }
+.th-mini { border: 0; background: none; cursor: pointer; font-size: 12.5px !important; font-weight: 500 !important; color: var(--muted) !important; padding: 2px 4px; border-radius: 6px; }
+.th-mini:hover { color: var(--th-ink) !important; }
+
+/* example: the RT figure's own card (it captions the figure beside it; no second picture) */
+.th-ex-title { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.25; }
+.th-ex-sub { font-size: 13px; color: var(--muted); line-height: 1.45; margin-top: 4px; }
+.th-tag { flex: none; font: 600 10.5px/1 var(--pro-font); letter-spacing: .06em; text-transform: uppercase; padding: 5px 7px; border-radius: 6px; color: var(--th-accent-ink); background: rgba(20, 184, 166, .12); }
+.th-tag-mock { color: #B45309; background: rgba(245, 158, 11, .14); }
+html.pro[data-theme="dark"] .th-tag-mock { color: #FBBF24; }
+.th-fams { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.th-fams li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; font-size: 13px; }
+.th-fams li span { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
+.th-fams li i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.th-fams li em { font-style: normal; font: 500 12.5px/1 var(--pro-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.th-fams li u { grid-column: 1 / -1; height: 4px; border-radius: 99px; background: var(--th-chip); position: relative; overflow: hidden; text-decoration: none; }
+.th-fams li u::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); background: var(--c); border-radius: 99px; }
+.th-fams li.th-fam-more { color: var(--muted); }
+.th-rings { margin: 0; padding: 12px 0 0; border-top: 1px solid var(--th-line); display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.th-rings b { color: var(--th-ink); font-weight: 600; font-size: 12px; letter-spacing: .02em; }
+.th-rings ol { margin: 0; padding: 0; list-style: none; counter-reset: ring; display: grid; gap: 3px; }
+.th-rings li { counter-increment: ring; display: flex; gap: 8px; align-items: baseline; }
+.th-rings li { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: center; }
+.th-rings li::before { content: none; }
+.th-rings canvas { width: 44px; height: 14px; border-radius: 3px; display: block; box-shadow: 0 0 0 1px var(--th-line); }
+.th-src { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.th-src a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--th-line-strong); text-underline-offset: 2px; }
+.th-src a:hover { color: var(--th-ink); }
+.th-ex-actions { display: flex; gap: 8px; align-items: center; }
+.th-ex-actions .pro-btn { gap: 7px; }
+
+/* example: the mock dataset, shown as the workspace in a window */
+.th-mock { display: flex; flex-direction: column; gap: 12px; cursor: pointer; text-align: left; border: 0; background: none; padding: 0; }
+.th-win { border-radius: 12px; overflow: hidden; border: 1px solid var(--th-line-strong); background: var(--th-panel-solid); box-shadow: 0 18px 36px -22px rgba(0, 0, 0, .55); transition: transform .2s ease, box-shadow .2s ease; }
+.th-mock:hover .th-win, .th-mock:focus-visible .th-win { transform: translateY(-2px); box-shadow: 0 26px 44px -22px rgba(0, 0, 0, .6); }
+.th-win-bar { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--th-line); font: 500 11px/1 var(--pro-mono); color: var(--muted); background: var(--th-panel-2); }
+.th-win-bar i { width: 9px; height: 9px; border-radius: 50%; background: #FF5F57; flex: none; }
+.th-win-bar i + i { background: #FEBC2E; } .th-win-bar i + i + i { background: #28C840; margin-right: 6px; }
+.th-win-crop { display: block; position: relative; aspect-ratio: 16 / 10; overflow: hidden; }
+/* the tree, its labels and loci at a legible scale: the workspace's canvas, cropped */
+.th-win img { position: absolute; display: block; width: 175%; max-width: none; left: -38%; top: -9%; }
+.th-win .th-dark-img { display: none; }
+html.pro[data-theme="dark"] .th-win .th-dark-img { display: block; }
+html.pro[data-theme="dark"] .th-win .th-light-img { display: none; }
+
+/* recent sessions */
+.th-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.th-recent li { position: relative; }
+.th-rec {
+  width: 100%; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 34px 9px 8px;
+  border: 0; border-radius: 12px; background: none; cursor: pointer; text-align: left;
+}
+.th-rec:hover, .th-rec:focus-visible { background: var(--th-chip); }
+.th-rec-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--th-chip); border: 1px solid var(--th-line); color: var(--muted); }
+.th-rec-ico svg { width: 22px; height: 22px; }
+.th-rec-main { min-width: 0; }
+.th-rec-main b { display: block; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.th-rec-main span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.th-rec-when { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.th-rec-x { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border: 0; border-radius: 7px; background: none; color: var(--muted) !important; display: grid; place-items: center; cursor: pointer; opacity: 0; }
+.th-recent li:hover .th-rec-x, .th-rec-x:focus-visible { opacity: 1; }
+.th-rec-x:hover { background: var(--th-chip); color: var(--th-ink) !important; }
+.th-empty[hidden] { display: none; }
+.th-empty { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: center; padding: 8px; border-radius: 12px; border: 1px dashed var(--th-line-strong); font-size: 13px; color: var(--muted); }
+.th-empty span:first-child { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--th-chip); }
+.th-foot { font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 4px; }
+.th-foot a, .th-foot button { color: var(--muted) !important; text-decoration: none; border: 0; background: none; padding: 0; cursor: pointer; font-size: 12.5px !important; }
+.th-foot a:hover, .th-foot button:hover { color: var(--th-ink) !important; }
+.th-foot a.th-me { color: var(--th-accent-ink) !important; }
+
+/* focus */
+.tm-home :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- leaving / arriving (js/home.js sets the classes; ~0.7 s, ease-in-out) ---------- */
+/* the order (js/home.js sets the delays): opening, the page goes first and the panels follow;
+   going home, the panels go first and the page follows */
+html.pro.tm-moving .tm-home .th-top, html.pro.tm-moving .tm-home .th-hero, html.pro.tm-moving .tm-home .th-left, html.pro.tm-moving .tm-home .th-right, html.pro.tm-moving .th-aurora, html.pro.tm-moving .th-grid {
+  transition: transform calc(var(--th-slow, 1) * .48s) cubic-bezier(.65, 0, .35, 1) calc(var(--th-slow, 1) * var(--th-home-delay, 0s)),
+              opacity calc(var(--th-slow, 1) * .4s) cubic-bezier(.65, 0, .35, 1) calc(var(--th-slow, 1) * var(--th-home-delay, 0s));
+}
+html.pro.tm-away .tm-home .th-top { transform: translateY(-40px); opacity: 0; }
+html.pro.tm-away .tm-home .th-hero { transform: translateY(-60px); opacity: 0; }
+html.pro.tm-away .tm-home .th-left { transform: translateX(-80px); opacity: 0; }
+html.pro.tm-away .tm-home .th-right { transform: translateX(80px); opacity: 0; }
+html.pro.tm-away .th-aurora, html.pro.tm-away .th-grid { opacity: 0; }
+html.pro.tm-away .tm-home { pointer-events: none; }
+html.pro.tm-away.tm-home body { overflow: hidden; }
+/* the workspace's panels come in from their edges */
+html.pro.tm-moving .pro-topbar, html.pro.tm-moving .sidepanel, html.pro.tm-moving .pro-legend-panel, html.pro.tm-moving .pro-statusbar, html.pro.tm-moving .pro-center {
+  transition: transform calc(var(--th-slow, 1) * .52s) cubic-bezier(.65, 0, .35, 1) calc(var(--th-slow, 1) * var(--th-panel-delay, .22s)),
+              opacity calc(var(--th-slow, 1) * .42s) cubic-bezier(.65, 0, .35, 1) calc(var(--th-slow, 1) * var(--th-panel-delay, .22s));
+}
+html.pro.tm-out .pro-topbar { transform: translateY(-110%); opacity: 0; }
+html.pro.tm-out .sidepanel { transform: translateX(-110%); opacity: 0; }
+html.pro.tm-out .pro-legend-panel { transform: translateX(110%); opacity: 0; }
+html.pro.tm-out .pro-statusbar { transform: translateY(110%); opacity: 0; }
+html.pro.tm-out .pro-center { opacity: 0; transform: scale(.985); }
+/* the drawing itself appears only in the crossfade from the flying figure */
+html.pro.tm-moving #canvas, html.pro.tm-moving #proEmpty, html.pro.tm-moving #radialPanelsContainer, html.pro.tm-moving #panelsContainer { transition: opacity calc(var(--th-slow, 1) * .28s) ease-in-out; }
+/* (.01, not 0: a layer at 0 is not painted, and painting a large drawing only when it is shown left a blank moment) */
+html.pro.tm-hide-drawing #canvas, html.pro.tm-hide-drawing #proEmpty, html.pro.tm-hide-drawing #radialPanelsContainer, html.pro.tm-hide-drawing #panelsContainer { opacity: .01; }
+/* until the session is ready, the panels come in empty: no layer cards or legend appearing one by one */
+html.pro.tm-wait-content .sidepanel > *, html.pro.tm-wait-content .pro-legend-body, html.pro.tm-wait-content .pro-doc, html.pro.tm-wait-content .pro-statusbar > * { visibility: hidden; }
+
+/* reduced motion: one plain crossfade */
+html.pro.tm-reduced .tm-home > *, html.pro.tm-reduced .pro-app > *, html.pro.tm-reduced .th-figure { transition: opacity .3s linear !important; }
+html.pro.tm-reduced.tm-away .tm-home .th-top, html.pro.tm-reduced.tm-away .tm-home .th-hero, html.pro.tm-reduced.tm-away .tm-home .th-left, html.pro.tm-reduced.tm-away .tm-home .th-right { transform: none; }
+html.pro.tm-reduced.tm-out .pro-topbar, html.pro.tm-reduced.tm-out .sidepanel, html.pro.tm-reduced.tm-out .pro-legend-panel, html.pro.tm-reduced.tm-out .pro-statusbar, html.pro.tm-reduced.tm-out .pro-center { transform: none; }
+
+/* ---------- the workspace's Home button and its question ---------- */
+html.pro .pro-home-btn { gap: 7px; }
+html.pro .pro-home-btn .pro-ico { color: var(--accent); }
+html.pro .tm-ask-card { width: min(460px, calc(100vw - 32px)); }
+html.pro .tm-ask-body { padding: 4px 20px 20px; display: grid; gap: 16px; }
+html.pro .tm-ask-body p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+html.pro .tm-ask-body p b { color: var(--text); }
+html.pro .tm-ask-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+html.pro .tm-ask-actions .pro-btn-danger { background: #D93036; color: #fff; border-color: transparent; }
+html.pro .tm-ask-actions .pro-btn-danger:hover { background: #C0272D; }
+html.pro .tm-ask-actions .tm-ask-save { margin-right: auto; }
+
+/* ---------- smaller windows ---------- */
+@media (max-width: 1280px) {
+  .th-stage { grid-template-columns: 300px minmax(0, 1fr) 300px; gap: 18px; padding: 0 20px 24px; }
+}
+@media (max-width: 1040px) {
+  .th-stage { grid-template-columns: 1fr 1fr; }
+  .th-slot { grid-column: 1 / -1; grid-row: 1; aspect-ratio: 1; min-height: 0; }
+}
+@media (max-width: 720px) {
+  .th-top { height: 56px; padding: 0 16px; }
+  .th-navlink { display: none; }
+  .th-hero { padding: 18px 16px 0; }
+  .th-eyebrow { font-size: 12px; }
+  .th-eb-more { display: none; }
+  .th-phone-only { display: inline; }
+  .th-title { font-size: 35px; margin-top: 16px; letter-spacing: -0.045em; }
+  .th-lead { font-size: 15.5px; margin-top: 14px; }
+  .th-launch { flex-wrap: wrap; padding: 12px; gap: 12px; margin-top: 22px; }
+  .th-launch-ico { width: 40px; height: 40px; }
+  .th-open { width: 100%; justify-content: center; }
+  .th-ways { display: grid; grid-template-columns: 1fr 1fr; }
+  .th-way { justify-content: center; }
+  .th-stage { grid-template-columns: 1fr; padding: 0 16px 20px; gap: 16px; margin-top: 8px; }
+  .th-slot { grid-column: 1; }
+  .th-panel { padding: 16px; border-radius: 18px; }
+}

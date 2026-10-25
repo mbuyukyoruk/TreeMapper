@@ -15,17 +15,25 @@ the files in `css/` and `js/`.
 The earlier classic-layout interface is in git history: it was moved out of the
 repository in commit `209a086` ("Make the redesigned interface the main page").
 
-## Welcome screen, recent sessions and examples
+## Home page, recent sessions and examples
 
-With no tree open, a welcome screen shows what TreeMapper does and how to start: **Open file…**
-(or drop a file anywhere), generate a tree from gene content, open from a URL, or paste data. It
-closes when a tree opens; the logo in the top bar brings it back.
+TreeMapper opens on a home page of its own (the workspace is not shown until something is opened):
+what TreeMapper does, and the ways to start: **Open file…** (or drop a tree or session anywhere on
+the page), generate a tree from gene content, open from a URL, paste data, or an empty workspace.
+The reverse transcriptase example is drawn live; scrolling turns it and runs pulses of light from
+the root to the tips.
 
+- **Opening anything** plays one transition: the home page slides away, the tree flies to its place
+  in the workspace while the panels come in, and it crossfades into the real drawing (if the session
+  is still opening, the tree waits there). With reduced motion, a plain crossfade.
+- **Home** (top bar) closes the session and goes back, after asking: anything not saved as a
+  session is lost, and **Save session…** is offered first.
+- **The theme** (light or dark) is the viewer's: opening a session never changes it.
 - **Recent sessions:** sessions you open or save are remembered in this browser only (IndexedDB),
   the six most recent, and open again from the list. Remove one, or **Clear** them all.
 - **Examples** (`examples/`, see `examples/README.md`):
-  - **Bacterial reverse transcriptases:** 1,077 published reference RTs in the circular layout.
-  - **Mock dataset:** random sample data in the rectangular layout, to be replaced.
+  - **Reverse transcriptases:** 1,077 published reference RTs (mostly bacterial families) in the circular layout.
+  - **CRISPR-Cas loci (mock data):** 56 invented loci of four subtypes in the rectangular layout.
 
 Sessions also keep the circular layout's ring widths.
 
