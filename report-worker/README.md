@@ -1,63 +1,73 @@
 # Report service
 
-The "Report a problem" button in TreeMapper sends each report here. A Cloudflare Worker files
-it as an issue in a **private** GitHub repository and stores the report file next to it.
-Opening that file in TreeMapper restores the user's session.
+"Report a problem" in TreeMapper sends each report to a Cloudflare Worker (`worker.js`). The
+Worker files it as an issue in a **private** GitHub repository, with the report file stored
+beside it. Opening that file in TreeMapper restores the user's session.
 
-Users need nothing: they write what happened and press **Send report**. The steps below are a
-one-time setup for the author, and all of them are free.
+Users only write what happened and press **Send report**. The setup below is a one-time job
+for the author, and it is all free.
 
-## 1. A private repository for the reports
+## 1. GitHub: a private repository
 
-On GitHub, create a new repository named `TreeMapper-reports`. Make it **Private**, and tick
-"Add a README" so it starts with a branch.
+1. On github.com, click **+** (top right) → **New repository**.
+2. Name: `TreeMapper-reports`. Choose **Private**. Turn on **Add a README**.
+3. Click **Create repository**.
 
-## 2. A token that can only file reports there
+## 2. GitHub: a token for that repository only
 
-Open <https://github.com/settings/personal-access-tokens/new>. That is your **account**
-settings, not the repository's: your profile picture → Settings → Developer settings (at the
-bottom of the left sidebar) → Personal access tokens → Fine-grained tokens → Generate new token.
+1. Open <https://github.com/settings/personal-access-tokens/new>. This is in your account
+   settings (profile picture → Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens), not in the repository's settings.
+2. **Token name:** `treemapper-report`. **Expiration:** the longest offered. When it
+   expires, make a new token and repeat step 3.4.
+3. **Repository access:** **Only select repositories** → `TreeMapper-reports`.
+4. **Permissions:** **Add permissions** → **Issues** and **Contents**. Set both to
+   **Read and write** (they start as Read-only).
+5. Click **Generate token** and copy it. It starts with `github_pat_` and is shown only once.
 
-- **Repository access:** Only select repositories → `TreeMapper-reports`
-- **Permissions:** these appear once the repository is chosen. Click **Add permissions** (older
-  pages: *Repository permissions*), add **Issues** and **Contents**, and set both to
-  *Read and write* (they start as Read-only).
-- **Expiration:** up to a year. Note the date; when the token expires, generate a new one and
-  repeat step 3's secret.
+## 3. Cloudflare: the Worker
 
-Copy the token (it is shown once).
+1. Sign up at <https://dash.cloudflare.com/sign-up> (email and password; free plan).
+2. **Workers & Pages** → **Create application** → **Start with Hello World**.
+   Name: `treemapper-report`. Leave everything else as it is (Cloudflare Access stays
+   **off**, or users' reports would be blocked). Click **Deploy**.
+3. On the Worker's page, click **Edit code** (top right). Select all the code in the editor and
+   delete it. Paste in all of `worker.js` from this folder. Click **Deploy**.
+4. Back on the Worker's page: **Settings** → **Variables and secrets** → **Add variable**.
+   In the dialog (Production ticked, Previews unticked):
+   - Key `REPO`, Value `mbuyukyoruk/TreeMapper-reports`, **Secret** unticked
+   - **+ Add** → Key `GITHUB_TOKEN`, Value: the token from step 2, **Secret** ticked
+   - Click **Add 2 variables and deploy**.
+5. Click **Visit** (top right). The page should show `{"ok":false,"error":"POST a report"}`.
+   That means it is working. Copy the address, e.g.
+   `https://treemapper-report.<your-name>.workers.dev`.
 
-## 3. The Worker on Cloudflare
-
-1. Sign up at <https://dash.cloudflare.com> (free plan, no card needed).
-2. **Workers & Pages → Create application → Start with Hello World** (not the Git or static
-   files options), name it `treemapper-report`, **Deploy**.
-3. **Edit code**: replace everything with the contents of `worker.js` from this folder, then **Deploy**.
-4. The Worker's **Settings → Variables and secrets → Add**:
-   - `REPO` (type *Text*): `mbuyukyoruk/TreeMapper-reports`
-   - `GITHUB_TOKEN` (type *Secret*): the token from step 2
-5. Copy the Worker's address, e.g. `https://treemapper-report.<your-name>.workers.dev`.
-
-## 4. Point TreeMapper at it
+## 4. TreeMapper: point the app at it
 
 In `js/report.js`, set `REPORT_ENDPOINT` to that address. The "Report a problem" button only
-appears once it is set.
+appears once this is set.
 
 ## What a report contains
 
 - **Always:** the user's description, the app version, the browser and window, the tree size
   and layer list, the errors on the page, and the last status messages.
-- **With "Include my tree and data layers" on (the default):** the session, so the problem can be
-  seen. The drawing (SVG) is optional. A report too large to send whole drops the drawing
-  first, then the data.
+- **With "Include my tree and data layers" on (the default):** the session, so the problem can
+  be seen. A report too large to send whole drops the drawing first, then the data.
 
-Everything stays in the private repository. Nothing is published.
+Everything stays in the private repository.
 
-## Limits
+## If something goes wrong
 
-Free Workers plan: 100,000 requests a day and 10 ms of CPU per request. The Worker only
-passes the file on (the page encodes it), so this is plenty. Reports up to about 9 MB.
-There is no rate limit: if the address is ever abused, delete the Worker or the token.
+- **Visit shows "The report service is not set up":** a variable is missing or misspelled.
+  The keys must be exactly `REPO` and `GITHUB_TOKEN`.
+- **Reports fail with "GitHub 401":** the token has expired or was pasted wrong. Make a new
+  one (step 2) and replace `GITHUB_TOKEN`.
+- **Reports fail with "GitHub 403" or "404":** the token is missing a permission, or `REPO` is
+  misspelled.
+- **Abuse:** the Worker has no rate limit. Deleting the token on GitHub stops it at once.
+
+Free Workers plan: 100,000 requests a day, which is far more than needed. Reports can be up
+to about 9 MB.
 
 Tests: `TreeMapper_tests/regress/reportworker.js` (the Worker, GitHub replaced by a recorder)
 and `reportsend.js` (the dialog).
