@@ -56,6 +56,12 @@ appears once this is set.
 
 Everything stays in the private repository.
 
+## Handled reports
+
+Move a handled report's file from `reports/` to `resolved/` in the reports repository and close
+its issue. Issue links name the commit that stored the file, so they keep working after the move
+(reports filed before 2026-10-25 01:30 UTC link by path; look for those in `resolved/`).
+
 ## If something goes wrong
 
 - **Visit shows "The report service is not set up":** a variable is missing or misspelled.

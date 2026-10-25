@@ -93,7 +93,10 @@ export default {
         const body = '{"message":"Report ' + id + '","content":"' + b64.replace(/\s+/g, '') + '"}';
         const put = await gh(env, '/repos/' + env.REPO + '/contents/reports/' + id + '.treemapper-report.json', 'PUT', body);
         if (!put.ok) return reply(502, { ok: false, error: 'The report file could not be stored (GitHub ' + put.status + ')' });
-        fileUrl = put.json && put.json.content && put.json.content.html_url || null;
+        // (the link names the commit that stored the file, so it still works once the file is
+        // moved, e.g. to resolved/ when the report is handled)
+        const sha = put.json && put.json.commit && put.json.commit.sha, fpath = put.json && put.json.content && put.json.content.path;
+        fileUrl = sha && fpath ? 'https://github.com/' + env.REPO + '/blob/' + sha + '/' + fpath : (put.json && put.json.content && put.json.content.html_url) || null;
       }
     }
     const firstLine = description.split(/\r?\n/)[0];
