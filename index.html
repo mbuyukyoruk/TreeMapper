@@ -7,10 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link href="css/tailwind.css?v=202610251810" rel="stylesheet">
-<link href="css/styles.css?v=202610251810" rel="stylesheet">
-<link href="css/pro.css?v=202610251810" rel="stylesheet">
-<link href="css/home.css?v=202610251810" rel="stylesheet">
+<link href="css/tailwind.css?v=202610251824" rel="stylesheet">
+<link href="css/styles.css?v=202610251824" rel="stylesheet">
+<link href="css/pro.css?v=202610251824" rel="stylesheet">
+<link href="css/home.css?v=202610251824" rel="stylesheet">
 <script>
   // The home page comes first and the viewer's theme is set before anything is painted (no
   // flash of the workspace or of the other theme; app.js keeps the same choice later)
@@ -58,7 +58,7 @@
         <button type="button" class="th-way" id="thGenerate"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-4 4-10 7"/></svg>Generate a tree<span class="pro-sr-only"> from gene presence and absence</span></button>
         <button type="button" class="th-way" id="thUrl"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Open from a URL</button>
         <button type="button" class="th-way" id="thPaste"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6"/></svg>Paste data</button>
-        <button type="button" class="th-way th-way-quiet" id="twSkip"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>Empty workspace</button>
+        <button type="button" class="th-way" id="twSkip"><svg class="pro-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>Empty workspace</button>
       </div>
       <p class="th-error" id="thError" role="alert"></p>
       </div>
@@ -94,7 +94,7 @@
           <h2 class="th-h2"><span>Example</span><span class="th-tag th-tag-mock">Mock data</span></h2>
           <button type="button" class="th-mock" data-example="mock" aria-describedby="thMockText">
             <span class="th-win"><span class="th-win-bar"><i></i><i></i><i></i>crispr-cas-loci.treemapper</span><span class="th-win-crop" data-crop="0.0488,0.0865,0.9357,0.9112">
-              <img class="th-light-img" src="img/home/mock-light.jpg?v=202610251810" alt="The TreeMapper workspace with the mock example open: a tree of 56 CRISPR-Cas loci with their gene neighbourhoods, a GC heatmap and a bar chart of spacer counts" decoding="async"><img class="th-dark-img" src="img/home/mock-dark.jpg?v=202610251810" alt="" decoding="async"></span></span>
+              <img class="th-light-img" src="img/home/mock-light.jpg?v=202610251824" alt="The TreeMapper workspace with the mock example open: a tree of 56 CRISPR-Cas loci with their gene neighbourhoods, a GC heatmap and a bar chart of spacer counts" decoding="async"><img class="th-dark-img" src="img/home/mock-dark.jpg?v=202610251824" alt="" decoding="async"></span></span>
             <span><span class="th-ex-title" id="thMockTitle">CRISPR-Cas loci</span>
             <span class="th-ex-sub" id="thMockText" style="display:block">56 invented loci of four subtypes (I&#8209;F, I&#8209;E, III&#8209;A, II&#8209;A): gene neighbourhoods, clade groups, phylum, GC content and spacer counts.</span></span>
           </button>
@@ -622,7 +622,7 @@
         <!-- Radial panels will be created dynamically -->
       </div>
 
-      <script src="js/drag-fastpath.js?v=202610251810"></script>
+      <script src="js/drag-fastpath.js?v=202610251824"></script>
 
                  <div class="splitter-info" id="splitterInfo" style="display: none;">
         <div class="panel-widths" id="panelWidths">
@@ -706,9 +706,9 @@
   </script>
 </div>
 
-<script src="js/home-figure.js?v=202610251810"></script>
-<script src="js/home-tree.js?v=202610251810"></script>
-<script src="js/home.js?v=202610251810"></script>
+<script src="js/home-figure.js?v=202610251824"></script>
+<script src="js/home-tree.js?v=202610251824"></script>
+<script src="js/home.js?v=202610251824"></script>
 
 <!-- Export menu and keyboard shortcuts dialog (pro-ui.js) -->
 <div class="pro-menu" id="proExportMenu" role="menu" hidden>
@@ -919,35 +919,35 @@
   </div>
 </div>
 
-<script src="js/vendor/d3.v7.9.0.min.js?v=202610251810"></script>
-<script src="js/tree-core.js?v=202610251810"></script>
-<script src="js/app.js?v=202610251810"></script>
-<script src="js/fast-draw.js?v=202610251810"></script>
-<script src="js/msa.js?v=202610251810"></script>
-<script src="js/align-rules.js?v=202610251810"></script>
-<script src="js/heatmap-scale.js?v=202610251810"></script>
-<script src="js/legend-tools.js?v=202610251810"></script>
-<script src="js/group-marks.js?v=202610251810"></script>
-<script src="js/gene-extras.js?v=202610251810"></script>
-<script src="js/label-style.js?v=202610251810"></script>
-<script src="js/synteny.js?v=202610251810"></script>
-<script src="js/distances.js?v=202610251810"></script>
-<script src="js/align-tree.js?v=202610251810"></script>
-<script src="js/tangle.js?v=202610251810"></script>
-<script src="js/drag-live.js?v=202610251810"></script>
-<script src="js/session.js?v=202610251810"></script>
-<script src="js/col-map.js?v=202610251810"></script>
-<script src="js/intake.js?v=202610251810"></script>
-<script src="js/links.js?v=202610251810"></script>
-<script src="js/report.js?v=202610251810"></script>
-<script src="js/undo.js?v=202610251810"></script>
-<script src="js/data-editor.js?v=202610251810"></script>
-<script src="js/pro-ui.js?v=202610251810"></script>
-<script src="js/export-presets.js?v=202610251810"></script>
-<script src="js/select-tool.js?v=202610251810"></script>
-<script src="js/feature-select.js?v=202610251810"></script>
-<script src="js/range-select.js?v=202610251810"></script>
-<script src="js/recent.js?v=202610251810"></script>
+<script src="js/vendor/d3.v7.9.0.min.js?v=202610251824"></script>
+<script src="js/tree-core.js?v=202610251824"></script>
+<script src="js/app.js?v=202610251824"></script>
+<script src="js/fast-draw.js?v=202610251824"></script>
+<script src="js/msa.js?v=202610251824"></script>
+<script src="js/align-rules.js?v=202610251824"></script>
+<script src="js/heatmap-scale.js?v=202610251824"></script>
+<script src="js/legend-tools.js?v=202610251824"></script>
+<script src="js/group-marks.js?v=202610251824"></script>
+<script src="js/gene-extras.js?v=202610251824"></script>
+<script src="js/label-style.js?v=202610251824"></script>
+<script src="js/synteny.js?v=202610251824"></script>
+<script src="js/distances.js?v=202610251824"></script>
+<script src="js/align-tree.js?v=202610251824"></script>
+<script src="js/tangle.js?v=202610251824"></script>
+<script src="js/drag-live.js?v=202610251824"></script>
+<script src="js/session.js?v=202610251824"></script>
+<script src="js/col-map.js?v=202610251824"></script>
+<script src="js/intake.js?v=202610251824"></script>
+<script src="js/links.js?v=202610251824"></script>
+<script src="js/report.js?v=202610251824"></script>
+<script src="js/undo.js?v=202610251824"></script>
+<script src="js/data-editor.js?v=202610251824"></script>
+<script src="js/pro-ui.js?v=202610251824"></script>
+<script src="js/export-presets.js?v=202610251824"></script>
+<script src="js/select-tool.js?v=202610251824"></script>
+<script src="js/feature-select.js?v=202610251824"></script>
+<script src="js/range-select.js?v=202610251824"></script>
+<script src="js/recent.js?v=202610251824"></script>
 <script>
   // Opt-in debug monitor: open index.html?debug to enable it
   (function () {

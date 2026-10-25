@@ -85,7 +85,7 @@
     // what TreeMapper draws in the opening (its axes, their numbers and titles, the heatmaps' titles)
     function paintGap(h, R, theme, alpha) {
       var G = (F.gap && (F.gap[theme] || F.gap.light)) || [];
-      if ((!G.length && !F.scale) || alpha <= 0.01) return;
+      if (!G.length || alpha <= 0.01) return;
       var fam = getComputedStyle(document.documentElement).getPropertyValue('--pro-font').trim() || 'system-ui, sans-serif';
       h.save(); h.globalAlpha = alpha; h.lineCap = 'butt';
       G.forEach(function (g) {
@@ -106,16 +106,26 @@
         h.fillText(g[1], g[2] * R, g[3] * R);
         h.restore();
       });
+      h.restore();
+    }
+    // the tree's scale bar, in the figure's bottom-right corner (outside the rings), as the
+    // workspace draws its short bar: the value over a bar with end ticks, the title under it.
+    // Drawn on its own at every frame, at full strength: not with the opening's axes (which fade
+    // with the opening) and not behind the rings' mask, so it is always there.
+    function paintScale(h, R, theme) {
+      var S = F.scale; if (!S || !(S.len > 0)) return;
+      var G = (F.gap && (F.gap[theme] || F.gap.light)) || [];
+      var fam = getComputedStyle(document.documentElement).getPropertyValue('--pro-font').trim() || 'system-ui, sans-serif';
+      h.save();
       // the tree's scale bar, in the figure's bottom-right corner (outside the rings), as the
       // workspace draws its short bar: the value over a bar with end ticks, the title under it
-      var S = F.scale;
-      if (S && S.len > 0) {
+      {
         var col = (G.filter(function (g) { return g[0] === 'l'; })[0] || [])[5] || (theme === 'dark' ? '#b9c4cc' : '#3a4650');
         var fs = 12 / ((F.R && F.R.outer) || 392) * R * GAP_TEXT, y = 0.84 * R, tk = fs * 0.35;
         h.font = '500 ' + fs.toFixed(2) + 'px ' + fam;
         var half = Math.max(S.len * R, S.title ? h.measureText(S.title).width : 0) / 2, mid = 0.92 * R - half;
         var x0 = mid - S.len * R / 2, x1 = mid + S.len * R / 2;
-        h.globalAlpha = alpha; h.strokeStyle = col; h.fillStyle = col; h.lineWidth = Math.max(1, fs * 0.14);
+        h.globalAlpha = 1; h.strokeStyle = col; h.fillStyle = col; h.lineWidth = Math.max(1, fs * 0.14);
         h.beginPath(); h.moveTo(x0, y); h.lineTo(x1, y); h.moveTo(x0, y - tk); h.lineTo(x0, y + tk); h.moveTo(x1, y - tk); h.lineTo(x1, y + tk); h.stroke();
         h.textAlign = 'center'; h.textBaseline = 'alphabetic'; h.font = '600 ' + fs.toFixed(2) + 'px ' + fam;
         h.fillText(S.value.toFixed(2), (x0 + x1) / 2, y - tk - fs * 0.35);
@@ -295,6 +305,7 @@
           ctx.globalCompositeOperation = 'source-over';
         }
         ctx.drawImage(cache.tree, -R * TPF, -R * TPF, 2 * R * TPF, 2 * R * TPF);
+        paintScale(ctx, R, theme);
       }
       var pa = o.only === 'static' ? 0 : (o.pulseAlpha === undefined ? 1 : o.pulseAlpha);
       if (pa > 0.01) {

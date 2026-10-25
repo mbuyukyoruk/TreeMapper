@@ -165,6 +165,7 @@
     var W = vw(), H = vh(), wide = WIDE.matches;
     // (the columns' own place and width first, as the stylesheet has them)
     [colL, colR].forEach(function (c) { c.style.left = c.style.right = c.style.width = c.style.height = ''; });
+    var rt0 = colL.querySelector('.th-panel'); if (rt0) { rt0.style.height = ''; rt0.style.removeProperty('--g'); }
     if (wide) {
       var D = Math.round(H * 0.75);
       var lw = colL.offsetWidth, lx = colL.offsetLeft, rx = colR.offsetLeft;   // (absolute in the view)
@@ -203,6 +204,19 @@
       // (both columns start at one height, the higher of their own places: the RT card and the
       // mock example's card top-aligned; the recent sessions keep one height, a long list scrolls)
       var rp = $('thRecentPanel'); rp.style.height = '';
+      // the RT card 1.4 times its own height (the owner's choice), as far as the window allows:
+      // its parts grow with it (the spacing, the family bars and the ring strips: --g), the width
+      // stays; the cards beside it follow (the mock card top-aligned, the recent sessions ending
+      // level with it)
+      var rt = colL.querySelector('.th-panel'), ft0 = colR.querySelector('.th-foot');
+      rt.style.setProperty('--g', '0'); rt.style.height = '';
+      var h0 = rt.getBoundingClientRect().height, foot0 = ft0 ? ft0.getBoundingClientRect().height + 8 : 0;
+      var want = Math.min(1.4 * h0, H - 76 - 16 - foot0);
+      if (want > h0 + 2) {
+        var lo = 0, hi = 4;
+        for (var it = 0; it < 14; it++) { var mg = (lo + hi) / 2; rt.style.setProperty('--g', mg.toFixed(4)); if (rt.getBoundingClientRect().height > want) hi = mg; else lo = mg; }
+        rt.style.setProperty('--g', lo.toFixed(4)); rt.style.height = want + 'px';
+      }
       // the recent sessions card ends where the RT card ends (its height set by the layout, not by
       // how many sessions there are: a longer list scrolls inside it); the footer line under it
       var hh = function (e) { return e.getBoundingClientRect().height; };
@@ -514,12 +528,24 @@
       first.focus({ preventScroll: true });
     };
     var target = M && M.wide ? M.D : Math.max(0, topIn(panel) - 72);
-    var far = Math.abs((window.scrollY || 0) - target) > 4;
-    window.scrollTo({ top: target, behavior: reduced() ? 'auto' : 'smooth' });
-    if (!far) { go(); return; }
-    // (once the scroll has arrived)
-    var t0 = performance.now();
-    (function wait() { if (Math.abs((window.scrollY || 0) - target) <= 2 || performance.now() - t0 > 1400) go(); else requestAnimationFrame(wait); })();
+    var y0 = window.scrollY || 0, far = Math.abs(y0 - target) > 4;
+    if (!far || reduced()) { window.scrollTo(0, target); go(); return; }
+    // a scroll of our own, at half the speed of the browsers' smooth scroll (about 0.9 s for the
+    // whole of the page's motion; Chromium took 0.4 s, Safari 0.2 s), so the motion it drives
+    // can be followed; the visitor's own wheel, touch or keys take over at once
+    glide(y0, target, clamp(Math.abs(target - y0) * 1.25, 500, 1100) * slow(), go);
+  }
+  var gliding = 0;
+  function glide(y0, y1, ms, done) {
+    cancelAnimationFrame(gliding);
+    var t0 = performance.now(), stop = function () { cancelAnimationFrame(gliding); gliding = 0; off(); };
+    var off = function () { ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) { window.removeEventListener(ev, stop, true); }); };
+    ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) { window.addEventListener(ev, stop, true); });
+    (function step() {
+      var u = clamp((performance.now() - t0) / ms, 0, 1);
+      window.scrollTo(0, Math.round(lerp(y0, y1, EASE(u))));
+      if (u < 1) gliding = requestAnimationFrame(step); else { gliding = 0; off(); if (done) done(); }
+    })();
   }
   document.querySelectorAll('#tmHome [data-nav]').forEach(function (b) { b.addEventListener('click', function () { spotlight(b.getAttribute('data-nav')); }); });
 

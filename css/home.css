@@ -295,15 +295,20 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
   /* (the footer line close under the recent sessions; the RT card a little tighter, so that card,
      the footer and the notes beside the hero fit a 945 px window together) */
   .th-right { gap: 8px; } .th-right > .th-panel + .th-panel { margin-top: 8px; }
-  .th-left > .th-panel { gap: 10px; padding: 16px 18px; }
-  .th-left .th-fams { gap: 3px; }
-  .th-left .th-rings ol { gap: 2px; }
+  /* (--g, set by js/home.js, grows the RT card's parts to the card's height: 0 is its own height) */
+  .th-left > .th-panel { --g: 0; gap: calc(10px + var(--g) * 10px); padding: calc(16px + var(--g) * 6px) 18px; box-sizing: border-box; }
+  .th-left .th-fams { gap: calc(3px + var(--g) * 7px); }
+  .th-left .th-fams li u { height: calc(4px + var(--g) * 2px); }
+  .th-left .th-rings { gap: calc(6px + var(--g) * 6px); padding-top: calc(12px + var(--g) * 6px); }
+  .th-left .th-rings ol { gap: calc(2px + var(--g) * 8px); }
+  .th-left .th-rings canvas { height: calc(16px + var(--g) * 8px); }
+  .th-left .th-ex-actions .pro-btn { height: calc(38px + var(--g) * 6px); }
   .th-right #thRecentPanel { height: 172px; box-sizing: border-box; flex: none; }   /* (js/home.js sets it to end level with the RT card) */
   .th-right #thRecentPanel .th-recent { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   /* (more than two: the list scrolls, its last visible row fading out to say so) */
   .th-right #thRecentPanel .th-recent.th-more { -webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent); padding-bottom: 14px; }
   .th-right #thRecentPanel .th-recent:empty { display: none; }
-  .th-right #thRecentPanel .th-empty { flex: 1 1 auto; }   /* (with nothing listed, the note fills the card) */
+  .th-right #thRecentPanel .th-empty { flex: none; }   /* (with nothing listed, the note at the top of the card) */
 }
 @media (min-width: 1180px) and (max-width: 1360px) and (min-height: 640px) {
   .th-left, .th-right { width: 312px; }
