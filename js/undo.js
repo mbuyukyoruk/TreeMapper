@@ -404,8 +404,13 @@
     return true;
   }
 
+  // a layer reloaded with a new card (js/session.js replaceLayerData): its steps follow
+  function cardReplaced(oldCard, newCard) {
+    [undoStack, redoStack].forEach(function (st) { st.forEach(function (s) { if (s && s.kind === 'data' && s.card === oldCard) s.card = newCard; }); });
+  }
+
   window.tmUndo = {
-    undo: undo, redo: redo, begin: begin, pushData: pushData,
+    undo: undo, redo: redo, begin: begin, pushData: pushData, cardReplaced: cardReplaced,
     canUndo: function () { prune(); return undoStack.length > 0; },
     canRedo: function () { prune(); return redoStack.length > 0; },
     undoLabel: function () { return undoStack.length ? undoStack[undoStack.length - 1].label : ''; },

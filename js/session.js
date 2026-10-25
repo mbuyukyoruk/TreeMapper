@@ -703,6 +703,10 @@
     call(function () { origDraw(); });
     if (origLegend) call(function () { origLegend(); });
     if (card2 && L.type === 'clade' && window.tmUndo && tmUndo.clear) tmUndo.clear();   // its steps refer to the old card
+    // the layer has a new card: undo steps that name the old one follow it (each deletion and
+    // each undo reloads the layer, and the earlier steps were lost with their card)
+    var now = card2 || restored;
+    if (now && now !== card && window.tmUndo && tmUndo.cardReplaced) call(function () { tmUndo.cardReplaced(card, now); });
     return error ? { ok: false, error: error, card: restored || (card.isConnected ? card : null) } : { ok: true, card: card2 };
   }
 
