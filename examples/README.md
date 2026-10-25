@@ -19,10 +19,16 @@ in the circular layout:
   ones use quiet blue-greys.
 - **Rings:**
   - RT family (`family_ring.csv`)
-  - **defense-associated RTs (DRT1–DRT11) and Abi RTs** (AbiA, AbiK, AbiP2) only (`defense.csv`)
+  - **defense-associated RTs (DRT1–DRT11) and Abi RTs** (AbiA, AbiK, AbiP2) only (`defense.csv`, titled
+    "DRT/Abi RT")
   - the **source study** (`source.csv`)
-  - each protein's **domain layout**: N-terminal region, RT domain, C-terminal region (`domains.tsv`)
-  - **protein length** in amino acids (`length.csv`)
+  - each protein's **domain layout**: N-terminal region, RT domain, C-terminal region (`domains.tsv`),
+    **aligned on the RT domain** (Align bars by gene: RT domain, anchor Left), so every RT domain
+    starts on one circle, N-terminal regions inside it and C-terminal regions outside. The ring also
+    shows each protein's full length, so there is no separate protein-length ring.
+- The circle is **opened by 20°** at 12 o'clock, where TreeMapper draws the axes: the tree's scale
+  (substitutions per site) and the domain layout's axis, titled "Position (aa)" (0 is the RT
+  domain's first residue), with the heatmaps' titles.
 
 **Tree:**
 - IQ-TREE 3, model Q.PFAM+G4 (chosen by BIC).
@@ -43,8 +49,10 @@ domains are shorter than 150 amino acids (partial).
 | Tang 2025 | Tang S, Žedaveinytė R, Burman N, et al. Protein-primed homopolymer synthesis by an antiviral reverse transcriptase. *Nature* 2025. doi:10.1038/s41586-025-09179-5 |
 
 **How it was made:** the labels and tree come from the Wiedenheft Lab's RT classification reference
-set. They were converted by `TreeMapper_tests/examples-build/build_rt_example.py`, then loaded in
-TreeMapper and saved as a session.
+set. They were converted by `TreeMapper_tests/examples-build/build_rt_example.py`, loaded in
+TreeMapper and saved as a session, given a palette (`palette_rt.py`), then finished in TreeMapper by
+`rt_refine.js` (the domain layout aligned on the RT domain, the opening and its axis titles, the
+ring widths) and packed with `pack_example.py`.
 
 ## CRISPR-Cas loci, mock data (`mock`)
 
@@ -71,6 +79,7 @@ Update the example's card on the home page (`index.html`, `#tmHome`).
 
 The home page draws the reverse transcriptase example as TreeMapper draws it, from
 `js/home-figure.js` (written by `TreeMapper_tests/examples-build/rt_home_figure.js` from the
-rendered workspace, in both themes). Its picture of the mock example is the workspace itself
-(`img/home/mock-light.jpg`, `mock-dark.jpg`, from `examples-build/home_shots.js`). Run both again
-after changing an example.
+rendered workspace, in both themes, with the axes and titles in the opening). As the page is
+scrolled it opens the circle and grows the rings, as TreeMapper would draw them. Its picture of the
+mock example is the workspace's canvas with that example open (`img/home/mock-light.jpg`,
+`mock-dark.jpg`, from `examples-build/home_shots.js`). Run both again after changing an example.

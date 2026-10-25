@@ -20,15 +20,21 @@ repository in commit `209a086` ("Make the redesigned interface the main page").
 TreeMapper opens on a home page of its own (the workspace is not shown until something is opened):
 what TreeMapper does, and the ways to start: **Open file…** (or drop a tree or session anywhere on
 the page), generate a tree from gene content, open from a URL, paste data, or an empty workspace.
-The reverse transcriptase example is drawn live; scrolling turns it and runs pulses of light from
-the root to the tips.
+The reverse transcriptase example is drawn live. Scrolling does not move the page: the headline
+and launcher become smaller, the tree rises into the space under them, opens by 20° with its axes
+and titles and grows its rings from the inside out, and the examples and recent sessions come in
+from below; pulses of light run from the root to the tips as it moves.
 
-- **Opening anything** plays one transition: the home page slides away, the tree flies to its place
-  in the workspace while the panels come in, and it crossfades into the real drawing (if the session
-  is still opening, the tree waits there). With reduced motion, a plain crossfade.
+- **Opening anything** plays one transition that fits what is opened: the reverse transcriptase
+  tree flies to its place in the workspace, the mock example's picture grows from its card into the
+  canvas, and anything else (a file, a recent session, an address, pasted data) shows one loading
+  ring in the canvas, while the home page slides away and the panels come in. Then it crossfades
+  into the real drawing. Opening a tree or session from inside the workspace shows the same single
+  loading state. With reduced motion, a plain crossfade.
 - **Home** (top bar) closes the session and goes back, after asking: anything not saved as a
   session is lost, and **Save session…** is offered first.
-- **The theme** (light or dark) is the viewer's: opening a session never changes it.
+- **The theme** (light or dark) is the viewer's: opening a session never changes it. Switching it
+  plays a short transition (the new theme opens as a circle from the switch).
 - **Recent sessions:** sessions you open or save are remembered in this browser only (IndexedDB),
   the six most recent, and open again from the list. Remove one, or **Clear** them all.
 - **Examples** (`examples/`, see `examples/README.md`):

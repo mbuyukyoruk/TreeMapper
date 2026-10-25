@@ -3,7 +3,7 @@
 // A session holds everything needed to rebuild the current work:
 //   - the tree file and every data file (their original text),
 //   - each data card's controls (visibility, colours, options) and gene order,
-//   - the display settings (Style tab), theme and legend visibility,
+//   - the display settings (Style tab) and legend visibility (not the theme: it is the viewer's),
 //   - the root (manual re-root or midpoint rooting),
 //   - tree edits (rotations, collapses, cartoons, drops),
 //   - branch colours and clade highlights.
@@ -362,6 +362,16 @@
     if (root && !confirm('Open this session? The current tree and data will be replaced.')) return;
 
     busy = true;
+    // the light or dark theme is the viewer's: a session never changes it (older sessions hold a
+    // __theme setting; it is dropped, and the theme is put back should anything on the way change it)
+    if (s.settings) delete s.settings.__theme;
+    var themeBefore = document.documentElement.getAttribute('data-theme');
+    function keepTheme() {
+      if (!themeBefore || document.documentElement.getAttribute('data-theme') === themeBefore) return;
+      document.documentElement.setAttribute('data-theme', themeBefore);
+      try { localStorage.setItem('ptree-theme', themeBefore); } catch (e) {}
+      var tg = $('themeToggle'); if (tg) tg.checked = themeBefore === 'dark';
+    }
     var announced = false;
     function ready(ok) { if (announced) return; announced = true; document.dispatchEvent(new CustomEvent('tm-session-ready', { detail: { ok: !!ok, example: opts && opts.example } })); }
     document.dispatchEvent(new CustomEvent('tm-session-loading', { detail: { example: opts && opts.example } }));
@@ -560,6 +570,7 @@
       window.drawTree = origDraw; if (origLegend) window.updateMetadataLegend = origLegend; if (origCladeApply) window.applyCladeColorsToTree = origCladeApply;
       window.confirm = origConfirm; window.alert = origAlert;
       busy = false;
+      keepTheme();
       if (window.tmUndo) { tmUndo.suspend(false); tmUndo.clear(); }
       ready(openedOk && !!root);
     }

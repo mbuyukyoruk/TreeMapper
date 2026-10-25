@@ -1,10 +1,16 @@
 // The home page figure (loaded before js/home.js): the reverse transcriptase example as
 // TreeMapper draws it (js/home-figure.js), painted on a canvas.
 //   var f = tmHomeTree.create(data)
-//   f.paint(ctx, { cx, cy, radius, rotation, theme, pulse, pulseAlpha, alpha, rings })
-// The branches and the rings are painted once per size and theme into bitmaps; a frame turns
-// and places those bitmaps and adds the pulses of light: short bright trails running from the
-// root to the tips along the real branches, in each family's colour. Where the pulses are is
+//   f.paint(ctx, { cx, cy, radius, dpr, theme, open, mask, only, pulse, pulseAlpha, rings })
+//   var gl = f.ringsGL(canvas); gl.draw({ theme, open, mask })   (the rings on the GPU; null without WebGL)
+// open: the circle's opening in degrees (0 closed, data.open as in the example), applied the way
+//   TreeMapper does it: a tip at angle a (no opening) goes to open + a * (1 - open / 360 deg); the
+//   axes and titles TreeMapper draws in the opening come in as it opens.
+// mask: how far out the rings are shown (in units of the outer radius): the rings appear from the
+//   inside out behind a soft edge (feather wide), so the edge where a ring grows is never seen.
+// The rings and the branches are painted into bitmaps once per size, theme and opening; a frame
+// places those, masks the rings and adds the pulses of light: short bright trails running from
+// the root to the tips along the real branches, in each family's colour. Where the pulses are is
 // given by `pulse` (the page's scroll position), so the drawing is still when the page is.
 (function () {
   'use strict';
@@ -12,12 +18,14 @@
 
   function create(F) {
     var L = F.links, A = F.arcs, nL = L.length / 6, nA = A.length / 6;
+    var OPEN = (F.open || 0) * Math.PI / 180, FEATHER = 0.06;
     var ang = function (v) { return v / 1e4; }, rad = function (v) { return v / 1e4; };
+    // the angle of a point with the circle opened by `op` (radians)
+    var opened = function (a, op) { return op + a * (1 - op / TAU); };
     // ---- topology from coordinates: a link's parent is the link ending where it starts
     var key = function (a, r) { return a + ':' + r; };
     var endAt = new Map();
     for (var i = 0; i < nL; i++) endAt.set(key(L[i * 6 + 2], L[i * 6 + 3]), i);
-    // a link's parent: the link that ends at (parent angle, parent radius)
     var parentOf = new Int32Array(nL).fill(-1), isTip = new Uint8Array(nL);
     var hasChild = new Uint8Array(nL);
     for (i = 0; i < nL; i++) {
@@ -28,9 +36,9 @@
     // the five family colours (pulses run only along coloured branches)
     var famCol = F.families.map(function (f) { return f[1].toLowerCase(); });
     var famOf = function (ci) { return famCol.indexOf(String(F.pal.light[ci]).toLowerCase()); };
-    // ---- the pulse routes: root -> tip as polylines (angle, radius) samples
+    // ---- the pulse routes: root -> tip as polylines of (angle with no opening, radius) samples
     var tips = []; for (i = 0; i < nL; i++) if (isTip[i] && famOf(L[i * 6 + 4]) >= 0) tips.push(i);
-    // pick tips spread round the circle (every k-th by angle), so pulses cover every family
+    // tips spread round the circle (every k-th by angle), so pulses cover every family
     tips.sort(function (a, b) { return L[a * 6 + 2] - L[b * 6 + 2]; });
     var ROUTES = 64, step = tips.length / ROUTES, routes = [];
     for (var k = 0; k < ROUTES; k++) {
@@ -45,7 +53,6 @@
         for (var s = 0; s <= n; s++) pts.push([pa + span * s / n, pr]);
         pts.push([ca, cr]);
       });
-      // cumulative length (in units of the outer radius)
       var cum = [0];
       for (var q = 1; q < pts.length; q++) {
         var x0 = pts[q - 1][1] * Math.sin(pts[q - 1][0]), y0 = -pts[q - 1][1] * Math.cos(pts[q - 1][0]);
@@ -55,34 +62,15 @@
       routes.push({ pts: pts, cum: cum, len: len, fam: famOf(L[t * 6 + 4]), phase: (k * 0.618034) % 1 });
     }
 
-    // ---- bitmaps
-    var cache = { size: 0, theme: '', tree: null, rings: null };
+    // ---- bitmaps: the rings (with the opening's axes and titles) and the branches
     function bitmap(px) { var c = document.createElement('canvas'); c.width = c.height = px; return c; }
-    function paintStatic(px, theme) {
-      var pal = F.pal[theme] || F.pal.light, R = px / 2, tree = bitmap(px), rings = bitmap(px);
-      var g = tree.getContext('2d'); g.translate(R, R);
-      // branches, one path per colour
-      var by = new Map();
-      for (var i = 0; i < nL; i++) { var ci = L[i * 6 + 4]; if (!by.has(ci)) by.set(ci, []); by.get(ci).push(i); }
-      g.lineCap = 'round'; g.lineWidth = Math.max(1, px / 900);
-      by.forEach(function (list, ci) {
-        g.beginPath();
-        list.forEach(function (i) {
-          var pa = ang(L[i * 6]) - Math.PI / 2, pr = rad(L[i * 6 + 1]) * R, ca = ang(L[i * 6 + 2]) - Math.PI / 2, cr = rad(L[i * 6 + 3]) * R;
-          g.moveTo(pr * Math.cos(pa), pr * Math.sin(pa));
-          if (pr > 0 && Math.abs(ca - pa) > 1e-6) g.arc(0, 0, pr, pa, ca, ca < pa);
-          g.lineTo(cr * Math.cos(ca), cr * Math.sin(ca));
-        });
-        g.strokeStyle = pal[ci]; g.stroke();
-      });
-      // ring cells, one path per colour
-      var h = rings.getContext('2d'); h.translate(R, R);
+    function paintRings(h, R, pal, op) {
       var byA = new Map();
-      for (i = 0; i < nA; i++) { var cj = A[i * 6 + 4]; if (!byA.has(cj)) byA.set(cj, []); byA.get(cj).push(i); }
+      for (var i = 0; i < nA; i++) { var cj = A[i * 6 + 4]; if (!byA.has(cj)) byA.set(cj, []); byA.get(cj).push(i); }
       byA.forEach(function (list, cj) {
         h.beginPath();
         list.forEach(function (i) {
-          var a0 = ang(A[i * 6]) - Math.PI / 2, a1 = ang(A[i * 6 + 1]) - Math.PI / 2, r0 = rad(A[i * 6 + 2]) * R, r1 = rad(A[i * 6 + 3]) * R;
+          var a0 = opened(ang(A[i * 6]), op) - Math.PI / 2, a1 = opened(ang(A[i * 6 + 1]), op) - Math.PI / 2, r0 = rad(A[i * 6 + 2]) * R, r1 = rad(A[i * 6 + 3]) * R;
           if (a1 < a0 - Math.PI) a1 += TAU;
           // a hair wider than the cell, so neighbouring cells meet without seams
           var e = 0.35 / Math.max(r1, 1);
@@ -93,12 +81,149 @@
         });
         h.fillStyle = pal[cj]; h.fill();
       });
-      cache = { size: px, theme: theme, tree: tree, rings: rings };
     }
-    function ensure(px, theme) {
+    // what TreeMapper draws in the opening (its axes, their numbers and titles, the heatmaps' titles)
+    function paintGap(h, R, theme, alpha) {
+      var G = (F.gap && (F.gap[theme] || F.gap.light)) || [];
+      if (!G.length || alpha <= 0.01) return;
+      var fam = getComputedStyle(document.documentElement).getPropertyValue('--pro-font').trim() || 'system-ui, sans-serif';
+      h.save(); h.globalAlpha = alpha; h.lineCap = 'butt';
+      G.forEach(function (g) {
+        if (g[0] === 'l') {
+          h.beginPath(); h.moveTo(g[1] * R, g[2] * R); h.lineTo(g[3] * R, g[4] * R);
+          h.strokeStyle = g[5]; h.lineWidth = Math.max(0.5, g[6] * R); h.globalAlpha = alpha * (g[7] === undefined ? 1 : g[7]); h.stroke();
+          return;
+        }
+        // ['t', text, x, y, size, weight, colour, anchor, baseline, a, b, c, d, e, f, opacity]
+        h.save();
+        h.transform(g[9], g[10], g[11], g[12], g[13] * R, g[14] * R);
+        h.globalAlpha = alpha * (g[15] === undefined ? 1 : g[15]);
+        h.font = g[5] + ' ' + (g[4] * R).toFixed(2) + 'px ' + fam;
+        h.fillStyle = g[6];
+        h.textAlign = g[7] === 'middle' ? 'center' : g[7] === 'end' ? 'right' : 'left';
+        h.textBaseline = /middle|central/.test(g[8]) ? 'middle' : /hanging/.test(g[8]) ? 'hanging' : 'alphabetic';
+        h.fillText(g[1], g[2] * R, g[3] * R);
+        h.restore();
+      });
+      h.restore();
+    }
+    function paintTree(g, R, px, pal, op) {
+      var by = new Map();
+      for (var i = 0; i < nL; i++) { var ci = L[i * 6 + 4]; if (!by.has(ci)) by.set(ci, []); by.get(ci).push(i); }
+      g.lineCap = 'round'; g.lineWidth = Math.max(1, px / 900);
+      by.forEach(function (list, ci) {
+        g.beginPath();
+        list.forEach(function (i) {
+          var pa = opened(ang(L[i * 6]), op) - Math.PI / 2, pr = rad(L[i * 6 + 1]) * R, ca = opened(ang(L[i * 6 + 2]), op) - Math.PI / 2, cr = rad(L[i * 6 + 3]) * R;
+          g.moveTo(pr * Math.cos(pa), pr * Math.sin(pa));
+          if (pr > 0 && Math.abs(ca - pa) > 1e-6) g.arc(0, 0, pr, pa, ca, ca < pa);
+          g.lineTo(cr * Math.cos(ca), cr * Math.sin(ca));
+        });
+        g.strokeStyle = pal[ci]; g.stroke();
+      });
+    }
+    // the opening's axes and titles show as the circle opens (from about two thirds of the way)
+    var gapAlpha = function (op) { if (!OPEN) return 0; var u = (op / OPEN - 0.62) / 0.38; u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+    // the bitmaps: the rings and the branches for an opening (to a twentieth of a degree: finer
+    // steps are not seen), the opening's axes and titles once per size and theme
+    var cache = { size: 0, theme: '', ringsKey: '', treeKey: '', rings: null, tree: null, gap: null };
+    // (the branches' bitmap covers the tree's disc only: a fraction of the pixels to clear and place)
+    var TPF = 0.02; for (var li = 0; li < nL; li++) TPF = Math.max(TPF, rad(L[li * 6 + 3]) + 0.02); TPF = Math.min(1, TPF);
+    function ensure(px, theme, op, withRings) {
       px = Math.max(64, Math.min(4096, Math.round(px)));
-      if (cache.tree && cache.theme === theme && Math.abs(cache.size - px) / px < 0.04) return;
-      paintStatic(px, theme);
+      var opk = Math.round(op * 180 / Math.PI * 20) / 20, o = opk * Math.PI / 180;
+      if (!(cache.tree && cache.theme === theme && Math.abs(cache.size - px) / px < 0.04)) {
+        cache = { size: px, theme: theme, ringsKey: '', treeKey: '', rings: null, tree: bitmap(Math.ceil(px * TPF)), gap: bitmap(px) };
+        var gg = cache.gap.getContext('2d'); gg.translate(px / 2, px / 2); paintGap(gg, px / 2, theme, 1);
+      }
+      var size = cache.size, R = size / 2, pal = F.pal[theme] || F.pal.light;
+      if (cache.treeKey !== String(opk)) {
+        var tw = cache.tree.width, g = cache.tree.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, tw, tw); g.translate(tw / 2, tw / 2);
+        paintTree(g, R, size, pal, o); cache.treeKey = String(opk);
+      }
+      if (withRings && cache.ringsKey !== String(opk)) {
+        if (!cache.rings) cache.rings = bitmap(size);
+        var h = cache.rings.getContext('2d'); h.setTransform(1, 0, 0, 1, 0, 0); h.clearRect(0, 0, size, size); h.translate(R, R);
+        paintRings(h, R, pal, o); cache.ringsKey = String(opk);
+      }
+      return o;
+    }
+
+    // ---- the rings on the GPU (WebGL), when it is there: painted once, unrolled (angle across,
+    // radius down), and wrapped round the circle by a small shader at every frame with the
+    // opening and the mask applied per pixel. Drawing the 5,400 ring cells again for each step of
+    // the opening took most of a frame; this takes a fraction of a millisecond.
+    var RMIN = 1, PAD = 0.02;
+    for (i = 0; i < nA; i++) RMIN = Math.min(RMIN, rad(A[i * 6 + 2]));
+    RMIN = Math.max(0, RMIN - 0.004);
+    function ringsGL(canvas) {
+      var gl = null;
+      try { gl = canvas.getContext('webgl', { premultipliedAlpha: true, preserveDrawingBuffer: true, antialias: false }); } catch (e) {}
+      if (!gl) return null;
+      var vs = 'attribute vec2 p; varying vec2 uv; void main() { uv = p; gl_Position = vec4(p.x, -p.y, 0.0, 1.0); }';
+      var fs = 'precision highp float; varying vec2 uv; uniform sampler2D tex; uniform float op, rmin, pad, mask, feather, px;\n' +
+        'const float TAU = 6.28318530718;\n' +
+        'void main() {\n' +
+        '  float r = length(uv); if (r > 1.0 + 1.0 / px || r < rmin) discard;\n' +
+        '  float a = atan(uv.x, -uv.y); if (a < 0.0) a += TAU;\n' +
+        '  float a0 = (a - op) / (1.0 - op / TAU);\n' +
+        '  float u = (a0 + pad) / (TAU + 2.0 * pad); if (u < 0.0 || u > 1.0) discard;\n' +
+        '  vec4 c = texture2D(tex, vec2(u, (r - rmin) / (1.0 - rmin)));\n' +
+        // (the same soft edge as the 2D mask: opaque to mask - feather, then an ease-out falloff)
+        '  float t = clamp((r - (mask - feather)) / feather, 0.0, 1.0);\n' +
+        '  float m = t <= 0.35 ? mix(1.0, 0.55, t / 0.35) : t <= 0.7 ? mix(0.55, 0.16, (t - 0.35) / 0.35) : mix(0.16, 0.0, (t - 0.7) / 0.3);\n' +
+        '  gl_FragColor = c * m;\n' +
+        '}';
+      var sh = function (type, src) { var o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+      var prog;
+      try { prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null; } catch (e) { return null; }
+      gl.useProgram(prog);
+      var buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      var loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      var U = {}; ['op', 'rmin', 'pad', 'mask', 'feather', 'px', 'tex'].forEach(function (n) { U[n] = gl.getUniformLocation(prog, n); });
+      var tex = gl.createTexture(), texKey = '';
+      var maxT = Math.min(8192, gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096);
+      // the rings unrolled: one rectangle per cell (an angle range across, a radius range down)
+      function texture(theme, devR) {
+        var W = maxT, H = Math.max(64, Math.min(maxT, Math.ceil((1 - RMIN) * devR * 1.5)));
+        var key = theme + ':' + H; if (key === texKey) return; texKey = key;
+        var c = bitmap(1); c.width = W; c.height = H;
+        var g = c.getContext('2d'), pal = F.pal[theme] || F.pal.light, span = TAU + 2 * PAD;
+        var byA = new Map();
+        for (var i = 0; i < nA; i++) { var cj = A[i * 6 + 4]; if (!byA.has(cj)) byA.set(cj, []); byA.get(cj).push(i); }
+        byA.forEach(function (list, cj) {
+          g.beginPath();
+          list.forEach(function (i) {
+            var a0 = ang(A[i * 6]), a1 = ang(A[i * 6 + 1]); if (a1 < a0 - Math.PI) a1 += TAU;
+            var x0 = (a0 + PAD) / span * W, x1 = (a1 + PAD) / span * W;
+            var y0 = (rad(A[i * 6 + 2]) - RMIN) / (1 - RMIN) * H, y1 = (rad(A[i * 6 + 3]) - RMIN) / (1 - RMIN) * H;
+            // (a hair wider than the cell, so neighbouring cells meet without seams)
+            g.rect(x0 - 0.25, y0, Math.max(0.5, x1 - x0 + 0.5), y1 - y0);
+          });
+          g.fillStyle = pal[cj]; g.fill();
+        });
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      }
+      return {
+        // o: { theme, open (degrees), mask } at the canvas's own size
+        draw: function (o) {
+          var w = canvas.width; if (!w) return;
+          texture(o.theme === 'dark' ? 'dark' : 'light', w / 2);
+          gl.viewport(0, 0, w, canvas.height);
+          gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+          var op = Math.max(0, Math.min(OPEN, (o.open === undefined ? F.open : o.open) * Math.PI / 180));
+          gl.uniform1f(U.op, op); gl.uniform1f(U.rmin, RMIN); gl.uniform1f(U.pad, PAD);
+          gl.uniform1f(U.mask, o.mask === undefined ? 2 : o.mask); gl.uniform1f(U.feather, FEATHER); gl.uniform1f(U.px, w / 2);
+          gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(U.tex, 0);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        },
+        lost: function () { return gl.isContextLost(); }
+      };
     }
 
     // a point on a route at distance d (in outer-radius units)
@@ -123,21 +248,39 @@
       g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
       return (sprites[k] = s);
     }
-    // o: { cx, cy, radius (css px), dpr, rotation (rad), theme, pulse (any number; 1 = once along),
-    //      pulseAlpha (0..1), alpha (0..1), ringsAlpha (0..1), treeAlpha (0..1),
+    // o: { cx, cy, radius (css px), dpr, theme, open (degrees), mask (outer-radius units),
+    //      pulse (any number; 1 = once along), pulseAlpha (0..1),
     //      only: 'static' (the figure without pulses) or 'pulses' (the pulses alone) }
     function paint(ctx, o) {
       var dpr = o.dpr || 1, R = o.radius, theme = o.theme === 'dark' ? 'dark' : 'light';
-      if (o.only !== 'pulses') ensure(2 * R * dpr, theme);
+      var op = Math.max(0, Math.min(OPEN, (o.open === undefined ? F.open : o.open) * Math.PI / 180));
       ctx.save();
-      ctx.globalAlpha = o.alpha === undefined ? 1 : o.alpha;
-      ctx.translate(o.cx, o.cy); ctx.rotate(o.rotation || 0);
+      ctx.translate(o.cx, o.cy);
       ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-      var ra = o.ringsAlpha === undefined ? 1 : o.ringsAlpha, ta = o.treeAlpha === undefined ? 1 : o.treeAlpha, base = ctx.globalAlpha;
-      if (o.only === 'pulses') ra = 0;
-      if (ra > 0) { ctx.globalAlpha = base * ra; ctx.drawImage(cache.rings, -R, -R, 2 * R, 2 * R); }
-      if (ta > 0 && o.only !== 'pulses') { ctx.globalAlpha = base * ta; ctx.drawImage(cache.tree, -R, -R, 2 * R, 2 * R); }
-      var pa = o.only === 'static' ? 0 : (o.pulseAlpha === undefined ? 1 : o.pulseAlpha) * ta;
+      if (o.only !== 'pulses') {
+        // the rings (unless they are drawn on the GPU underneath) and the opening's axes and
+        // titles behind their soft-edged mask, then the branches over them
+        var withRings = o.rings !== false;
+        ensure(2 * R * dpr, theme, op, withRings);
+        var m = o.mask === undefined ? 2 : o.mask, ga = gapAlpha(op);
+        if (withRings) ctx.drawImage(cache.rings, -R, -R, 2 * R, 2 * R);
+        if (ga > 0.01) { ctx.globalAlpha = ga; ctx.drawImage(cache.gap, -R, -R, 2 * R, 2 * R); ctx.globalAlpha = 1; }
+        if (m < 1 + FEATHER && (withRings || ga > 0.01)) {
+          // (the whole figure when the rings are drawn here; else only the opening's corner, where
+          // the axes and titles are)
+          var box = withRings ? [-R - 2, -R - 2, 2 * R + 4, 2 * R + 4] : [-2, -R - 2, R * 0.6, R + 4];
+          var gr = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(1, m * R));
+          var a = Math.max(0, (m - FEATHER) / Math.max(m, 1e-6));
+          gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(a, 'rgba(0,0,0,1)');
+          // (an ease-out falloff: no hard line where the rings end)
+          gr.addColorStop(a + (1 - a) * 0.35, 'rgba(0,0,0,.55)'); gr.addColorStop(a + (1 - a) * 0.7, 'rgba(0,0,0,.16)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.globalCompositeOperation = 'destination-in';
+          ctx.fillStyle = gr; ctx.fillRect(box[0], box[1], box[2], box[3]);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.drawImage(cache.tree, -R * TPF, -R * TPF, 2 * R * TPF, 2 * R * TPF);
+      }
+      var pa = o.only === 'static' ? 0 : (o.pulseAlpha === undefined ? 1 : o.pulseAlpha);
       if (pa > 0.01) {
         var dark = theme === 'dark', trail = 0.16, head = Math.max(5, R * 0.03);
         ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
@@ -152,24 +295,27 @@
           // once they have spread out (from a tenth of the way to the tree's edge)
           var hr = at(rt, d)[1]; fade *= Math.max(0, Math.min(1, (hr - 0.05) / 0.09));
           if (fade <= 0.01) return;
-          ctx.globalAlpha = base * pa * fade;
-          // the trail
+          ctx.globalAlpha = pa * fade;
           ctx.beginPath();
           var N = 10;
           for (var s = 0; s <= N; s++) {
-            var p = at(rt, d - trail + trail * s / N), x = p[1] * R * Math.sin(p[0]), y = -p[1] * R * Math.cos(p[0]);
+            var pp = at(rt, d - trail + trail * s / N), aa = opened(pp[0], op), x = pp[1] * R * Math.sin(aa), y = -pp[1] * R * Math.cos(aa);
             if (s === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
           // on a light page the trail is a deeper shade of the family colour, so it reads over the branches
           ctx.strokeStyle = dark ? col : shade(col, 0.62); ctx.lineWidth = Math.max(dark ? 1.5 : 2, R / (dark ? 260 : 220)); ctx.stroke();
-          var hp = at(rt, d), hx = hp[1] * R * Math.sin(hp[0]), hy = -hp[1] * R * Math.cos(hp[0]);
+          var hp = at(rt, d), ha = opened(hp[0], op), hx = hp[1] * R * Math.sin(ha), hy = -hp[1] * R * Math.cos(ha);
           ctx.drawImage(glow(col, dark), hx - head, hy - head, head * 2, head * 2);
         });
         ctx.globalCompositeOperation = 'source-over';
       }
       ctx.restore();
     }
-    return { paint: paint, ensure: ensure, rings: F.rings, routes: routes.length };
+    // the rings shown at the start: the innermost one, and the next growing behind the soft edge
+    var data = F.rings.filter(function (r) { return r.type !== 'tree' && r.type !== 'labels'; });
+    var firstRings = data[0] ? data[0].outer : 1;
+    return { paint: paint, ringsGL: ringsGL, rings: F.rings, routes: routes.length, open: F.open || 0, feather: FEATHER,
+      maskStart: firstRings + FEATHER, maskEnd: 1 + FEATHER };
   }
   window.tmHomeTree = { create: create };
 })();
