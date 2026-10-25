@@ -18,7 +18,7 @@
 
   function create(F) {
     var L = F.links, A = F.arcs, nL = L.length / 6, nA = A.length / 6;
-    var OPEN = (F.open || 0) * Math.PI / 180, FEATHER = 0.06;
+    var OPEN = (F.open || 0) * Math.PI / 180, FEATHER = 0.06, GAP_TEXT = 0.78;
     var ang = function (v) { return v / 1e4; }, rad = function (v) { return v / 1e4; };
     // the angle of a point with the circle opened by `op` (radians)
     var opened = function (a, op) { return op + a * (1 - op / TAU); };
@@ -98,7 +98,8 @@
         h.save();
         h.transform(g[9], g[10], g[11], g[12], g[13] * R, g[14] * R);
         h.globalAlpha = alpha * (g[15] === undefined ? 1 : g[15]);
-        h.font = g[5] + ' ' + (g[4] * R).toFixed(2) + 'px ' + fam;
+        // (smaller and lighter than in the workspace: on the page they stood out from the figure)
+        h.font = (+g[5] >= 700 ? 600 : g[5]) + ' ' + (g[4] * R * GAP_TEXT).toFixed(2) + 'px ' + fam;
         h.fillStyle = g[6];
         h.textAlign = g[7] === 'middle' ? 'center' : g[7] === 'end' ? 'right' : 'left';
         h.textBaseline = /middle|central/.test(g[8]) ? 'middle' : /hanging/.test(g[8]) ? 'hanging' : 'alphabetic';
@@ -314,7 +315,7 @@
     // the rings shown at the start: the innermost one, and the next growing behind the soft edge
     var data = F.rings.filter(function (r) { return r.type !== 'tree' && r.type !== 'labels'; });
     var firstRings = data[0] ? data[0].outer : 1;
-    return { paint: paint, ringsGL: ringsGL, rings: F.rings, routes: routes.length, open: F.open || 0, feather: FEATHER,
+    return { paint: paint, ringsGL: ringsGL, rings: F.rings, gapText: GAP_TEXT, routes: routes.length, open: F.open || 0, feather: FEATHER,
       maskStart: firstRings + FEATHER, maskEnd: 1 + FEATHER };
   }
   window.tmHomeTree = { create: create };

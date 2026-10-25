@@ -26,6 +26,7 @@ html.pro {
   --th-accent-ink: #0B7A6F;
   --th-chip: rgba(13, 32, 38, .05);
   --th-spot: rgba(11, 130, 118, .45);
+  --th-muted: #5E6B72; --th-accent: #0B8276;   /* (pro.css's --muted and --accent, as the home page's own tokens that can ease) */
 }
 html.pro .tm-home { display: none; }
 html.pro[data-theme="dark"] {
@@ -38,6 +39,7 @@ html.pro[data-theme="dark"] {
   --th-accent-ink: #5EEAD4;
   --th-chip: rgba(255, 255, 255, .05);
   --th-spot: rgba(45, 212, 191, .55);
+  --th-muted: #95A3AB; --th-accent: #2DD4BF;
 }
 
 /* ---------- the page and the workspace behind it ---------- */
@@ -57,6 +59,8 @@ html.pro.tm-home.tm-moving .pro-app::before { opacity: 1; transition: opacity ca
 html.pro.tm-home.tm-moving.tm-out .pro-app::before { opacity: 0; }
 
 .tm-home {
+  /* (the workspace's tokens, through the home page's own: they ease when the theme changes) */
+  --muted: var(--th-muted); --accent: var(--th-accent); --panel: var(--th-panel-solid); --text: var(--th-ink);
   position: relative; color: var(--th-ink);   /* (no background of its own: the body has it, and the layers below sit under it) */
   font: 15px/1.5 var(--pro-font); -webkit-font-smoothing: antialiased; letter-spacing: -0.005em;
 }
@@ -78,13 +82,17 @@ html.pro.tm-home.tm-moving.tm-out .pro-app::before { opacity: 0; }
 .th-figure { position: fixed; left: 0; top: 0; z-index: -1; pointer-events: none; border-radius: 50%; transform-origin: 0 0; will-change: transform; }
 .th-figure canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .th-figure #thFigPulse { width: auto; height: auto; }   /* (sized and placed by js/home.js: the tree's disc only) */
-.th-figure::before {   /* a soft light under the figure (as far out as the rings shown: --th-plate) */
+.th-figure::before {   /* a soft light under the figure, in the dark theme (as far out as the rings shown: --th-plate) */
   content: ""; position: absolute; inset: calc(50% - var(--th-plate, 1) * 32%); border-radius: 50%;
   background: radial-gradient(closest-side, var(--th-glow), transparent 72%); transform: scale(1.6);
-  transition: opacity .25s ease; opacity: .8;
+  transition: opacity .5s ease; opacity: .8;
 }
-/* on the light page the figure sits on a lit plate, so its colours stay crisp and deep */
-html.pro:not([data-theme="dark"]) .th-figure::before { inset: calc(50% - var(--th-plate, 1) * 52%); transform: none; background: radial-gradient(closest-side, rgba(255, 255, 255, .96) 0%, rgba(255, 255, 255, .9) 70%, rgba(255, 255, 255, .4) 88%, rgba(255, 255, 255, 0) 100%); }
+/* on the light page the figure sits on a lit plate, so its colours stay crisp and deep (both are
+   always there and fade in and out with the theme) */
+.th-plate { position: absolute; inset: calc(50% - var(--th-plate, 1) * 52%); border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .5s ease;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, .96) 0%, rgba(255, 255, 255, .9) 70%, rgba(255, 255, 255, .4) 88%, rgba(255, 255, 255, 0) 100%); }
+html.pro:not([data-theme="dark"]) .th-plate { opacity: 1; }
+html.pro:not([data-theme="dark"]) .th-figure::before { opacity: 0; }
 .th-figure.th-wait::after, .th-fly.th-wait::after {   /* waiting for a session at the end of the flight: a slow breath of light */
   content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
   box-shadow: 0 0 0 1.5px rgba(45, 212, 191, .3), 0 0 70px 8px rgba(45, 212, 191, .22);
@@ -94,7 +102,7 @@ html.pro:not([data-theme="dark"]) .th-figure::before { inset: calc(50% - var(--t
 @keyframes th-breathe { 0%, 100% { opacity: .25; transform: scale(.98); } 50% { opacity: 1; transform: scale(1.02); } }
 html.pro.tm-moving .th-figure { z-index: 60; }   /* above the workspace while it flies */
 .tm-home.th-over-figure { cursor: pointer; }
-.tm-home.th-over-figure .th-figure::before { opacity: 1; }   /* (the light under it brightens; no filter on so large a layer) */
+html.pro[data-theme="dark"] .tm-home.th-over-figure .th-figure::before { opacity: 1; }   /* (the light under it brightens; no filter on so large a layer) */
 
 /* the mock example's picture, flying from its card to the workspace's canvas (js/home.js) */
 .th-fly { position: fixed; left: 0; top: 0; z-index: 60; overflow: hidden; transform-origin: 0 0; pointer-events: none; border-radius: 12px; background: var(--th-panel-solid); will-change: transform; }
@@ -161,9 +169,12 @@ html.pro[data-theme="dark"] .th-title .th-t2 { background-image: linear-gradient
 }
 .th-way .pro-ico { color: var(--th-accent-ink); }
 .th-way:hover { border-color: var(--th-line-strong); transform: translateY(-1px); }
-.th-way-quiet { background: none; box-shadow: none; border-color: var(--th-line); color: var(--th-ink) !important; opacity: .86; }
-.th-way-quiet .pro-ico { color: var(--muted); }
-.th-way-quiet:hover { border-color: var(--th-line); }
+/* "Empty workspace": a translucent accent, an active choice beside the others (not greyed out) */
+.th-way-quiet { background: rgba(20, 184, 166, .10); border-color: rgba(20, 184, 166, .38); box-shadow: none; color: var(--th-accent-ink) !important; }
+.th-way-quiet .pro-ico { color: var(--th-accent-ink); }
+.th-way-quiet:hover { border-color: rgba(20, 184, 166, .6); background: rgba(20, 184, 166, .16); }
+html.pro[data-theme="dark"] .th-way-quiet { background: rgba(45, 212, 191, .10); border-color: rgba(45, 212, 191, .34); }
+html.pro[data-theme="dark"] .th-way-quiet:hover { background: rgba(45, 212, 191, .16); border-color: rgba(45, 212, 191, .55); }
 .th-phone-only { display: none; }
 .th-error { margin: 14px auto 0; max-width: 640px; font-size: 13.5px; color: #D93036; min-height: 0; }
 html.pro[data-theme="dark"] .th-error { color: #FF8A8E; }
@@ -218,9 +229,10 @@ html.pro[data-theme="dark"] .th-tag-mock { color: #FBBF24; }
    --crop-y its offset in crop widths and heights) */
 .th-win-crop { --crop-w: 1.5; --crop-x: -0.035; --crop-y: -0.3; }
 .th-win img { position: absolute; display: block; max-width: none; width: calc(var(--crop-w) * 100%); left: calc(var(--crop-x) * 100%); top: calc(var(--crop-y) * 100%); }
-.th-win .th-dark-img { display: none; }
-html.pro[data-theme="dark"] .th-win .th-dark-img { display: block; }
-html.pro[data-theme="dark"] .th-win .th-light-img { display: none; }
+/* (both pictures are there, one shown: they crossfade when the theme changes) */
+.th-win .th-dark-img { opacity: 0; }
+html.pro[data-theme="dark"] .th-win .th-dark-img { opacity: 1; }
+html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
 .th-mock.th-flying .th-win-crop img { visibility: hidden; }
 
 /* recent sessions */
@@ -349,18 +361,34 @@ html.pro.tm-reduced.tm-out .pro-topbar, html.pro.tm-reduced.tm-out .sidepanel, h
 @media (prefers-reduced-motion: reduce) { .tm-loader::after, .tm-loader i { animation-duration: 3s; } }
 
 /* ---------- switching between light and dark (js/home.js) ---------- */
-/* a view transition: the new theme opens as a circle from the switch (js/home.js animates it) */
-::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
-::view-transition-group(root) { animation-duration: .62s; }
-html.tm-theme-fade::view-transition-old(root) { animation: tm-vt-out .22s linear both; }
-html.tm-theme-fade::view-transition-new(root) { animation: tm-vt-in .22s linear both; }
+/* on the home page the colours ease together: the theme's colour tokens are registered as colours,
+   so the values themselves are animated at the root and every use follows (no element animating
+   its own copy, out of step with its parent); the pictures crossfade from copies (js/home.js), and
+   nothing stops moving. In the workspace a view transition crossfades the rebuilt drawing. */
+@property --th-bg { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-ink { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-panel { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-panel-solid { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-panel-2 { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-line { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-line-strong { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-grid { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-glow { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-accent-ink { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-chip { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-spot { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-muted { syntax: '<color>'; inherits: true; initial-value: transparent; }
+@property --th-accent { syntax: '<color>'; inherits: true; initial-value: transparent; }
+html.pro.tm-theme-soft { --tm-tt: calc(var(--th-slow, 1) * .45s); --tm-te: cubic-bezier(.7, 0, .3, 1); transition: --th-bg var(--tm-tt) var(--tm-te), --th-ink var(--tm-tt) var(--tm-te), --th-panel var(--tm-tt) var(--tm-te), --th-panel-solid var(--tm-tt) var(--tm-te), --th-panel-2 var(--tm-tt) var(--tm-te), --th-line var(--tm-tt) var(--tm-te), --th-line-strong var(--tm-tt) var(--tm-te), --th-grid var(--tm-tt) var(--tm-te), --th-glow var(--tm-tt) var(--tm-te), --th-accent-ink var(--tm-tt) var(--tm-te), --th-chip var(--tm-tt) var(--tm-te), --th-spot var(--tm-tt) var(--tm-te), --th-muted var(--tm-tt) var(--tm-te), --th-accent var(--tm-tt) var(--tm-te); }
+/* (meanwhile no element runs its own colour transition: it would lag behind the tokens) */
+html.pro.tm-theme-soft .tm-home *:not(.th-plate) { transition: none !important; }
+html.pro.tm-theme-soft .tm-home .th-win img { transition: opacity calc(var(--th-slow, 1) * .45s) ease-in-out !important; }
+html.pro.tm-theme-soft .th-figure::before, html.pro.tm-theme-soft .tm-home .th-plate { transition: opacity calc(var(--th-slow, 1) * .45s) ease-in-out !important; }
+::view-transition-group(root) { animation-duration: .45s; }
+html.tm-theme-fade::view-transition-old(root) { animation: tm-vt-out .45s ease-in-out both; }
+html.tm-theme-fade::view-transition-new(root) { animation: tm-vt-in .45s ease-in-out both; mix-blend-mode: normal; }
 @keyframes tm-vt-out { to { opacity: 0; } }
 @keyframes tm-vt-in { from { opacity: 0; } }
-/* without view transitions: the main surfaces change colour together */
-html.pro.tm-theme-soft body, html.pro.tm-theme-soft .th-panel, html.pro.tm-theme-soft .th-way, html.pro.tm-theme-soft .th-launch, html.pro.tm-theme-soft .th-eyebrow,
-html.pro.tm-theme-soft .pro-app::before, html.pro.tm-theme-soft .pro-topbar, html.pro.tm-theme-soft .sidepanel, html.pro.tm-theme-soft .pro-legend-panel, html.pro.tm-theme-soft .pro-center, html.pro.tm-theme-soft .pro-statusbar {
-  transition: background-color .45s ease, color .45s ease, border-color .45s ease, box-shadow .45s ease !important;
-}
 
 /* ---------- the workspace's Home button and its question ---------- */
 html.pro .pro-home-btn { gap: 7px; }

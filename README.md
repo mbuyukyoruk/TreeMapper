@@ -38,7 +38,7 @@ from below; pulses of light run from the root to the tips as it moves.
 - **Recent sessions:** sessions you open or save are remembered in this browser only (IndexedDB),
   the six most recent, and open again from the list. Remove one, or **Clear** them all.
 - **Examples** (`examples/`, see `examples/README.md`):
-  - **Reverse transcriptases:** 1,077 published reference RTs (mostly bacterial families) in the circular layout.
+  - **Reverse transcriptases:** a tree built from 1,077 reference RTs gathered from published studies (mostly bacterial families), in the circular layout.
   - **CRISPR-Cas loci (mock data):** 56 invented loci of four subtypes in the rectangular layout.
 
 Sessions also keep the circular layout's ring widths.

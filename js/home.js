@@ -163,6 +163,8 @@
   function topIn(el) { var t = 0; while (el && el !== view && el !== document.body) { t += el.offsetTop; el = el.offsetParent; } return t; }
   function measure() {
     var W = vw(), H = vh(), wide = WIDE.matches;
+    // (the columns' own place and width first, as the stylesheet has them)
+    [colL, colR].forEach(function (c) { c.style.left = c.style.right = c.style.width = ''; });
     if (wide) {
       var D = Math.round(H * 0.75);
       var lw = colL.offsetWidth, lx = colL.offsetLeft, rx = colR.offsetLeft;   // (absolute in the view)
@@ -173,18 +175,30 @@
       var sT = Math.min(0.6, avail / tW), sG = Math.min(0.9, avail / gW);
       var tTop1 = 70, gTop1 = tTop1 + tH * sT + 14, gBot1 = gTop1 + gH * sG;
       // the figure: under the launcher at the top of the page (rising like a dome from the bottom
-      // of the window), between the two columns and under the smaller launcher at the end
+      // of the window, a little larger than the room under the launcher), between the two columns
+      // and under the smaller launcher at the end
       var top0 = gTop + gH + 26;
-      var r0 = clamp(H - 6 - top0, 260, W * 0.3);
+      var r0 = clamp((H - 6 - top0) * 1.14, 280, W * 0.33);
       var top1 = gBot1 + 16, room = H - 14 - top1;
       var r1 = Math.max(160, Math.min(room / 2, avail / 2));
+      // the columns at the end beside the figure, a gutter from it, as wide as the room allows
+      // (up to 460 px); the headline and launcher no wider than the space between them
+      var G = 28, cssW = lw;
+      var inner = 2 * r1 + 2 * G;
+      sT = Math.min(sT, inner / tW); sG = Math.min(sG, inner / gW);
+      gTop1 = tTop1 + tH * sT + 14; gBot1 = gTop1 + gH * sG;
+      top1 = gBot1 + 16; room = H - 14 - top1;
       var c1 = top1 + Math.max(r1, room / 2);
+      var pw = clamp((W - 2 * r1 - 2 * G - 2 * 28) / 2, cssW, 460);
+      colL.style.width = colR.style.width = pw + 'px';
+      colL.style.left = Math.max(16, W / 2 - r1 - G - pw) + 'px';
+      colR.style.right = 'auto'; colR.style.left = Math.min(W - 16 - pw, W / 2 + r1 + G) + 'px';
       // the columns at the end: their middles level with the figure's centre, within the window
       var place = function (h) { return clamp(c1 - h / 2, 76, Math.max(76, H - 16 - h)); };
       M = { wide: true, W: W, H: H, D: D, colTop: colTop, peek: -24, colL: place(colL.offsetHeight), colR: place(colR.offsetHeight),
         title: { dy: tTop1 - tTop, s: sT, top: tTop, h: tH }, group: { dy: gTop1 - gTop, s: sG },
         lead: { top: topIn(hero.lead), h: hero.lead.offsetHeight },
-        a: { cx: W / 2, cy: top0 + r0, r: r0, rot: 0.55 }, b: { cx: (lx + lw + rx) / 2, cy: c1, r: r1, rot: 0 } };
+        a: { cx: W / 2, cy: top0 + r0, r: r0, rot: 0.55 }, b: { cx: W / 2, cy: c1, r: r1, rot: 0 } };
       $('thRun').style.height = (H + D) + 'px';
     } else {
       var slot = $('thSlot'), st = topIn(slot), sw = slot.offsetWidth;
@@ -228,7 +242,7 @@
     hero.lead.style.transform = 'translateY(' + (Math.min(0, tBot + 18 - M.lead.top)).toFixed(2) + 'px)'; hero.lead.style.opacity = (1 - lead).toFixed(3);
     hero.eyebrow.style.visibility = u > 0.98 ? 'hidden' : ''; hero.lead.style.visibility = lead > 0.98 ? 'hidden' : '';
     // the columns come in from below (out of sight below the window at the top of the page)
-    var c = smooth(0.04, 0.96, p);
+    var c = smooth(0.12, 1, p);
     colL.style.transform = 'translateY(' + ((M.colL - M.colTop) + (1 - c) * (M.H - M.peek - M.colL)).toFixed(2) + 'px)';
     colR.style.transform = 'translateY(' + ((M.colR - M.colTop) + (1 - c) * (M.H - M.peek - M.colR)).toFixed(2) + 'px)';
   }
@@ -238,7 +252,7 @@
   function frame() {
     if (!isHome()) return;
     if (!M) measure();
-    var s = homeState(frozenY !== null ? frozenY : (window.scrollY || 0));
+    var s = homeState(window.scrollY || 0);
     sizeFigure(Math.max(figureSize(), 1));
     layoutAt(s);
     place(s); drawFigure(s.open, s.mask); paintPulses(s.pulse, s.pa, s.open);
@@ -329,9 +343,10 @@
       }
     }
     g.lineWidth = 1; g.lineCap = 'square';
-    g.strokeStyle = dark ? 'rgba(160, 220, 230, 0.075)' : 'rgba(13, 60, 70, 0.075)';
+    // (quieter on the light page, where dark lines on a pale ground stand out more)
+    g.strokeStyle = dark ? 'rgba(160, 220, 230, 0.075)' : 'rgba(13, 60, 70, 0.045)';
     g.beginPath(); segs.forEach(function (s) { g.moveTo(Math.round(s[0]) + 0.5, Math.round(s[1]) + 0.5); g.lineTo(Math.round(s[2]) + 0.5, Math.round(s[3]) + 0.5); }); g.stroke();
-    g.fillStyle = dark ? 'rgba(160, 220, 230, 0.16)' : 'rgba(13, 60, 70, 0.14)';
+    g.fillStyle = dark ? 'rgba(160, 220, 230, 0.16)' : 'rgba(13, 60, 70, 0.08)';
     nodes.forEach(function (n) { g.beginPath(); g.arc(n[0], n[1], n[2] ? 1.6 : 1.2, 0, Math.PI * 2); g.fill(); });
     routesBG.forEach(function (rt) { var c = [0], L = 0; for (var i = 1; i < rt.length; i++) { L += Math.abs(rt[i][0] - rt[i - 1][0]) + Math.abs(rt[i][1] - rt[i - 1][1]); c.push(L); } rt.cum = c; rt.len = L; });
     sparks = [];
@@ -347,7 +362,7 @@
     var W = spC.width, H = spC.height, dark = theme() === 'dark';
     spCtx.clearRect(0, 0, W, H);
     var want = Math.max(6, Math.round(routesBG.length / 5));
-    while (sparks.length < want) sparks.push({ rt: routesBG[Math.floor(Math.random() * routesBG.length)], d: -Math.random() * 600, v: 140 + Math.random() * 160, c: Math.floor(Math.random() * 4) });
+    while (sparks.length < want) sparks.push({ rt: routesBG[Math.floor(Math.random() * routesBG.length)], d: -Math.random() * 260, v: 55 + Math.random() * 60, c: Math.floor(Math.random() * 4) });
     spCtx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
     spCtx.lineCap = 'round';
     for (var i = sparks.length - 1; i >= 0; i--) {
@@ -360,11 +375,11 @@
       for (var k = 0; k <= N; k++) { var pp = sparkAt(s.rt, Math.max(0, s.d - trail + trail * k / N)); if (k) spCtx.lineTo(pp[0], pp[1]); else spCtx.moveTo(pp[0], pp[1]); }
       var hp = sparkAt(s.rt, Math.min(s.d, s.rt.len)), tp = sparkAt(s.rt, Math.max(0, s.d - trail));
       var gr = spCtx.createLinearGradient(tp[0], tp[1], hp[0], hp[1]);
-      gr.addColorStop(0, 'rgba(' + col + ',0)'); gr.addColorStop(1, 'rgba(' + col + ',' + ((dark ? 0.75 : 0.55) * fade).toFixed(3) + ')');
+      gr.addColorStop(0, 'rgba(' + col + ',0)'); gr.addColorStop(1, 'rgba(' + col + ',' + ((dark ? 0.75 : 0.38) * fade).toFixed(3) + ')');
       spCtx.strokeStyle = gr; spCtx.lineWidth = 1.4; spCtx.stroke();
       if (s.d <= s.rt.len) {
         var hg = spCtx.createRadialGradient(hp[0], hp[1], 0, hp[0], hp[1], 6);
-        hg.addColorStop(0, 'rgba(' + (dark ? '230,255,252' : col) + ',' + (0.9 * fade).toFixed(3) + ')'); hg.addColorStop(1, 'rgba(' + col + ',0)');
+        hg.addColorStop(0, 'rgba(' + (dark ? '230,255,252' : col) + ',' + ((dark ? 0.9 : 0.6) * fade).toFixed(3) + ')'); hg.addColorStop(1, 'rgba(' + col + ',0)');
         spCtx.fillStyle = hg; spCtx.fillRect(hp[0] - 6, hp[1] - 6, 12, 12);
       }
     }
@@ -948,10 +963,12 @@
   document.addEventListener('tm-session-opened', function (e) { lastExample = (e.detail && e.detail.example) || ''; });
 
   // ------------------------------------------------------------------ light and dark
-  // The switch (on this page or in the workspace's top bar) plays a short transition: the new
-  // theme opens as a circle from the switch over the old one (a view transition; elsewhere the
-  // main surfaces change colour together). Only for the visitor's own clicks and keys: a script
-  // that clicks the switch gets the change at once, as before.
+  // The switch (on this page or in the workspace's top bar) plays a short crossfade. On this page
+  // the colours ease and the pictures (the light, the traces, the figure) fade from copies of the
+  // old ones, while the sparks and everything else keep moving: a view transition would show a
+  // still picture of the old page meanwhile, and the background would stop. In the workspace,
+  // whose drawing is rebuilt in the new colours, a view transition crossfades it. Only for the
+  // visitor's own clicks and keys: a script that clicks the switch gets the change at once.
   function switchTheme(origin, trusted) {
     var tg = $('themeToggle');
     var apply = function () {
@@ -961,31 +978,29 @@
       lastDraw = lastPulse = null; ringStrips(); traces(); if (isHome()) frame(); else if (state !== 'app') drawFigure(cur.open, cur.mask);
       if (aurCtx) paintAurora(performance.now());
     };
-    if (!trusted) { apply(); return; }
-    var r = origin && origin.getBoundingClientRect ? origin.getBoundingClientRect() : { left: innerWidth / 2, top: 0, width: 0, height: 0 };
-    var x = r.left + r.width / 2, y = r.top + r.height / 2;
-    if (document.startViewTransition && !reduced()) {
-      var radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
-      html.classList.remove('tm-theme-fade');
-      // (Safari places the snapshots of a scrolled page wrongly: the page's scroll is taken out
-      // for the transition, the view held where it is, and put back afterwards)
-      var sy = window.scrollY || 0;
-      if (sy && isHome()) { frozenY = sy; window.scrollTo(0, 0); }
-      var vt = document.startViewTransition(apply);
-      vt.finished.then(unfreeze, unfreeze); setTimeout(unfreeze, 2500 * slow());   // (and in any case)
-      vt.ready.then(function () {
-        html.animate({ clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + radius + 'px at ' + x + 'px ' + y + 'px)'] },
-          { duration: 620 * slow(), easing: 'cubic-bezier(.65, 0, .35, 1)', pseudoElement: '::view-transition-new(root)' });
-      }).catch(function () {});
+    if (!trusted || reduced()) { apply(); return; }
+    var k = slow();
+    if (state === 'app' && document.startViewTransition) {
+      html.classList.add('tm-theme-fade');
+      var vt = document.startViewTransition(apply), off = function () { html.classList.remove('tm-theme-fade'); };
+      vt.finished.then(off, off);
       return;
     }
-    if (document.startViewTransition) { html.classList.add('tm-theme-fade'); var v2 = document.startViewTransition(apply); v2.finished.then(function () { html.classList.remove('tm-theme-fade'); }, function () { html.classList.remove('tm-theme-fade'); }); return; }
     html.classList.add('tm-theme-soft'); void document.body.offsetWidth;
+    // copies of the background's pictures as they are, fading out over the new ones (the figure's
+    // colours are the same in both themes; its plate crossfades in CSS)
+    [aur, trC].forEach(function (c) {
+      if (!c || c.hidden || !c.width || !c.animate) return;
+      var copy = document.createElement('canvas');
+      copy.className = c.className; copy.setAttribute('aria-hidden', 'true'); copy.style.cssText = c.style.cssText; copy.width = c.width; copy.height = c.height;
+      try { copy.getContext('2d').drawImage(c, 0, 0); } catch (e) { return; }
+      c.parentNode.insertBefore(copy, c.nextSibling);
+      var an = copy.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 520 * k, easing: 'ease-in-out', fill: 'forwards' });
+      an.onfinish = function () { copy.remove(); };
+    });
     apply();
-    setTimeout(function () { html.classList.remove('tm-theme-soft'); }, 500);
+    setTimeout(function () { html.classList.remove('tm-theme-soft'); }, 560 * k);
   }
-  var frozenY = null;
-  function unfreeze() { if (frozenY === null) return; var y = frozenY; window.scrollTo(0, y); frozenY = null; if (isHome()) frame(); }
   // the workspace's switch (a checkbox in a label): a visitor's click or key plays the transition
   function hookThemeSwitch() {
     var tg = $('themeToggle'); if (!tg || tg.__home) return; tg.__home = true;
@@ -1010,6 +1025,9 @@
     relayout();
   });
   window.addEventListener('load', function () { hookWorkspace(); if (isHome()) relayout(); });
+  // (a reload starts at the top: the page asks the browser not to restore the scroll, see the <head>)
+  if (window.scrollY) window.scrollTo(0, 0);
+  window.addEventListener('pageshow', function (e) { if (e.persisted && isHome()) { window.scrollTo(0, 0); relayout(); } });
   traces(); measure(); frame(); startBackground();
   window.tmHome = {
     open: openExample, show: function () { homeClicked(); }, state: function () { return state; },
