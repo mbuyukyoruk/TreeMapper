@@ -165,6 +165,7 @@
     var W = vw(), H = vh(), wide = WIDE.matches;
     // (the columns' own place and width first, as the stylesheet has them)
     [colL, colR].forEach(function (c) { c.style.left = c.style.right = c.style.width = c.style.height = ''; });
+    edgeKey = '';
     if (wide) {
       var D = Math.round(H * 0.75);
       var lw = colL.offsetWidth, lx = colL.offsetLeft, rx = colR.offsetLeft;   // (absolute in the view)
@@ -181,7 +182,8 @@
       // launcher, the rings shown at first reaching up to the launcher)
       var top0 = gTop + gH + 24;
       var shown0 = fig ? clamp(fig.maskStart - VISIBLE, 0.3, 1) : 1;
-      var r0 = clamp((H - top0) / shown0, 280, W * 0.5);
+      // (four fifths of the room up to the launcher: the owner, round 6)
+      var r0 = clamp(0.8 * (H - top0) / shown0, 240, W * 0.4);
       var top1 = gBot1 + 16, room = H - 14 - top1;
       var r1 = Math.max(160, Math.min(room / 2, avail / 2));
       // the columns at the end beside the figure, a gutter from it, as wide as the room allows
@@ -196,14 +198,19 @@
       colL.style.width = colR.style.width = pw + 'px';
       colL.style.left = Math.max(16, W / 2 - r1 - G - pw) + 'px';
       colR.style.right = 'auto'; colR.style.left = Math.min(W - 16 - pw, W / 2 + r1 + G) + 'px';
-      // the columns at the end: from under the top bar, beside the headline, to the bottom of the
-      // window (their contents spread to fill them: css/home.css)
-      var colH = Math.max(H - 76 - 16, 0);
-      colL.style.height = colR.style.height = colH + 'px';
-      M = { wide: true, W: W, H: H, D: D, colTop: colTop, peek: -24, colL: 76, colR: 76,
+      // the columns at the end: below the launcher where they fit, else as high as they need
+      // (beside the headline), their middles near the figure's centre, within the window
+      var place = function (h) { return Math.max(76, Math.min(H - 16 - h, Math.max(gBot1 + 14, c1 - h / 2))); };
+      var pL = place(colL.offsetHeight), pR = place(colR.offsetHeight);
+      // the areas beside the headline left free by the columns: little trees grow into them from
+      // the window's edges as the page is scrolled (one each side, js/home.js edges())
+      var hw = Math.max(tW * sT, gW * sG) / 2 + 28;
+      var side = function (top, x0, x1) { return { x0: x0, x1: x1, y0: 74, y1: Math.min(top - 18, gBot1 + 4) }; };
+      M = { wide: true, W: W, H: H, D: D, colTop: colTop, peek: -24, colL: pL, colR: pR,
+        edges: [side(pL, 0, W / 2 - hw), side(pR, W, W / 2 + hw)],
         title: { dy: tTop1 - tTop, s: sT, top: tTop, h: tH }, group: { dy: gTop1 - gTop, s: sG },
         lead: { top: topIn(hero.lead), h: hero.lead.offsetHeight },
-        a: { cx: W / 2, cy: top0 + r0 * shown0, r: r0, rot: 0.55, top: top0 }, b: { cx: W / 2, cy: c1, r: r1, rot: 0, top: c1 - r1 } };
+        a: { cx: W / 2, cy: H, r: r0, rot: 0.55, top: H - r0 * shown0 }, b: { cx: W / 2, cy: c1, r: r1, rot: 0, top: c1 - r1 } };
       $('thRun').style.height = (H + D) + 'px';
     } else {
       var slot = $('thSlot'), st = topIn(slot), sw = slot.offsetWidth;
@@ -261,6 +268,7 @@
     sizeFigure(Math.max(figureSize(), 1));
     layoutAt(s);
     place(s); drawFigure(s.open, s.mask); paintPulses(s.pulse, s.pa, s.open);
+    edges(s.p);
   }
   function relayout() { M = null; measure(); frame(); }
   window.addEventListener('scroll', onScroll, { passive: true });
@@ -268,6 +276,68 @@
   if (WIDE.addEventListener) WIDE.addEventListener('change', function () { if (isHome()) relayout(); });
   new MutationObserver(function () { lastDraw = lastPulse = null; ringStrips(); traces(); if (isHome()) frame(); else if (state === 'opening' || state === 'closing') drawFigure(cur.open, cur.mask); }).observe(html, { attributes: true, attributeFilter: ['data-theme'] });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (isHome()) relayout(); });
+
+  // the little trees beside the headline at the end of the scroll: one each side, a small
+  // rectangular tree growing in from the window's edge (its branches drawn out as far as the scroll
+  // has come), its tips in the RT families' colours; quiet, behind the page
+  var edgeC = $('thEdges'), edgeKey = '', edgeTrees = null;
+  function edgeTree(seed, n) {
+    var R = rng(seed), tips = [];
+    // a random binary topology over n tips: each node splits its tips in two
+    function build(lo, hi, depth) {
+      if (hi - lo === 1) return { tip: lo, depth: depth };
+      var m = lo + 1 + Math.floor(R() * (hi - lo - 1));
+      return { kids: [build(lo, m, depth + 1), build(m, hi, depth + 1)], depth: depth };
+    }
+    var t = build(0, n, 0), maxD = 0;
+    (function md(x) { maxD = Math.max(maxD, x.depth); if (x.kids) x.kids.forEach(md); })(t);
+    return { root: t, n: n, maxD: maxD, cols: [] };
+  }
+  function edges(p) {
+    if (!edgeC) return;
+    var on = M && M.wide && M.edges;
+    var k = on ? (p.toFixed(3) + theme() + M.W + 'x' + M.H) : 'off';
+    if (k === edgeKey) return; edgeKey = k;
+    var W = vw(), H = vh(), d = dpr(), g = edgeC.getContext('2d');
+    if (edgeC.width !== Math.round(W * d) || edgeC.height !== Math.round(H * d)) { edgeC.width = Math.round(W * d); edgeC.height = Math.round(H * d); }
+    g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, W, H);
+    if (!on) return;
+    if (!edgeTrees) edgeTrees = [edgeTree(73, 9), edgeTree(311, 8)];
+    var grow = smooth(0.35, 1, p), dark = theme() === 'dark';
+    var fam = FIG ? FIG.families.map(function (f) { return f[1]; }) : ['#009E73', '#E69F00', '#D55E00', '#0072B2', '#CC79A7'];
+    M.edges.forEach(function (A, i) {
+      var h = A.y1 - A.y0, w = Math.abs(A.x1 - A.x0);
+      if (h < 90 || w < 120 || grow <= 0) return;
+      var T = edgeTrees[i], dir = A.x1 > A.x0 ? 1 : -1;
+      // the tree's box: from the edge (16 px in) to near the headline, its tips spread over the area
+      var x0 = A.x0 + dir * 16, span = (w - 40) * 0.92, yTop = A.y0 + h * 0.12, yH = h * 0.76;
+      var X = function (depth) { return x0 + dir * span * (depth / (T.maxD + 1)); };
+      var Y = function (tip) { return yTop + yH * (tip + 0.5) / T.n; };
+      // how far out it has grown (from the edge)
+      var reach = x0 + dir * span * grow;
+      g.save();
+      g.beginPath(); if (dir > 0) g.rect(0, 0, reach, H); else g.rect(reach, 0, W - reach, H); g.clip();
+      g.lineWidth = 1.6; g.lineCap = 'round';
+      g.strokeStyle = dark ? 'rgba(170, 225, 232, 0.30)' : 'rgba(13, 60, 70, 0.22)';
+      var tipsAt = [];
+      (function draw(nd, px) {
+        var x = nd.kids ? X(nd.depth + 1) : X(T.maxD + 1), y;
+        if (nd.kids) {
+          var ys = nd.kids.map(function (c) { return draw(c, x); });
+          y = (ys[0] + ys[1]) / 2;
+          g.beginPath(); g.moveTo(x, ys[0]); g.lineTo(x, ys[1]); g.stroke();
+        } else { y = Y(nd.tip); tipsAt.push([x, y, nd.tip]); }
+        g.beginPath(); g.moveTo(px, y); g.lineTo(x, y); g.stroke();
+        return y;
+      })(T.root, x0);
+      tipsAt.forEach(function (t) {
+        if ((dir > 0 && t[0] > reach) || (dir < 0 && t[0] < reach)) return;
+        g.fillStyle = fam[(t[2] + i * 2) % fam.length]; g.globalAlpha = dark ? 0.9 : 0.8;
+        g.beginPath(); g.arc(t[0], t[1], 3.2, 0, Math.PI * 2); g.fill();
+      });
+      g.restore();
+    });
+  }
 
   // each ring of the figure in the list beside it, as a strip of its own cells (a slice of the
   // circle, unrolled), so the list and the rings can be matched by eye
@@ -322,7 +392,7 @@
     trC.width = Math.round(W * d); trC.height = Math.round(H * d);
     if (spC) { spC.width = W; spC.height = H; }
     var g = trC.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, W, H);
-    var R = rng(20261025), reach = Math.min(W * 0.32, 520);
+    var R = rng(20261025), reach = Math.min(W * 0.3, 460);
     routesBG = [];
     var segs = [], nodes = [];
     // a rectangular tree from (x, y) growing in direction dir (1: right, -1: left)
@@ -340,20 +410,20 @@
         grow(x1, yy, dir, len * (0.62 + R() * 0.3), spread * 0.52, depth - 1, here.concat([[x1, yy]]));
       }
     }
-    var per = Math.max(2, Math.round(H / 400));
+    var per = Math.max(2, Math.round(H / 330));
     for (var side = 0; side < 2; side++) {
       for (var t = 0; t < per; t++) {
         var y0 = 84 + (H - 84) * (t + 0.5 + (R() - 0.5) * 0.5) / per, dir = side ? -1 : 1;
-        grow(side ? W : 0, y0, dir, 70 + R() * 60, H / per * 0.34, 4, [[side ? W : 0, y0]]);
+        grow(side ? W : 0, y0, dir, 46 + R() * 50, H / per * 0.3, 5, [[side ? W : 0, y0]]);
       }
     }
-    // (lines thick enough to read as traces; quieter on the light page)
-    g.lineWidth = dark ? 1.6 : 1.4; g.lineCap = 'round';
+    // (1.5 px lines, so the traces can be seen)
+    g.lineWidth = 1.5; g.lineCap = 'square';
     // (quieter on the light page, where dark lines on a pale ground stand out more)
-    g.strokeStyle = dark ? 'rgba(160, 220, 230, 0.10)' : 'rgba(13, 60, 70, 0.065)';
+    g.strokeStyle = dark ? 'rgba(160, 220, 230, 0.075)' : 'rgba(13, 60, 70, 0.045)';
     g.beginPath(); segs.forEach(function (s) { g.moveTo(Math.round(s[0]) + 0.5, Math.round(s[1]) + 0.5); g.lineTo(Math.round(s[2]) + 0.5, Math.round(s[3]) + 0.5); }); g.stroke();
-    g.fillStyle = dark ? 'rgba(160, 220, 230, 0.22)' : 'rgba(13, 60, 70, 0.12)';
-    nodes.forEach(function (n) { g.beginPath(); g.arc(n[0], n[1], n[2] ? 2.6 : 2, 0, Math.PI * 2); g.fill(); });
+    g.fillStyle = dark ? 'rgba(160, 220, 230, 0.16)' : 'rgba(13, 60, 70, 0.08)';
+    nodes.forEach(function (n) { g.beginPath(); g.arc(n[0], n[1], n[2] ? 1.6 : 1.2, 0, Math.PI * 2); g.fill(); });
     routesBG.forEach(function (rt) { var c = [0], L = 0; for (var i = 1; i < rt.length; i++) { L += Math.abs(rt[i][0] - rt[i - 1][0]) + Math.abs(rt[i][1] - rt[i - 1][1]); c.push(L); } rt.cum = c; rt.len = L; });
     sparks = [];
   }
@@ -382,11 +452,11 @@
       var hp = sparkAt(s.rt, Math.min(s.d, s.rt.len)), tp = sparkAt(s.rt, Math.max(0, s.d - trail));
       var gr = spCtx.createLinearGradient(tp[0], tp[1], hp[0], hp[1]);
       gr.addColorStop(0, 'rgba(' + col + ',0)'); gr.addColorStop(1, 'rgba(' + col + ',' + ((dark ? 0.75 : 0.38) * fade).toFixed(3) + ')');
-      spCtx.strokeStyle = gr; spCtx.lineWidth = 2.2; spCtx.stroke();
+      spCtx.strokeStyle = gr; spCtx.lineWidth = 1.4; spCtx.stroke();
       if (s.d <= s.rt.len) {
-        var hg = spCtx.createRadialGradient(hp[0], hp[1], 0, hp[0], hp[1], 9);
+        var hg = spCtx.createRadialGradient(hp[0], hp[1], 0, hp[0], hp[1], 6);
         hg.addColorStop(0, 'rgba(' + (dark ? '230,255,252' : col) + ',' + ((dark ? 0.9 : 0.6) * fade).toFixed(3) + ')'); hg.addColorStop(1, 'rgba(' + col + ',0)');
-        spCtx.fillStyle = hg; spCtx.fillRect(hp[0] - 9, hp[1] - 9, 18, 18);
+        spCtx.fillStyle = hg; spCtx.fillRect(hp[0] - 6, hp[1] - 6, 12, 12);
       }
     }
     spCtx.globalCompositeOperation = 'source-over';

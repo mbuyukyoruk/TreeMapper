@@ -69,10 +69,11 @@ html.pro.tm-home.tm-moving.tm-out .pro-app::before { opacity: 0; }
    the traces, the grid and the figure below the page (negative), the page, the workspace after
    it, the flying figure above everything (60) */
 .tm-home button { font: inherit; color: inherit; }
-.th-aurora, .th-traces, .th-sparks { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; pointer-events: none; }
+.th-aurora, .th-traces, .th-sparks, .th-edges { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; pointer-events: none; }
 .th-aurora { z-index: -4; }
 .th-traces { z-index: -3; }
 .th-sparks { z-index: -3; }
+.th-edges { z-index: -2; }
 .th-grid {   /* a fine dot grid, painted once with the page */
   position: fixed; inset: 0; z-index: -2; pointer-events: none;
   background: radial-gradient(var(--th-grid) 1px, transparent 1.3px) 0 0 / 24px 24px;
@@ -277,16 +278,6 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
   .th-left, .th-right { position: absolute; top: 80px; width: 344px; }
   .th-left { left: 28px; }
   .th-right { right: 28px; }
-  /* (the columns run from under the top bar to the bottom of the window, js/home.js: the RT card
-     spreads its parts over its height, the mock example's picture takes the room in its column) */
-  .th-left > .th-panel { height: 100%; justify-content: space-between; box-sizing: border-box; }
-  .th-left .th-fams { gap: clamp(5px, 1.1vh, 12px); }
-  .th-left .th-rings ol { gap: clamp(4px, 0.9vh, 10px); }
-  .th-left .th-rings canvas { height: clamp(16px, 2.2vh, 24px); }
-  .th-right > .th-panel:first-child { flex: 1 1 auto; min-height: 0; }
-  .th-right > .th-panel:first-child .th-mock { flex: 1 1 auto; min-height: 0; }
-  .th-right > .th-panel:first-child .th-win { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  .th-right > .th-panel:first-child .th-win-crop { flex: 1 1 auto; aspect-ratio: auto; min-height: 150px; }
   .th-right #thRecentPanel { min-height: 0; flex: 0 1 auto; }
 }
 @media (min-width: 1180px) and (max-width: 1360px) and (min-height: 640px) {
@@ -318,14 +309,14 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
 /* the order (js/home.js sets the delays): opening, the page goes first and the panels follow;
    going home, the panels go first and the page follows. The hero's parts and the side columns
    are moved by the scroll (inline transforms), so leaving moves their wrappers. */
-html.pro.tm-moving .tm-home .th-top, html.pro.tm-moving .tm-home .th-hero, html.pro.tm-moving .tm-home .th-cols, html.pro.tm-moving .tm-home .th-slot, html.pro.tm-moving .th-aurora, html.pro.tm-moving .th-grid, html.pro.tm-moving .th-traces, html.pro.tm-moving .th-sparks {
+html.pro.tm-moving .tm-home .th-top, html.pro.tm-moving .tm-home .th-hero, html.pro.tm-moving .tm-home .th-cols, html.pro.tm-moving .tm-home .th-slot, html.pro.tm-moving .th-aurora, html.pro.tm-moving .th-grid, html.pro.tm-moving .th-traces, html.pro.tm-moving .th-sparks, html.pro.tm-moving .th-edges {
   transition: transform calc(var(--th-slow, 1) * .48s) cubic-bezier(.65, 0, .35, 1) calc(var(--th-slow, 1) * var(--th-home-delay, 0s)),
               opacity calc(var(--th-slow, 1) * .4s) cubic-bezier(.65, 0, .35, 1) calc(var(--th-slow, 1) * var(--th-home-delay, 0s));
 }
 html.pro.tm-away .tm-home .th-top { transform: translateY(-40px); opacity: 0; }
 html.pro.tm-away .tm-home .th-hero { transform: translateY(-60px); opacity: 0; }
 html.pro.tm-away .tm-home .th-cols { transform: translateY(60px); opacity: 0; }
-html.pro.tm-bgaway .th-aurora, html.pro.tm-bgaway .th-grid, html.pro.tm-bgaway .th-traces, html.pro.tm-bgaway .th-sparks { opacity: 0; }
+html.pro.tm-bgaway .th-aurora, html.pro.tm-bgaway .th-grid, html.pro.tm-bgaway .th-traces, html.pro.tm-bgaway .th-sparks, html.pro.tm-bgaway .th-edges { opacity: 0; }
 html.pro.tm-away .tm-home { pointer-events: none; }
 /* the workspace's panels come in from their edges */
 html.pro.tm-moving .pro-topbar, html.pro.tm-moving .sidepanel, html.pro.tm-moving .pro-legend-panel, html.pro.tm-moving .pro-statusbar, html.pro.tm-moving .pro-center {
