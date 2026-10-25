@@ -200,15 +200,19 @@
       // the columns at the end: below the launcher where they fit, else as high as they need
       // (beside the headline), their middles near the figure's centre, within the window
       var place = function (h) { return Math.max(76, Math.min(H - 16 - h, Math.max(gBot1 + 14, c1 - h / 2))); };
-      // (the right column starts right below the launcher, so its mock example's window has the room)
-      var pL = place(colL.offsetHeight), pR = Math.min(place(colR.offsetHeight), Math.max(76, gBot1 + 14));
-      // the right column runs on to the bottom of the window: the mock example's window takes the
-      // room (css/home.css)
-      colR.style.height = Math.max(colR.offsetHeight, H - 16 - pR) + 'px';
-      // the areas beside the headline left free by the columns: little trees grow into them from
-      // the window's edges as the page is scrolled (one each side, js/home.js edges())
+      // (both columns start at one height, the higher of their own places: the RT card and the
+      // mock example's card top-aligned; the recent sessions keep one height, a long list scrolls)
+      var rp = $('thRecentPanel'); rp.style.height = '';
+      // the recent sessions card ends where the RT card ends (its height set by the layout, not by
+      // how many sessions there are: a longer list scrolls inside it); the footer line under it
+      var hh = function (e) { return e.getBoundingClientRect().height; };
+      var ft = colR.querySelector('.th-foot'), footH = ft ? hh(ft) + 8 : 0;
+      var top2 = Math.min(place(hh(colL) + footH), place(hh(colR))), pL = top2, pR = top2;
+      rp.style.height = Math.max(172, hh(rp) + hh(colL) - (hh(colR) - footH)) + 'px';
+      // the areas beside the hero block (headline, launcher and the buttons under it) left free by
+      // the columns: a note on each side spans the block's height (js/home.js edges())
       var hw = Math.max(tW * sT, gW * sG) / 2 + 28;
-      var side = function (top, x0, x1) { return { x0: x0, x1: x1, y0: 74, y1: Math.min(top - 18, gBot1 + 4) }; };
+      var side = function (top, x0, x1) { return { x0: x0, x1: x1, y0: tTop1, y1: gBot1, free: top - 14 >= gBot1 }; };
       M = { wide: true, W: W, H: H, D: D, colTop: colTop, peek: -24, colL: pL, colR: pR,
         edges: [side(pL, 0, W / 2 - hw), side(pR, W, W / 2 + hw)],
         title: { dy: tTop1 - tTop, s: sT, top: tTop, h: tH }, group: { dy: gTop1 - gTop, s: sG },
@@ -288,17 +292,21 @@
     sideEls.forEach(function (el, i) {
       if (!el) return;
       var A = M && M.wide && M.edges ? M.edges[i] : null;
-      var w = A ? Math.min(300, Math.abs(A.x1 - A.x0) - 56) : 0, h = el.offsetHeight || 96;
-      if (!A || w < 200 || Math.min(M.edges[0].y1, M.edges[1].y1) - A.y0 < h + 8) { el.hidden = true; return; }
-      el.hidden = false; el.style.width = w + 'px';
-      // settled: in the middle of its area; before that, out past its edge of the window
-      // (both at one height: level with the headline's middle, within the area)
-      var mid = M.title.top + M.title.dy + M.title.h * M.title.s / 2;
-      var dir = A.x1 > A.x0 ? 1 : -1, cx = (A.x0 + A.x1) / 2, left = cx - w / 2;
-      var top = clamp(mid - el.offsetHeight / 2, M.edges[0].y0, Math.min(M.edges[0].y1, M.edges[1].y1) - el.offsetHeight);
-      if (top + el.offsetHeight > A.y1) { el.hidden = true; return; }
+      var w = A ? Math.min(300, Math.abs(A.x1 - A.x0) - 56) : 0;
+      // (only where both sides have room, so the two are always a pair)
+      if (!A || w < 200 || !M.edges[0].free || !M.edges[1].free || A.y1 - A.y0 < 96) { el.hidden = true; return; }
+      el.hidden = false;
+      // settled: in the column of the panel under it, centred on the hero block's height; before
+      // that, out past its edge of the window
+      // (in the column of the panel under it: its outer edge on the panel's, as wide as the panel
+      // where the headline leaves room)
+      var dir = A.x1 > A.x0 ? 1 : -1, col = i ? colR : colL, cw = col.offsetWidth;
+      w = Math.min(cw, Math.abs(A.x1 - A.x0) - (dir > 0 ? col.offsetLeft : (M.W - col.offsetLeft - cw)));
+      var left = dir > 0 ? col.offsetLeft : col.offsetLeft + cw - w;
+      el.style.width = w + 'px';
       var u = EASE(smooth(0.45, 1, p)), off = dir > 0 ? -(left + w + 24) : (M.W - left + 24);
-      el.style.left = left + 'px'; el.style.top = top + 'px';
+      // (its own height, centred on the hero block: from the headline's top to the buttons' bottom)
+      el.style.left = left + 'px'; el.style.top = ((A.y0 + A.y1) / 2 - el.offsetHeight / 2) + 'px';
       el.style.transform = 'translateX(' + ((1 - u) * off).toFixed(1) + 'px)';
       el.style.opacity = (0.25 + 0.75 * u).toFixed(3);
     });
@@ -482,6 +490,7 @@
           '<button type="button" class="th-rec-x" data-forget="' + esc(r.id) + '" aria-label="Remove ' + esc(r.name) + ' from recent sessions" title="Remove from this list">' + ICON(I.x, 13, 2) + '</button></li>';
       }).join('');
       $('thRecentEmpty').hidden = list.length > 0;
+      ul.classList.toggle('th-more', list.length > 2);
       $('thRecentClear').hidden = list.length === 0;
       var cnt = $('thRecentCount'); if (cnt) { cnt.hidden = !list.length; cnt.textContent = String(list.length); }
       if (isHome()) relayout();

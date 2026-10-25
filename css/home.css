@@ -183,7 +183,7 @@ html.pro[data-theme="dark"] .th-error { color: #FF8A8E; }
 /* ---------- the notes beside the headline (wide windows, the end of the scroll; js/home.js) ---------- */
 .th-side { display: none; }
 @media (min-width: 1180px) and (min-height: 640px) {
-  .th-side:not([hidden]) { display: grid; position: absolute; z-index: 1; grid-template-columns: 36px 1fr; gap: 12px; align-items: center; padding: 14px 16px;
+  .th-side:not([hidden]) { display: grid; position: absolute; z-index: 1; grid-template-columns: 36px 1fr; gap: 12px; align-items: center; padding: 14px 16px; box-sizing: border-box;
     background: var(--th-panel); border: 1px solid var(--th-line); border-radius: 16px; box-shadow: var(--th-shadow); will-change: transform; }
   .th-side-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--th-accent-ink); background: rgba(20, 184, 166, .12); }
   .th-side b { display: block; font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
@@ -229,13 +229,13 @@ html.pro[data-theme="dark"] .th-tag-mock { color: #FBBF24; }
 .th-ex-actions .pro-btn { gap: 7px; flex: 1; justify-content: center; height: 38px; font-size: 14px; }
 
 /* example: the mock dataset, shown as the workspace's canvas in a window */
-.th-mock { display: flex; flex-direction: column; gap: 12px; cursor: pointer; text-align: left; border: 0; background: none; padding: 0; }
-.th-win { border-radius: 12px; overflow: hidden; border: 1px solid var(--th-line-strong); background: var(--th-panel-solid); box-shadow: 0 18px 36px -22px rgba(0, 0, 0, .55); transition: transform .2s ease, box-shadow .2s ease; }
+.th-mock { display: flex; flex-direction: column; gap: 12px; cursor: pointer; text-align: left; border: 0; background: none; padding: 0; width: 100%; }
+.th-win { display: block; width: 100%; box-sizing: border-box; border-radius: 12px; overflow: hidden; border: 1px solid var(--th-line-strong); background: var(--th-panel-solid); box-shadow: 0 18px 36px -22px rgba(0, 0, 0, .55); transition: transform .2s ease, box-shadow .2s ease; }
 .th-mock:hover .th-win, .th-mock:focus-visible .th-win { transform: translateY(-2px); box-shadow: 0 26px 44px -22px rgba(0, 0, 0, .6); }
 .th-win-bar { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--th-line); font: 500 11px/1 var(--pro-mono); color: var(--muted); background: var(--th-panel-2); }
 .th-win-bar i { width: 9px; height: 9px; border-radius: 50%; background: #FF5F57; flex: none; }
 .th-win-bar i + i { background: #FEBC2E; } .th-win-bar i + i + i { background: #28C840; margin-right: 6px; }
-.th-win-crop { display: block; position: relative; aspect-ratio: 16 / 10; overflow: hidden; }
+.th-win-crop { display: block; position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; }
 /* the drawing as the workspace shows it (cut to the frame's 16:10, js/home.js reads where from
    data-crop): covering the frame from its top left (the tree kept), whatever the frame's height */
 .th-win img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; max-width: none; object-fit: cover; object-position: 0 0; }
@@ -289,13 +289,21 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
   .th-left { left: 28px; }
   .th-right { right: 28px; }
   .th-right #thRecentPanel { min-height: 0; flex: 0 1 auto; }
-  /* (the right column runs to the bottom of the window, js/home.js: the mock example's card and
-     its window take the room, the picture covering the window from its top left) */
-  .th-right > .th-panel:first-child { flex: 1 1 auto; min-height: 0; }
-  .th-right .th-mock { flex: 1 1 auto; min-height: 0; }
-  .th-right .th-win { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-  .th-right .th-win-crop { flex: 1 1 auto; aspect-ratio: auto; min-height: 160px; }
-  .th-right .th-foot { margin-top: -4px; }
+  /* (the mock example's window as wide as its card and 158 px high: the owner's chosen height) */
+  .th-right .th-win-crop { aspect-ratio: auto; height: 158px; }
+  /* (the recent sessions keep one height, two rows; a longer list scrolls inside the card) */
+  /* (the footer line close under the recent sessions; the RT card a little tighter, so that card,
+     the footer and the notes beside the hero fit a 945 px window together) */
+  .th-right { gap: 8px; } .th-right > .th-panel + .th-panel { margin-top: 8px; }
+  .th-left > .th-panel { gap: 10px; padding: 16px 18px; }
+  .th-left .th-fams { gap: 3px; }
+  .th-left .th-rings ol { gap: 2px; }
+  .th-right #thRecentPanel { height: 172px; box-sizing: border-box; flex: none; }   /* (js/home.js sets it to end level with the RT card) */
+  .th-right #thRecentPanel .th-recent { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  /* (more than two: the list scrolls, its last visible row fading out to say so) */
+  .th-right #thRecentPanel .th-recent.th-more { -webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent); padding-bottom: 14px; }
+  .th-right #thRecentPanel .th-recent:empty { display: none; }
+  .th-right #thRecentPanel .th-empty { flex: 1 1 auto; }   /* (with nothing listed, the note fills the card) */
 }
 @media (min-width: 1180px) and (max-width: 1360px) and (min-height: 640px) {
   .th-left, .th-right { width: 312px; }
