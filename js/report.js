@@ -12,7 +12,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var FORMAT = 'treemapper-report', KEEP = 60;
   // where reports go: the deployed Worker's address (report-worker/README.md)
-  var REPORT_ENDPOINT = '';
+  var REPORT_ENDPOINT = 'https://treemapper-report.buyukyorukmurat.workers.dev';
   var endpoint = function () { return window.TM_REPORT_ENDPOINT || REPORT_ENDPOINT; };
   var MAX_FILE_B64 = 11 * 1024 * 1024;   // (the Worker takes up to 12 MB of base64)
   var errors = [], actions = [], t0 = Date.now();
