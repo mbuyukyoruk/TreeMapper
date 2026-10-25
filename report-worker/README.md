@@ -19,7 +19,9 @@ settings, not the repository's: your profile picture → Settings → Developer 
 bottom of the left sidebar) → Personal access tokens → Fine-grained tokens → Generate new token.
 
 - **Repository access:** Only select repositories → `TreeMapper-reports`
-- **Permissions → Repository permissions:** Issues: *Read and write*; Contents: *Read and write*
+- **Permissions:** these appear once the repository is chosen. Click **Add permissions** (older
+  pages: *Repository permissions*), add **Issues** and **Contents**, and set both to
+  *Read and write* (they start as Read-only).
 - **Expiration:** up to a year. Note the date; when the token expires, generate a new one and
   repeat step 3's secret.
 
