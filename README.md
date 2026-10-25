@@ -7,7 +7,7 @@ display and SVG export. Everything runs in the browser; no data is uploaded.
 ## How to run
 
 Open `index.html` in a browser (double-click it), or use the hosted copy at
-https://mbuyukyoruk.github.io/TreeMapper/. No server or install is needed and
+https://wiedenheftlab.github.io/TreeMapper/. No server or install is needed and
 it works offline (only the web fonts come from the internet; without it the
 browser uses a system font). Keep the folder structure intact: the page loads
 the files in `css/` and `js/`.
