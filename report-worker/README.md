@@ -30,7 +30,8 @@ Copy the token (it is shown once).
 ## 3. The Worker on Cloudflare
 
 1. Sign up at <https://dash.cloudflare.com> (free plan, no card needed).
-2. **Workers & Pages → Create → Create Worker**, name it `treemapper-report`, **Deploy**.
+2. **Workers & Pages → Create application → Start with Hello World** (not the Git or static
+   files options), name it `treemapper-report`, **Deploy**.
 3. **Edit code**: replace everything with the contents of `worker.js` from this folder, then **Deploy**.
 4. The Worker's **Settings → Variables and secrets → Add**:
    - `REPO` (type *Text*): `mbuyukyoruk/TreeMapper-reports`
