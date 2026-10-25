@@ -88,6 +88,9 @@
     if (!fig || !RP) return;
     var k = open.toFixed(2) + ':' + mask.toFixed(4) + ':' + RP + theme() + dpr();
     if (k === lastDraw) return; lastDraw = k;
+    // (the plate or glow under the figure reaches only as far as the rings shown, so the place
+    // where the outer rings will grow is not outlined before they do)
+    figEl.style.setProperty('--th-plate', Math.min(1, mask).toFixed(4));
     if (ringsGL && ringsGL.lost()) { ringsGL = null; cRings.hidden = true; }
     var d = dpr(), g = cStatic.getContext('2d');
     if (ringsGL) ringsGL.draw({ theme: theme(), open: open, mask: mask });
@@ -313,7 +316,7 @@
       var k = R() < 0.28 ? 3 : 2, h = spread * (0.75 + R() * 0.5);
       for (var i = 0; i < k; i++) {
         var yy = y + (k === 2 ? (i ? h : -h) : (i - 1) * h);
-        if (yy < 8 || yy > H - 8) continue;
+        if (yy < 84 || yy > H - 8) continue;   // (clear of the top bar)
         segs.push([x1, y, x1, yy]);
         grow(x1, yy, dir, len * (0.62 + R() * 0.3), spread * 0.52, depth - 1, here.concat([[x1, yy]]));
       }
@@ -321,7 +324,7 @@
     var per = Math.max(2, Math.round(H / 330));
     for (var side = 0; side < 2; side++) {
       for (var t = 0; t < per; t++) {
-        var y0 = H * (t + 0.5 + (R() - 0.5) * 0.5) / per, dir = side ? -1 : 1;
+        var y0 = 84 + (H - 84) * (t + 0.5 + (R() - 0.5) * 0.5) / per, dir = side ? -1 : 1;
         grow(side ? W : 0, y0, dir, 46 + R() * 50, H / per * 0.3, 5, [[side ? W : 0, y0]]);
       }
     }
@@ -374,7 +377,8 @@
     BLOBS.forEach(function (b, i) {
       var x = W * (0.5 + 0.42 * Math.sin(s * 2 * Math.PI / b[1] + b[4])), y = H * (0.45 + 0.4 * Math.sin(s * 2 * Math.PI / b[2] + b[4] * 1.7));
       var r = W * b[3] * (0.9 + 0.1 * Math.sin(s / 7 + i)), g = aurCtx.createRadialGradient(x, y, 0, x, y, r);
-      var a = (dark ? 0.26 : 0.24) * (i === 4 ? 0.6 : 1);
+      // (the amber light only on the light page: on the dark one it mixes into an olive smear)
+      var a = (dark ? 0.26 : 0.24) * (i === 4 ? (dark ? 0.12 : 0.6) : 1);
       g.addColorStop(0, 'rgba(' + b[0] + ',' + a + ')'); g.addColorStop(1, 'rgba(' + b[0] + ',0)');
       aurCtx.fillStyle = g; aurCtx.fillRect(0, 0, W, H);
     });
@@ -596,6 +600,7 @@
     }
     html.classList.remove('tm-reduced');
     panelsIn(k);
+    if (kind !== 'rt') html.style.setProperty('--th-panel-delay', '.1s');
     fade(cPulse, 0, 420 * k);
     if (kind === 'rt') {
       // (painted at the size it lands at, so it is as sharp there as the drawing it turns into)
@@ -732,9 +737,11 @@
   function startReload() {
     if (reloading || state !== 'app') return;
     reloading = true; clearTimeout(reloadOff); lastExample = '';
-    html.classList.add('tm-reload');
-    void document.body.offsetWidth;
+    // (at once, with no fade: the session's first steps, a bare tree, are drawn within a few frames)
+    html.classList.remove('tm-reload');
     html.classList.add('tm-hide-drawing', 'tm-wait-content');
+    void document.body.offsetWidth;
+    html.classList.add('tm-reload');
     loaderAt(); html.classList.add('tm-loading');
   }
   function endReload() {
@@ -908,6 +915,8 @@
       html.classList.add('tm-hide-drawing', 'tm-out'); html.classList.remove('tm-bgaway');
       // 2. then the page comes back, and the figure: from where the drawing was, or in its place
       setTimeout(function () {
+        // (flying back, the page comes in later, once the figure has passed the launcher)
+        if (how === 'fly') html.style.setProperty('--th-home-delay', '.42s');
         html.classList.remove('tm-away');
         fade(cPulse, 1, 400 * k, 300 * k);
         if (how === 'fly') {
