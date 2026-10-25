@@ -225,12 +225,9 @@ html.pro[data-theme="dark"] .th-tag-mock { color: #FBBF24; }
 .th-win-bar i { width: 9px; height: 9px; border-radius: 50%; background: #FF5F57; flex: none; }
 .th-win-bar i + i { background: #FEBC2E; } .th-win-bar i + i + i { background: #28C840; margin-right: 6px; }
 .th-win-crop { display: block; position: relative; aspect-ratio: 16 / 10; overflow: hidden; }
-/* the tree, its labels and loci at a legible scale: the workspace's canvas, cropped (js/home.js
-   reads these numbers for the flight: --crop-w is the picture's width in crop widths, --crop-x and
-   --crop-y its offset in crop widths and heights) */
-.th-win-crop { --crop-w: 1.5; --crop-x: -0.035; --crop-y: -0.3; }
-.th-win img { position: absolute; display: block; max-width: none; width: calc(var(--crop-w) * 100%); left: calc(var(--crop-x) * 100%); top: calc(var(--crop-y) * 100%); }
-/* (both pictures are there, one shown: they crossfade when the theme changes) */
+/* the drawing as the workspace shows it (cut to the frame's 16:10, js/home.js reads where from
+   data-crop): covering the frame from its top left (the tree kept), whatever the frame's height */
+.th-win img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; max-width: none; object-fit: cover; object-position: 0 0; }
 .th-win .th-dark-img { opacity: 0; }
 html.pro[data-theme="dark"] .th-win .th-dark-img { opacity: 1; }
 html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
@@ -274,12 +271,22 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
   .th-run { height: calc(100vh + 75vh); }   /* (the scroll room: about three quarters of a window) */
   .th-slot { display: none; }
   /* (the columns' own frame, the whole view: it is also their containing block when it moves) */
-  .th-cols { display: block; position: absolute; inset: 0; max-width: none; margin: 0; padding: 0; pointer-events: none; }
+  .th-cols { display: block; position: absolute; inset: 0; max-width: none; margin: 0; padding: 0; pointer-events: none; z-index: 2; }   /* (above the hero, whose box reaches under the panels beside the headline) */
   .th-col { pointer-events: auto; }
   .th-hero > *, .th-col { will-change: transform; }
   .th-left, .th-right { position: absolute; top: 80px; width: 344px; }
   .th-left { left: 28px; }
-  .th-right { right: 28px; max-height: calc(100vh - 96px); }
+  .th-right { right: 28px; }
+  /* (the columns run from under the top bar to the bottom of the window, js/home.js: the RT card
+     spreads its parts over its height, the mock example's picture takes the room in its column) */
+  .th-left > .th-panel { height: 100%; justify-content: space-between; box-sizing: border-box; }
+  .th-left .th-fams { gap: clamp(5px, 1.1vh, 12px); }
+  .th-left .th-rings ol { gap: clamp(4px, 0.9vh, 10px); }
+  .th-left .th-rings canvas { height: clamp(16px, 2.2vh, 24px); }
+  .th-right > .th-panel:first-child { flex: 1 1 auto; min-height: 0; }
+  .th-right > .th-panel:first-child .th-mock { flex: 1 1 auto; min-height: 0; }
+  .th-right > .th-panel:first-child .th-win { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .th-right > .th-panel:first-child .th-win-crop { flex: 1 1 auto; aspect-ratio: auto; min-height: 150px; }
   .th-right #thRecentPanel { min-height: 0; flex: 0 1 auto; }
 }
 @media (min-width: 1180px) and (max-width: 1360px) and (min-height: 640px) {

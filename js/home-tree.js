@@ -85,7 +85,7 @@
     // what TreeMapper draws in the opening (its axes, their numbers and titles, the heatmaps' titles)
     function paintGap(h, R, theme, alpha) {
       var G = (F.gap && (F.gap[theme] || F.gap.light)) || [];
-      if (!G.length || alpha <= 0.01) return;
+      if ((!G.length && !F.scale) || alpha <= 0.01) return;
       var fam = getComputedStyle(document.documentElement).getPropertyValue('--pro-font').trim() || 'system-ui, sans-serif';
       h.save(); h.globalAlpha = alpha; h.lineCap = 'butt';
       G.forEach(function (g) {
@@ -106,6 +106,18 @@
         h.fillText(g[1], g[2] * R, g[3] * R);
         h.restore();
       });
+      // the tree's scale bar, in the figure's bottom-right corner (outside the rings), as the
+      // workspace draws its short bar: the value over a bar with end ticks, the title under it
+      var S = F.scale;
+      if (S && S.len > 0) {
+        var col = (G.filter(function (g) { return g[0] === 'l'; })[0] || [])[5] || (theme === 'dark' ? '#b9c4cc' : '#3a4650');
+        var fs = 12 / ((F.R && F.R.outer) || 392) * R * GAP_TEXT, x1 = 0.9 * R, x0 = x1 - S.len * R, y = 0.84 * R, tk = fs * 0.35;
+        h.globalAlpha = alpha; h.strokeStyle = col; h.fillStyle = col; h.lineWidth = Math.max(1, fs * 0.14);
+        h.beginPath(); h.moveTo(x0, y); h.lineTo(x1, y); h.moveTo(x0, y - tk); h.lineTo(x0, y + tk); h.moveTo(x1, y - tk); h.lineTo(x1, y + tk); h.stroke();
+        h.textAlign = 'center'; h.textBaseline = 'alphabetic'; h.font = '600 ' + fs.toFixed(2) + 'px ' + fam;
+        h.fillText(S.value.toFixed(2), (x0 + x1) / 2, y - tk - fs * 0.35);
+        if (S.title) { h.textAlign = 'right'; h.textBaseline = 'hanging'; h.font = '500 ' + fs.toFixed(2) + 'px ' + fam; h.fillText(S.title, x1, y + tk + fs * 0.35); }
+      }
       h.restore();
     }
     function paintTree(g, R, px, pal, op) {

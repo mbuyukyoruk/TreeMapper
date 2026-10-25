@@ -164,7 +164,7 @@
   function measure() {
     var W = vw(), H = vh(), wide = WIDE.matches;
     // (the columns' own place and width first, as the stylesheet has them)
-    [colL, colR].forEach(function (c) { c.style.left = c.style.right = c.style.width = ''; });
+    [colL, colR].forEach(function (c) { c.style.left = c.style.right = c.style.width = c.style.height = ''; });
     if (wide) {
       var D = Math.round(H * 0.75);
       var lw = colL.offsetWidth, lx = colL.offsetLeft, rx = colR.offsetLeft;   // (absolute in the view)
@@ -177,8 +177,11 @@
       // the figure: under the launcher at the top of the page (rising like a dome from the bottom
       // of the window, a little larger than the room under the launcher), between the two columns
       // and under the smaller launcher at the end
-      var top0 = gTop + gH + 26;
-      var r0 = clamp((H - 6 - top0) * 1.14, 280, W * 0.33);
+      // (at the start: centred on the window's bottom edge, so its top half shows under the
+      // launcher, the rings shown at first reaching up to the launcher)
+      var top0 = gTop + gH + 24;
+      var shown0 = fig ? clamp(fig.maskStart - VISIBLE, 0.3, 1) : 1;
+      var r0 = clamp((H - top0) / shown0, 280, W * 0.5);
       var top1 = gBot1 + 16, room = H - 14 - top1;
       var r1 = Math.max(160, Math.min(room / 2, avail / 2));
       // the columns at the end beside the figure, a gutter from it, as wide as the room allows
@@ -193,12 +196,14 @@
       colL.style.width = colR.style.width = pw + 'px';
       colL.style.left = Math.max(16, W / 2 - r1 - G - pw) + 'px';
       colR.style.right = 'auto'; colR.style.left = Math.min(W - 16 - pw, W / 2 + r1 + G) + 'px';
-      // the columns at the end: their middles level with the figure's centre, within the window
-      var place = function (h) { return clamp(c1 - h / 2, 76, Math.max(76, H - 16 - h)); };
-      M = { wide: true, W: W, H: H, D: D, colTop: colTop, peek: -24, colL: place(colL.offsetHeight), colR: place(colR.offsetHeight),
+      // the columns at the end: from under the top bar, beside the headline, to the bottom of the
+      // window (their contents spread to fill them: css/home.css)
+      var colH = Math.max(H - 76 - 16, 0);
+      colL.style.height = colR.style.height = colH + 'px';
+      M = { wide: true, W: W, H: H, D: D, colTop: colTop, peek: -24, colL: 76, colR: 76,
         title: { dy: tTop1 - tTop, s: sT, top: tTop, h: tH }, group: { dy: gTop1 - gTop, s: sG },
         lead: { top: topIn(hero.lead), h: hero.lead.offsetHeight },
-        a: { cx: W / 2, cy: top0 + r0, r: r0, rot: 0.55 }, b: { cx: W / 2, cy: c1, r: r1, rot: 0 } };
+        a: { cx: W / 2, cy: top0 + r0 * shown0, r: r0, rot: 0.55, top: top0 }, b: { cx: W / 2, cy: c1, r: r1, rot: 0, top: c1 - r1 } };
       $('thRun').style.height = (H + D) + 'px';
     } else {
       var slot = $('thSlot'), st = topIn(slot), sw = slot.offsetWidth;
@@ -217,7 +222,7 @@
       // its top follows the launcher's bottom, so no gap opens between them
       // (by what is drawn of it: while the outer rings are still hidden, the rings shown so far
       // come up to the launcher, not the empty space where the outer rings will grow)
-      var r = lerp(M.a.r, M.b.r, e), top = lerp(M.a.cy - M.a.r, M.b.cy - M.b.r, e);
+      var r = lerp(M.a.r, M.b.r, e), top = lerp(M.a.top, M.b.top, e);
       var mask = lerp(maskA, maskB, smooth(0.06, 0.9, p)), shown = clamp(mask - VISIBLE, 0, 1);
       return { p: p, e: e, cx: lerp(M.a.cx, M.b.cx, e), cy: top + r * shown, r: r, rot: lerp(M.a.rot, M.b.rot, e),
         open: OPEN * smooth(0.12, 0.78, p), mask: mask,
@@ -317,7 +322,7 @@
     trC.width = Math.round(W * d); trC.height = Math.round(H * d);
     if (spC) { spC.width = W; spC.height = H; }
     var g = trC.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, W, H);
-    var R = rng(20261025), reach = Math.min(W * 0.3, 460);
+    var R = rng(20261025), reach = Math.min(W * 0.32, 520);
     routesBG = [];
     var segs = [], nodes = [];
     // a rectangular tree from (x, y) growing in direction dir (1: right, -1: left)
@@ -335,19 +340,20 @@
         grow(x1, yy, dir, len * (0.62 + R() * 0.3), spread * 0.52, depth - 1, here.concat([[x1, yy]]));
       }
     }
-    var per = Math.max(2, Math.round(H / 330));
+    var per = Math.max(2, Math.round(H / 400));
     for (var side = 0; side < 2; side++) {
       for (var t = 0; t < per; t++) {
         var y0 = 84 + (H - 84) * (t + 0.5 + (R() - 0.5) * 0.5) / per, dir = side ? -1 : 1;
-        grow(side ? W : 0, y0, dir, 46 + R() * 50, H / per * 0.3, 5, [[side ? W : 0, y0]]);
+        grow(side ? W : 0, y0, dir, 70 + R() * 60, H / per * 0.34, 4, [[side ? W : 0, y0]]);
       }
     }
-    g.lineWidth = 1; g.lineCap = 'square';
+    // (lines thick enough to read as traces; quieter on the light page)
+    g.lineWidth = dark ? 1.6 : 1.4; g.lineCap = 'round';
     // (quieter on the light page, where dark lines on a pale ground stand out more)
-    g.strokeStyle = dark ? 'rgba(160, 220, 230, 0.075)' : 'rgba(13, 60, 70, 0.045)';
+    g.strokeStyle = dark ? 'rgba(160, 220, 230, 0.10)' : 'rgba(13, 60, 70, 0.065)';
     g.beginPath(); segs.forEach(function (s) { g.moveTo(Math.round(s[0]) + 0.5, Math.round(s[1]) + 0.5); g.lineTo(Math.round(s[2]) + 0.5, Math.round(s[3]) + 0.5); }); g.stroke();
-    g.fillStyle = dark ? 'rgba(160, 220, 230, 0.16)' : 'rgba(13, 60, 70, 0.08)';
-    nodes.forEach(function (n) { g.beginPath(); g.arc(n[0], n[1], n[2] ? 1.6 : 1.2, 0, Math.PI * 2); g.fill(); });
+    g.fillStyle = dark ? 'rgba(160, 220, 230, 0.22)' : 'rgba(13, 60, 70, 0.12)';
+    nodes.forEach(function (n) { g.beginPath(); g.arc(n[0], n[1], n[2] ? 2.6 : 2, 0, Math.PI * 2); g.fill(); });
     routesBG.forEach(function (rt) { var c = [0], L = 0; for (var i = 1; i < rt.length; i++) { L += Math.abs(rt[i][0] - rt[i - 1][0]) + Math.abs(rt[i][1] - rt[i - 1][1]); c.push(L); } rt.cum = c; rt.len = L; });
     sparks = [];
   }
@@ -376,11 +382,11 @@
       var hp = sparkAt(s.rt, Math.min(s.d, s.rt.len)), tp = sparkAt(s.rt, Math.max(0, s.d - trail));
       var gr = spCtx.createLinearGradient(tp[0], tp[1], hp[0], hp[1]);
       gr.addColorStop(0, 'rgba(' + col + ',0)'); gr.addColorStop(1, 'rgba(' + col + ',' + ((dark ? 0.75 : 0.38) * fade).toFixed(3) + ')');
-      spCtx.strokeStyle = gr; spCtx.lineWidth = 1.4; spCtx.stroke();
+      spCtx.strokeStyle = gr; spCtx.lineWidth = 2.2; spCtx.stroke();
       if (s.d <= s.rt.len) {
-        var hg = spCtx.createRadialGradient(hp[0], hp[1], 0, hp[0], hp[1], 6);
+        var hg = spCtx.createRadialGradient(hp[0], hp[1], 0, hp[0], hp[1], 9);
         hg.addColorStop(0, 'rgba(' + (dark ? '230,255,252' : col) + ',' + ((dark ? 0.9 : 0.6) * fade).toFixed(3) + ')'); hg.addColorStop(1, 'rgba(' + col + ',0)');
-        spCtx.fillStyle = hg; spCtx.fillRect(hp[0] - 6, hp[1] - 6, 12, 12);
+        spCtx.fillStyle = hg; spCtx.fillRect(hp[0] - 9, hp[1] - 9, 18, 18);
       }
     }
     spCtx.globalCompositeOperation = 'source-over';
@@ -713,18 +719,23 @@
     var img = crop && crop.querySelector(theme() === 'dark' ? '.th-dark-img' : '.th-light-img');
     var center = document.querySelector('.pro-center');
     if (!crop || !img || !center || !img.naturalWidth) return null;
-    var a = crop.getBoundingClientRect(), b = center.getBoundingClientRect(), ia = img.getBoundingClientRect();
+    var a = crop.getBoundingClientRect(), c = center.getBoundingClientRect();
     var iw = img.naturalWidth, ih = img.naturalHeight;
-    // the picture at the end: as wide as the canvas, from its top (the picture is of the canvas)
-    var kB = b.width / iw;
+    // the picture in the card: covering its frame from the top left (object-fit: cover)
+    var k0 = Math.max(a.width / iw, a.height / ih);
+    // at the end: where its contents are drawn in the canvas (data-crop: x, y, w as fractions of
+    // the canvas area, written with the picture by examples-build/home_shots.js)
+    var cut = String(crop.getAttribute('data-crop') || '0,0,1,1').split(',').map(Number);
+    var k1 = cut[2] * c.width / iw;
+    var b = { left: c.left + cut[0] * c.width, top: c.top + cut[1] * c.height, width: iw * k1, height: ih * k1 };
     fly2 = document.createElement('div'); fly2.className = 'th-fly'; fly2.setAttribute('aria-hidden', 'true');
     var im = new Image(); im.src = img.currentSrc || img.src; im.alt = ''; im.width = iw; im.height = ih;
     fly2.appendChild(im);
     fly2.style.width = b.width + 'px'; fly2.style.height = b.height + 'px';
     document.body.appendChild(fly2);
     card.classList.add('th-flying');
-    var R0 = { x: a.left, y: a.top, w: a.width, h: a.height, ix: ia.left - a.left, iy: ia.top - a.top, k: ia.width / iw };
-    var R1 = { x: b.left, y: b.top, w: b.width, h: b.height, ix: 0, iy: 0, k: kB };
+    var R0 = { x: a.left, y: a.top, w: a.width, h: a.height, ix: 0, iy: 0, k: k0 };
+    var R1 = { x: b.left, y: b.top, w: b.width, h: b.height, ix: 0, iy: 0, k: k1 };
     var at = function (e) {
       var R = { x: lerp(R0.x, R1.x, e), y: lerp(R0.y, R1.y, e), w: lerp(R0.w, R1.w, e), h: lerp(R0.h, R1.h, e), ix: lerp(R0.ix, R1.ix, e), iy: lerp(R0.iy, R1.iy, e), k: lerp(R0.k, R1.k, e) };
       var sx = R.w / b.width, sy = R.h / b.height;
