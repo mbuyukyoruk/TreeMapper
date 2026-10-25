@@ -1479,3 +1479,223 @@ html.pro .feat-gene:hover { background: var(--pro-hover, var(--pro-panel2)); }
 html.pro .feat-gene span { flex: 1; }
 html.pro .feat-gene em { font-style: normal; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 html.pro .clade-toolbar .feat-danger:not(:disabled):hover { color: var(--destructive); border-color: var(--destructive); }
+
+/* ------------------------------------------------------------------ welcome screen (js/welcome.js)
+   Over the whole window while no tree is open. 1240px column on an 8px grid. A tinted page
+   (never plain white) with depth from layered surfaces: the hero (headline, launcher; the RT
+   example on a dark stage with its legend), recent sessions beside the examples in window
+   frames, the layer badges, a footer. Light and dark designed together; app tokens throughout. */
+html.pro .tm-welcome[hidden] { display: none !important; }
+html.pro .tm-welcome {
+  --tw-max: 1240px; --tw-gutter: clamp(16px, 4vw, 48px);
+  --tw-page: #E6EDEE; --tw-dots: rgba(18, 38, 44, .075); --tw-glow1: rgba(11, 130, 118, .20); --tw-glow2: rgba(59, 110, 200, .10);
+  --tw-surface: #FFFFFF; --tw-surface-2: #F3F7F7; --tw-line: rgba(18, 38, 44, .10);
+  --tw-shadow: 0 1px 0 rgba(255, 255, 255, .8) inset, 0 18px 40px -22px rgba(16, 48, 52, .32), 0 2px 6px -2px rgba(16, 48, 52, .10);
+  position: fixed; inset: 0; z-index: 50000; overflow-x: hidden; overflow-y: auto;   /* (above the workspace's notices at 10000, below dialogs and menus at 100000+) */
+  color: var(--text); font: 15px/1.55 var(--pro-font); -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(900px 520px at 88% 6%, var(--tw-glow1), transparent 62%),
+    radial-gradient(760px 480px at 0% 0%, var(--tw-glow2), transparent 60%),
+    radial-gradient(var(--tw-dots) 1px, transparent 1.2px) 0 0 / 22px 22px,
+    var(--tw-page);
+}
+html.pro[data-theme="dark"] .tm-welcome {
+  --tw-page: #091114; --tw-dots: rgba(255, 255, 255, .045); --tw-glow1: rgba(45, 212, 191, .14); --tw-glow2: rgba(96, 140, 255, .08);
+  --tw-surface: #101B20; --tw-surface-2: #0D171B; --tw-line: rgba(255, 255, 255, .08);
+  --tw-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 24px 48px -24px rgba(0, 0, 0, .6);
+}
+html.pro body.tm-welcome-open { overflow: hidden; }
+html.pro .tm-welcome > * { max-width: var(--tw-max); margin-left: auto; margin-right: auto; padding-left: var(--tw-gutter); padding-right: var(--tw-gutter); box-sizing: content-box; }
+html.pro .tm-welcome .tw-dark { display: none !important; }
+html.pro[data-theme="dark"] .tm-welcome .tw-light { display: none !important; }
+html.pro[data-theme="dark"] .tm-welcome .tw-dark { display: block !important; }
+html.pro .tm-welcome.tw-busy { cursor: progress; }
+html.pro .tm-welcome.tw-dragging::after {
+  content: 'Drop to open'; position: fixed; inset: 12px; z-index: 2; border: 2px dashed var(--accent); border-radius: 24px;
+  display: grid; place-items: center; font: 600 20px var(--pro-font); color: var(--accent);
+  background: color-mix(in srgb, var(--tw-page) 82%, transparent); pointer-events: none;
+}
+html.pro .tm-welcome :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+html.pro .tw-link {
+  appearance: none; border: 0; background: none; padding: 0; color: var(--accent); font: 600 14px var(--pro-font); cursor: pointer;
+  text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: text-decoration-color .15s ease-out;
+}
+html.pro .tw-link:hover { text-decoration-color: currentColor; }
+html.pro .tw-link[hidden] { display: none; }
+html.pro .tw-small { font-size: 13px; }
+html.pro .tw-h2 { margin: 0; font: 650 13px var(--pro-font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* top row */
+html.pro .tw-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 20px; padding-bottom: 4px; }
+html.pro .tw-brand { display: flex; align-items: center; gap: 10px; }
+html.pro .tw-name { font: 650 16px var(--pro-font); letter-spacing: -0.015em; }
+html.pro .tw-ver { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--tw-line); color: var(--muted); font: 500 11.5px var(--pro-mono, var(--pro-font)); font-variant-numeric: tabular-nums; }
+html.pro .tw-top-actions { display: flex; align-items: center; gap: 16px; }
+
+/* hero */
+html.pro .tw-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr); align-items: center; gap: clamp(28px, 4vw, 56px); padding-top: 28px; padding-bottom: 44px; }
+html.pro .tw-title { margin: 0 0 18px; font: 720 clamp(34px, 3.1vw, 46px)/1.06 var(--pro-font); letter-spacing: -0.04em; }
+html.pro .tw-title span {
+  display: block; text-wrap: balance;
+  background: linear-gradient(100deg, var(--accent) 10%, color-mix(in srgb, var(--accent) 50%, #3B6FD6) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+html.pro .tw-lead { margin: 0 0 28px; max-width: 34em; color: var(--muted); font-size: 16px; line-height: 1.62; text-wrap: pretty; }
+
+/* launcher */
+html.pro .tw-launch { max-width: 600px; padding: 8px; border: 1px solid var(--tw-line); border-radius: 22px; background: var(--tw-surface); box-shadow: var(--tw-shadow); }
+html.pro .tw-drop {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 18px 18px 18px 16px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 50%, var(--tw-line)); border-radius: 16px;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 9%, transparent), color-mix(in srgb, var(--accent) 3%, transparent));
+}
+html.pro .tw-drop-icon { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 13px; color: #fff; background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 80%, #fff), var(--accent)); box-shadow: 0 8px 18px -8px var(--accent); }
+html.pro .tw-drop-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+html.pro .tw-drop-text b { font-weight: 640; font-size: 15px; }
+html.pro .tw-drop-text span { color: var(--muted); font-size: 13px; }
+html.pro .tw-open { gap: 8px; height: 44px; padding: 0 18px; font-size: 14px; white-space: nowrap; }
+html.pro .tw-ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+html.pro .tw-way { appearance: none; display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 0; border-radius: 12px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background-color .15s ease-out; }
+html.pro .tw-way:hover { background: var(--tw-surface-2); }
+html.pro .tw-way-icon { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+html.pro .tw-way > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+html.pro .tw-way b { font-size: 13.5px; font-weight: 620; }
+html.pro .tw-way b + span { color: var(--muted); font-size: 12px; line-height: 1.4; }
+html.pro .tw-status { min-height: 22px; margin: 12px 0 0; color: var(--muted); font-size: 13.5px; }
+
+/* the stage: the RT example on dark ink, with its legend (the same in both themes) */
+html.pro .tw-stage {
+  position: relative; margin: 0; aspect-ratio: 1 / 1.06; border-radius: 30px; overflow: hidden; color: #E8F1F2;
+  background: radial-gradient(70% 62% at 50% 52%, #134145 0%, #0C2226 48%, #071215 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset, 0 40px 80px -36px rgba(6, 40, 44, .65), 0 0 0 1px rgba(255, 255, 255, .05) inset;
+}
+html.pro .tw-stage::before { content: ''; position: absolute; inset: 0; background: radial-gradient(rgba(255, 255, 255, .05) 1px, transparent 1.2px) 0 0 / 20px 20px; pointer-events: none; }
+html.pro .tw-stage-img { position: absolute; left: 50%; top: 50.5%; width: 74%; height: auto; transform: translate(-50%, -50%); animation: tw-in .8s cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes tw-in { from { transform: translate(-50%, -50%) scale(.97) rotate(-6deg); } to { transform: translate(-50%, -50%); } }   /* (no fade: the tree shows on every frame, even if the animation never runs) */
+html.pro .tw-stage-head { position: absolute; left: 22px; right: 18px; top: 18px; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+html.pro .tw-stage-head > span { display: flex; flex-direction: column; gap: 2px; }
+html.pro .tw-stage-head b { font: 650 15px var(--pro-font); letter-spacing: -0.01em; }
+html.pro .tw-stage-head > span > span { color: rgba(232, 241, 242, .62); font-size: 12.5px; }
+html.pro .tw-stage-open {
+  appearance: none; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, .16); background: rgba(255, 255, 255, .08); color: #fff; font: 600 13px var(--pro-font);
+  backdrop-filter: blur(10px); transition: background-color .15s ease-out;
+}
+html.pro .tw-stage-open:hover { background: rgba(255, 255, 255, .16); }
+html.pro .tw-legend { position: absolute; left: 18px; bottom: 16px; right: 18px; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+html.pro .tw-legend li {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px 5px 8px; border-radius: 999px; font-size: 12px; font-weight: 550;
+  background: rgba(8, 20, 23, .55); border: 1px solid rgba(255, 255, 255, .10); backdrop-filter: blur(10px);
+}
+html.pro .tw-legend i { width: 10px; height: 10px; border-radius: 3px; }
+html.pro .tw-legend li span { color: rgba(232, 241, 242, .55); font-variant-numeric: tabular-nums; }
+html.pro .tw-legend .tw-legend-more { color: rgba(232, 241, 242, .6); }
+
+/* recent sessions beside the examples */
+html.pro .tw-band { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px; padding-bottom: 40px; }
+html.pro .tw-band-head { display: flex; align-items: center; justify-content: space-between; min-height: 24px; margin-bottom: 12px; }
+html.pro .tw-recent { display: flex; flex-direction: column; }
+html.pro .tw-recent-list { margin: 0; padding: 6px; list-style: none; border: 1px solid var(--tw-line); border-radius: 20px; background: var(--tw-surface); box-shadow: var(--tw-shadow); }
+html.pro .tw-recent-list:empty { display: none; }
+html.pro .tw-recent-list li { position: relative; }
+html.pro .tw-recent-item {
+  appearance: none; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 12px 40px 12px 12px; border: 0; border-radius: 14px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color .15s ease-out;
+}
+html.pro .tw-recent-item:hover { background: var(--tw-surface-2); }
+html.pro .tw-recent-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+html.pro .tw-recent-main { display: flex; flex-direction: column; min-width: 0; }
+html.pro .tw-recent-main b { font-weight: 620; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.pro .tw-recent-main span { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+html.pro .tw-recent-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+html.pro .tw-recent-when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+html.pro .tw-recent-x {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 26px; height: 26px;
+  border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .15s ease-out, background-color .15s ease-out;
+}
+html.pro .tw-recent-list li:hover .tw-recent-x, html.pro .tw-recent-x:focus-visible { opacity: 1; }
+html.pro .tw-recent-x:hover { background: var(--tw-surface-2); color: var(--text); }
+html.pro .tw-recent-empty {
+  flex: 1; display: flex; align-items: center; gap: 12px; margin: 0; padding: 20px; min-height: 120px; color: var(--muted); font-size: 13.5px;
+  border: 1.5px dashed var(--tw-line); border-radius: 20px;
+}
+html.pro .tw-recent-empty[hidden] { display: none; }
+html.pro .tw-recent-empty svg { flex: none; color: var(--accent); }
+html.pro .tw-ex-badges { display: inline-flex; gap: 3px; }
+html.pro .tw-ex-badges .pro-card-badge { width: 22px; height: 22px; border-radius: 7px; font-size: 8.5px; box-shadow: none; }
+
+/* examples, framed like app windows */
+html.pro .tw-examples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+html.pro .tw-example {
+  appearance: none; display: flex; flex-direction: column; padding: 8px; border: 1px solid var(--tw-line); border-radius: 20px;
+  background: var(--tw-surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; box-shadow: var(--tw-shadow);
+  transition: transform .2s ease-out, box-shadow .2s ease-out, border-color .2s ease-out;
+}
+html.pro .tw-example:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--accent) 40%, var(--tw-line)); box-shadow: 0 30px 60px -30px rgba(10, 60, 64, .45); }
+html.pro .tw-win { display: flex; flex-direction: column; border-radius: 13px; overflow: hidden; border: 1px solid var(--tw-line); }
+html.pro .tw-win-bar { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; background: var(--tw-surface-2); border-bottom: 1px solid var(--tw-line); }
+html.pro .tw-win-bar i { width: 8px; height: 8px; border-radius: 50%; background: color-mix(in srgb, var(--muted) 40%, transparent); }
+html.pro .tw-win-bar span { margin-left: 6px; color: var(--muted); font: 500 11px var(--pro-mono, var(--pro-font)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.pro .tw-win-body { position: relative; display: block; aspect-ratio: 16 / 10; overflow: hidden; }
+html.pro .tw-win-rt { background: radial-gradient(70% 70% at 50% 50%, #134145, #071215); }
+html.pro .tw-win-rt img { position: absolute; left: 50%; top: 50%; width: 82%; transform: translate(-50%, -50%); }
+html.pro .tw-win-mock { background: #fff; }
+html.pro[data-theme="dark"] .tm-welcome .tw-win-mock { background: #141A20; }
+html.pro .tw-win-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 0 0; }
+html.pro .tw-ex-body { display: flex; flex-direction: column; gap: 8px; padding: 14px 10px 8px; }
+html.pro .tw-ex-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+html.pro .tw-ex-title { font: 650 15.5px var(--pro-font); letter-spacing: -0.012em; }
+html.pro .tw-chip { flex: none; padding: 2px 8px; border-radius: 999px; font: 600 11px var(--pro-font); color: var(--muted); border: 1px solid var(--tw-line); }
+html.pro .tw-ex-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+html.pro .tw-ex-meta > span:not(.tw-ex-badges) { padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); font: 600 12px var(--pro-font); font-variant-numeric: tabular-nums; }
+html.pro .tw-ex-meta .tw-ex-badges { margin-left: auto; }
+html.pro .tw-ex-text { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+/* the layers, with the app's own badges */
+html.pro .tw-layers { padding-bottom: 40px; }
+html.pro .tw-layers .tw-h2 { margin-bottom: 12px; }
+html.pro .tw-layer-list {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0; padding: 6px; list-style: none;
+  border: 1px solid var(--tw-line); border-radius: 20px; background: var(--tw-surface); box-shadow: var(--tw-shadow);
+}
+html.pro .tw-layer-list li { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; }
+html.pro .tw-layer-list li > span { display: flex; flex-direction: column; min-width: 0; }
+html.pro .tw-layer-list b { font-weight: 620; font-size: 14px; }
+html.pro .tw-layer-list li > span > span { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+
+/* footer */
+html.pro .tw-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding-top: 20px; padding-bottom: 28px; border-top: 1px solid var(--tw-line); color: var(--muted); font-size: 13px; }
+html.pro .tw-private { display: inline-flex; align-items: center; gap: 8px; }
+html.pro .tw-links { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+html.pro .tw-links .tw-link { font-size: 13px; }
+html.pro .tw-foot a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+/* tablets and phones */
+@media (max-width: 1040px) {
+  html.pro .tw-hero { grid-template-columns: minmax(0, 1fr); }
+  html.pro .tw-stage { max-width: 560px; width: 100%; justify-self: center; }
+  html.pro .tw-band { grid-template-columns: minmax(0, 1fr); }
+  html.pro .tw-layer-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  html.pro .tw-ways { grid-template-columns: minmax(0, 1fr); }
+  html.pro .tw-drop { grid-template-columns: auto minmax(0, 1fr); }
+  html.pro .tw-open { grid-column: 1 / -1; justify-content: center; }
+  html.pro .tw-examples, html.pro .tw-layer-list { grid-template-columns: minmax(0, 1fr); }
+  html.pro .tw-legend li span { display: none; }
+  html.pro .tw-ver { display: none; }
+  html.pro .tw-recent-x { opacity: 1; }
+}
+/* (one line for the accent half of the headline on wide screens; after the text-wrap above, which also sets wrapping) */
+@media (min-width: 1100px) { html.pro .tw-title span { text-wrap-mode: nowrap; white-space: nowrap; } }
+@media (max-width: 720px) {
+  html.pro .tw-stage { aspect-ratio: 1 / 1.42; }
+  html.pro .tw-stage-img { width: 84%; top: 46.5%; }
+  html.pro .tw-stage-head > span > span { max-width: 26ch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.pro .tw-stage-img { animation: none; }
+  html.pro .tw-example, html.pro .tw-way, html.pro .tw-link, html.pro .tw-recent-item, html.pro .tw-stage-open { transition: none; }
+  html.pro .tw-example:hover { transform: none; }
+}

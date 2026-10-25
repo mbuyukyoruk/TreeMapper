@@ -12,8 +12,22 @@ it works offline (only the web fonts come from the internet; without it the
 browser uses a system font). Keep the folder structure intact: the page loads
 the files in `css/` and `js/`.
 
-The earlier classic-layout interface is kept in git history under the tag
-`v1-classic-ui`.
+The earlier classic-layout interface is in git history: it was moved out of the
+repository in commit `209a086` ("Make the redesigned interface the main page").
+
+## Welcome screen, recent sessions and examples
+
+With no tree open, a welcome screen shows what TreeMapper does and how to start: **Open file…**
+(or drop a file anywhere), generate a tree from gene content, open from a URL, or paste data. It
+closes when a tree opens; the logo in the top bar brings it back.
+
+- **Recent sessions:** sessions you open or save are remembered in this browser only (IndexedDB),
+  the six most recent, and open again from the list. Remove one, or **Clear** them all.
+- **Examples** (`examples/`, see `examples/README.md`):
+  - **Bacterial reverse transcriptases:** 1,077 published reference RTs in the circular layout.
+  - **Mock dataset:** random sample data in the rectangular layout, to be replaced.
+
+Sessions also keep the circular layout's ring widths.
 
 ## At a glance
 

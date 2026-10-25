@@ -176,7 +176,7 @@
         setStatus('Opening the report’s session' + (s.description ? ': ' + s.description.slice(0, 80) : ''));
         return origLoad(JSON.stringify(s.session));
       }
-      return origLoad(fileOrText);
+      return origLoad.apply(this, arguments);   // (with any options: an example's id)
     };
   }
   window.tmReport = { build: build, show: show, send: send, errors: function () { return errors.slice(); }, actions: function () { return actions.slice(); } };

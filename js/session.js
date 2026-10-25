@@ -223,6 +223,9 @@
     settings.__theme = document.documentElement.getAttribute('data-theme') || 'light';
     settings.__legendHidden = document.body.classList.contains('pro-legend-hidden');
     settings.__layout = (typeof geometry !== 'undefined' && geometry === 'radial') ? 'radial' : 'rect';
+    // the circular layout's ring widths (tree radius, labels, then each layer's ring)
+    var rw = call(function () { return { tree: radialTreeRadius, labels: radialLabelWidth, heatmap: radialHeatmapWidths.slice(), dataframe: radialDataframeWidths.slice(), chart: radialChartWidths.slice(), msa: radialMsaWidths.slice() }; });
+    if (rw) settings.__radialWidths = rw;
     if (window.tmSearch) settings.__search = window.tmSearch.get();   // Look in / Exact match
     s.settings = settings;
 
@@ -310,12 +313,13 @@
     if (name === null) return;
     name = name.trim() || base + '.treemapper';
     if (!/\.treemapper$/i.test(name)) name += '.treemapper';
-    var blob = new Blob([JSON.stringify(s)], { type: 'application/json' });
+    var json = JSON.stringify(s), blob = new Blob([json], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
     call(function () { setStatus('Session saved as ' + name); });
+    call(function () { document.dispatchEvent(new CustomEvent('tm-session-saved', { detail: { name: name, text: json } })); });
   }
 
   // ------------------------------------------------------- finding the root
@@ -340,7 +344,10 @@
     while (root === before && t < ms) { await wait(50); t += 50; }
     await wait(50);
   }
-  async function load(fileOrText) {
+  // opts: { name } for a session given as text, { example: id } for a welcome-screen example
+  // (not remembered as a recent session). Opening and saving are announced as the document
+  // events tm-session-opened / tm-session-saved, with { name, text, example } (js/recent.js).
+  async function load(fileOrText, opts) {
     if (busy) return;
     var s;
     try {
@@ -522,6 +529,15 @@
       [resetFontTruncationCache, resetEventDelegation, updateRestoreDroppedButtonVisibility, updateResetRotationsButtonVisibility,
        updateResetCollapsesButtonVisibility, updateResetCartoonsButtonVisibility, updateResetHighlightsButtonVisibility,
        updateColorPathCardVisibility, updateMetadataLegend].forEach(function (f) { call(f); });
+      // the ring widths, now that the layers' rings exist (sessions saved before 2026-10-25 have none)
+      var rw = st.__radialWidths;
+      if (rw) call(function () {
+        var nums = function (a) { return Array.isArray(a) ? a.map(Number).filter(function (v) { return isFinite(v) && v >= 0; }) : []; };
+        if (isFinite(+rw.tree) && +rw.tree > 0) radialTreeRadius = +rw.tree;
+        if (isFinite(+rw.labels) && +rw.labels >= 0) radialLabelWidth = +rw.labels;
+        radialHeatmapWidths = nums(rw.heatmap); radialDataframeWidths = nums(rw.dataframe); radialChartWidths = nums(rw.chart); radialMsaWidths = nums(rw.msa);
+        if (typeof calculateRadialRings === 'function') calculateRadialRings();
+      });
       drawTree();
       var exp = $('tipSpacing') ? +$('tipSpacing').value || 0 : 0;
       if (geometry === 'radial') call(centerRadial);
@@ -530,6 +546,7 @@
       window.tmSession.lastTimings = timings;
       if (window.tmUndo) tmUndo.refresh();
       call(function () { setStatus('Session opened' + (problems.length ? ' (with problems: ' + problems.join('; ') + ')' : '')); });
+      call(function () { document.dispatchEvent(new CustomEvent('tm-session-opened', { detail: { name: (fileOrText && fileOrText.name) || (opts && opts.name) || 'Session', text: text, example: opts && opts.example } })); });
       if (problems.length) origAlert('The session was opened, but:\n- ' + problems.join('\n- '));
     } catch (e) {
       realDraw();
