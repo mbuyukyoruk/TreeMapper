@@ -308,7 +308,7 @@ html.pro[data-theme="dark"] .th-win .th-light-img { opacity: 0; }
   /* (more than two: the list scrolls, its last visible row fading out to say so) */
   .th-right #thRecentPanel .th-recent.th-more { -webkit-mask-image: linear-gradient(#000 calc(100% - 22px), transparent); mask-image: linear-gradient(#000 calc(100% - 22px), transparent); padding-bottom: 14px; }
   .th-right #thRecentPanel .th-recent:empty { display: none; }
-  .th-right #thRecentPanel .th-empty { flex: none; }   /* (with nothing listed, the note at the top of the card) */
+  .th-right #thRecentPanel .th-empty { flex: 1 1 auto; }   /* (with nothing listed, the note fills the card) */
 }
 @media (min-width: 1180px) and (max-width: 1360px) and (min-height: 640px) {
   .th-left, .th-right { width: 312px; }
