@@ -985,6 +985,7 @@
     var to = homeState(0), from = target();
     sizeFigure(Math.max(figureSize(), from.r));
     layoutAt(to);
+    edges(to.p);   // (the notes beside the headline at the start of the scroll too, not where they were left)
     figEl.hidden = false; figEl.classList.remove('th-wait'); figEl.getAnimations && figEl.getAnimations().forEach(function (a) { a.cancel(); });
     figEl.style.opacity = '0'; cPulse.style.opacity = '0';
     paintPulses(to.pulse, to.pa, to.open);
