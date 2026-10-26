@@ -1187,6 +1187,8 @@ html.pro .msa-chips { display: flex; flex-direction: column; gap: 4px; max-heigh
 html.pro .msa-chip { display: flex; align-items: center; gap: 6px; padding: 2px 2px 2px 8px; border-radius: 7px; background: var(--pro-accent-soft);
   border: 1px solid var(--pro-accent-border); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 0; }
 html.pro .msa-chip-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+html.pro .msa-chip.is-off { background: transparent; border-style: dashed; }
+html.pro .msa-chip.is-off .msa-chip-label { color: var(--muted); }
 html.pro .msa-chip-wrap { flex: none; }
 html.pro input.pro-num.msa-chip-w { width: 54px; height: 24px; }
 html.pro .msa-cons-row[hidden] { display: none !important; }

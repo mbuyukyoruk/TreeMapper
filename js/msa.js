@@ -291,6 +291,9 @@
     return 0;
   }
   function selectedSorted(m) { return Array.from(m.selected).filter(function (c) { return c >= 1 && c <= m.L; }).sort(function (a, b) { return a - b; }); }
+  // highlighted columns can be hidden (their tick box in the card) without removing them
+  function isShownHi(m, c) { return m.selected.has(c) && !(m.hiddenHi && m.hiddenHi.has(c)); }
+  function shownSorted(m) { return selectedSorted(m).filter(function (c) { return isShownHi(m, c); }); }
   function runsOf(list) {
     var out = [];
     list.forEach(function (c) { var l = out[out.length - 1]; if (l && c === l[1] + 1) l[1] = c; else out.push([c, c]); });
@@ -307,7 +310,7 @@
   // own (together at most 85% of W; scaled down to fit), the others share the rest
   function columnLayout(m, W) {
     var L = m.L, wide = new Float64Array(L + 1), nWide = 0, total = 0;
-    m.selected.forEach(function (c) { if (c >= 1 && c <= L) { var w = wantedWidth(m, c); if (w > 0) { wide[c] = w; nWide++; total += w; } } });
+    m.selected.forEach(function (c) { if (c >= 1 && c <= L && isShownHi(m, c)) { var w = wantedWidth(m, c); if (w > 0) { wide[c] = w; nWide++; total += w; } } });
     var f = 1;
     if (nWide && nWide === L) f = W / total;
     else if (total > W * 0.85) f = W * 0.85 / total;
@@ -368,7 +371,7 @@
   function colourPlan(m, rows) {
     var mode = new Uint8Array(m.L + 1);
     mode.fill(m.colorOn ? (m.consOn ? 2 : 1) : 0);
-    m.selected.forEach(function (c) { if (c >= 1 && c <= m.L) mode[c] = 1; });
+    m.selected.forEach(function (c) { if (c >= 1 && c <= m.L && isShownHi(m, c)) mode[c] = 1; });
     return { mode: mode, cons: m.colorOn && m.consOn ? consensusOf(m, rows).cons : null };
   }
   function shownRows(rowOf) { var r = []; for (var i = 0; i < rowOf.length; i++) if (rowOf[i] >= 0) r.push(rowOf[i]); return r; }
@@ -639,7 +642,7 @@
     var lay = columnLayout(m, W);
     var top = leaves[0].x - leafSep / 2, bottom = leaves[leaves.length - 1].x + leafSep / 2;
     var acc = accentColor();
-    var sel = selectedSorted(m), selRuns = runsOf(sel);
+    var sel = shownSorted(m), selRuns = runsOf(sel);
     var colX = function (c) { return x0 + lay.starts[c - 1]; };
     // highlighted columns: a band behind the boxes
     var bands = layer.append('g').attr('class', 'msa-bands');
@@ -770,7 +773,7 @@
       var ur = positionsOf(m, rr)[c];
       html += '<br>' + esc(m.ids[rr]) + ': ' + (ur ? 'position ' + ur + ' (' + esc(m.seqs[rr].charAt(c - 1)) + ')' : 'gap');
     }
-    html += '<br><span style="opacity:.7">Click: ' + (m.selected.has(c) ? 'remove the highlight' : 'highlight this column') + '</span>';
+    html += '<br><span style="opacity:.7">Click: ' + (isShownHi(m, c) ? 'remove the highlight' : 'highlight this column') + '</span>';
     return html;
   }
   function escapeHTML(v) { return String(v).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
@@ -852,7 +855,7 @@
     var lay = columnLayout(m, W);
     var n = leaves.length, openRad = o.openRad || 0;
     var span = n > 1 ? (2 * Math.PI - openRad) / n : 2 * Math.PI;
-    var acc = accentColor(), sel = selectedSorted(m);
+    var acc = accentColor(), sel = shownSorted(m);
     // highlighted columns: rings behind the boxes
     var a0 = openRad, a1 = 2 * Math.PI;
     if (n > 1) { a0 = leaves[0].a - span / 2; a1 = leaves[n - 1].a + span / 2; }
@@ -1150,7 +1153,7 @@
   if (typeof zoom !== 'undefined' && zoom && zoom.on) zoom.on('end.msa', afterZoom);
 
   // ------------------------------------------------------------- the card
-  function state(m) { return { c: m.colorOn, r: m.ref, m: m.mode, s: selectedSorted(m), w: m.hiWidth, sc: m.scheme, cu: m.custom || {}, cs: !!m.consOn, ct: m.consLevel || 50, cw: m.colWidth || {} }; }
+  function state(m) { return { c: m.colorOn, r: m.ref, m: m.mode, s: selectedSorted(m), hh: selectedSorted(m).filter(function (c) { return !isShownHi(m, c); }), w: m.hiWidth, sc: m.scheme, cu: m.custom || {}, cs: !!m.consOn, ct: m.consLevel || 50, cw: m.colWidth || {} }; }
   function saveState(m) { var el = $('msaState' + m.id); if (el) el.value = JSON.stringify(state(m)); }
   function $(id) { return document.getElementById(id); }
 
@@ -1320,7 +1323,7 @@
     m._shown = list;
     var html = [];
     for (var i = 0; i < Math.min(list.length, LIST_CAP); i++) {
-      var it = list[i], on = m.selected.has(it.c);
+      var it = list[i], on = isShownHi(m, it.c);
       var num = m.mode === 'gapped' ? it.c : it.u;
       var alt = m.mode === 'gapped' ? (it.u ? 'pos ' + it.u : 'gap') : 'col ' + it.c;
       var color = it.ch === '-' ? 'transparent' : residueColor(m, it.ch);
@@ -1343,7 +1346,7 @@
     var box = $('msaPosList' + m.id);
     if (!box) return;
     Array.prototype.forEach.call(box.querySelectorAll('.msa-pos'), function (row) {
-      var on = m.selected.has(+row.getAttribute('data-col'));
+      var on = isShownHi(m, +row.getAttribute('data-col'));
       if (row.getAttribute('aria-selected') !== String(on)) row.setAttribute('aria-selected', String(on));
     });
   }
@@ -1366,13 +1369,18 @@
       // the group's own width (empty: the default; "mixed" when its columns differ)
       var ws = new Set(); for (var c2 = r[0]; c2 <= r[1]; c2++) ws.add((m.colWidth && m.colWidth[c2]) || 0);
       var wv = ws.size === 1 ? Array.from(ws)[0] : null;
-      return '<div class="msa-chip" data-c0="' + r[0] + '" data-c1="' + r[1] + '" title="Alignment column' + (r[0] === r[1] ? ' ' : 's ') + lab + (p ? ' (' + esc(m.ids[rr]) + sub.replace(' · ', ' ') + ')' : '') + '">' +
+      var nOn = 0; for (var c3 = r[0]; c3 <= r[1]; c3++) if (isShownHi(m, c3)) nOn++;
+      var span = r[1] - r[0] + 1;
+      return '<div class="msa-chip' + (nOn ? '' : ' is-off') + '" data-c0="' + r[0] + '" data-c1="' + r[1] + '" title="Alignment column' + (r[0] === r[1] ? ' ' : 's ') + lab + (p ? ' (' + esc(m.ids[rr]) + sub.replace(' · ', ' ') + ')' : '') + '">' +
+        '<input type="checkbox" class="msa-chip-on pro-check"' + (nOn === span ? ' checked' : '') + (nOn && nOn < span ? ' data-mixed="1"' : '') + ' aria-label="Show the highlight of columns ' + lab + '" title="Show or hide this highlight (it stays in the list)">' +
         '<span class="msa-chip-label">col ' + lab + '<span class="msa-muted">' + sub + '</span></span>' +
         '<span class="pro-num-wrap msa-chip-wrap"><input type="number" class="pro-num msa-chip-w" min="0" max="400" step="1" value="' + (wv ? wv : '') + '" placeholder="' + (wv === null ? 'mixed' : (m.hiWidth > 0 ? m.hiWidth : 'auto')) + '" aria-label="Width of columns ' + lab + ' (px)" title="Width of each of these columns, in px (empty: the default width below)"><span class="pro-unit">px</span></span>' +
         '<button type="button" class="msa-chip-x" aria-label="Remove this highlight" title="Remove">×</button></div>';
     });
     var more = runsOf(sel).length > 60 ? '<span class="msa-muted">… and more</span>' : '';
-    el.innerHTML = '<div class="msa-hi-count">' + sel.length + ' column' + (sel.length === 1 ? '' : 's') + ' in ' + runsOf(sel).length + ' group' + (runsOf(sel).length === 1 ? '' : 's') + '</div><div class="msa-chips">' + chips.join('') + more + '</div>';
+    var nHid = sel.length - shownSorted(m).length;
+    el.innerHTML = '<div class="msa-hi-count">' + sel.length + ' column' + (sel.length === 1 ? '' : 's') + ' in ' + runsOf(sel).length + ' group' + (runsOf(sel).length === 1 ? '' : 's') + (nHid ? ' · ' + nHid + ' hidden' : '') + '</div><div class="msa-chips">' + chips.join('') + more + '</div>';
+    Array.prototype.forEach.call(el.querySelectorAll('.msa-chip-on[data-mixed]'), function (b) { b.indeterminate = true; });
   }
   function refreshColours(m) {
     var box = $('msaColours' + m.id), reset = $('msaColReset' + m.id);
@@ -1399,8 +1407,9 @@
     call(function () { updateMetadataLegend(); });
   }
   function toggleColumns(m, cols, force) {
-    var on = force !== undefined ? force : !cols.every(function (c) { return m.selected.has(c); });
-    cols.forEach(function (c) { if (on) m.selected.add(c); else m.selected.delete(c); });
+    var on = force !== undefined ? force : !cols.every(function (c) { return isShownHi(m, c); });
+    if (!m.hiddenHi) m.hiddenHi = new Set();
+    cols.forEach(function (c) { if (on) m.selected.add(c); else m.selected.delete(c); m.hiddenHi.delete(c); });
     changed(m, 'sel');
     if (cols.length === 1) setStatus((on ? 'Highlighted' : 'Removed the highlight of') + ' alignment column ' + cols[0]);
   }
@@ -1443,7 +1452,8 @@
       var st = null; try { st = JSON.parse(ev.target.value); } catch (e) { return; }
       if (!st) return;
       m.colorOn = st.c !== false; m.ref = st.r || null; m.mode = st.m === 'gapped' ? 'gapped' : 'ungapped';
-      m.selected = new Set((st.s || []).filter(function (c) { return c >= 1 && c <= m.L; })); m.hiWidth = Math.max(0, +st.w || 0);
+      m.selected = new Set((st.s || []).filter(function (c) { return c >= 1 && c <= m.L; }));
+      m.hiddenHi = new Set((st.hh || []).filter(function (c) { return m.selected.has(c); })); m.hiWidth = Math.max(0, +st.w || 0);
       m.scheme = schemeOf({ type: m.type, scheme: st.sc }).key; m.custom = st.cu && typeof st.cu === 'object' ? st.cu : {};
       m.consOn = !!st.cs; m.consLevel = CONS_LEVELS.some(function (x) { return x[0] === +st.ct; }) ? +st.ct : 50;
       m.colWidth = {}; if (st.cw && typeof st.cw === 'object') Object.keys(st.cw).forEach(function (k) { var v = +st.cw[k]; if (v > 0 && +k >= 1 && +k <= m.L) m.colWidth[+k] = v; });
@@ -1465,7 +1475,7 @@
     };
     wIn.addEventListener('change', applyWidth);
     wIn.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); applyWidth(); } });
-    $('msaClear' + id).addEventListener('click', function () { if (!m.selected.size) return; m.selected.clear(); changed(m, 'sel'); setStatus('Highlights removed'); });
+    $('msaClear' + id).addEventListener('click', function () { if (!m.selected.size) return; m.selected.clear(); m.hiddenHi.clear(); changed(m, 'sel'); setStatus('Highlights removed'); });
     var groupWidth = function (inp) {
       var chip = inp.closest('.msa-chip'), v = Math.max(0, Math.min(400, Math.round(+inp.value || 0)));
       if (!m.colWidth) m.colWidth = {};
@@ -1473,7 +1483,15 @@
       changed(m, 'width');
       setStatus(v > 0 ? 'Columns ' + chip.getAttribute('data-c0') + (chip.getAttribute('data-c1') !== chip.getAttribute('data-c0') ? '–' + chip.getAttribute('data-c1') : '') + ': ' + v + ' px wide' : 'Columns back to the default width');
     };
-    $('msaHi' + id).addEventListener('change', function (e) { if (e.target.classList.contains('msa-chip-w')) groupWidth(e.target); });
+    $('msaHi' + id).addEventListener('change', function (e) {
+      if (e.target.classList.contains('msa-chip-w')) groupWidth(e.target);
+      else if (e.target.classList.contains('msa-chip-on')) {
+        var chip = e.target.closest('.msa-chip'), c0 = +chip.getAttribute('data-c0'), c1 = +chip.getAttribute('data-c1'), show = e.target.checked;
+        for (var c = c0; c <= c1; c++) { if (show) m.hiddenHi.delete(c); else m.hiddenHi.add(c); }
+        changed(m, 'sel');
+        setStatus((show ? 'Showing' : 'Hid') + ' the highlight of column' + (c0 === c1 ? ' ' + c0 : 's ' + c0 + '–' + c1));
+      }
+    });
     $('msaHi' + id).addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.classList.contains('msa-chip-w')) { e.preventDefault(); e.target.blur(); } });
     $('msaHi' + id).addEventListener('click', function (e) {
       var x = e.target.closest('.msa-chip-x');
@@ -1504,7 +1522,7 @@
         var a = shown.indexOf(m._anchor), b = shown.indexOf(c);
         if (a >= 0 && b >= 0) {
           var cols = shown.slice(Math.min(a, b), Math.max(a, b) + 1);
-          toggleColumns(m, cols, !m.selected.has(c) || m.selected.has(m._anchor));
+          toggleColumns(m, cols, !isShownHi(m, c) || isShownHi(m, m._anchor));
           return;
         }
       }
@@ -1575,7 +1593,7 @@
   function selectShown(m) {
     var cols = (m._shown || []).map(function (x) { return x.c; });
     if (!cols.length) return;
-    cols.forEach(function (c) { m.selected.add(c); });
+    cols.forEach(function (c) { m.selected.add(c); m.hiddenHi.delete(c); });
     changed(m, 'sel');
     setStatus('Highlighted ' + cols.length + ' column' + (cols.length === 1 ? '' : 's'));
   }
@@ -1622,7 +1640,7 @@
     }
     var id = msas.size + 1;
     var m = { id: id, name: name, format: a.format, ids: a.ids, seqs: a.seqs, byAcc: a.byAcc, L: a.L, type: a.type, skipped: a.skipped,
-      colorOn: true, ref: null, mode: 'ungapped', filter: '', selected: new Set(), hiWidth: 0, scheme: null, custom: {}, consOn: false, consLevel: 50, colWidth: {}, _ver: 0 };
+      colorOn: true, ref: null, mode: 'ungapped', filter: '', selected: new Set(), hiddenHi: new Set(), hiWidth: 0, scheme: null, custom: {}, consOn: false, consLevel: 50, colWidth: {}, _ver: 0 };
     m.scheme = schemeOf(m).key;
     indexNames(m);
     msas.set(id, m);
@@ -1697,10 +1715,10 @@
     var item = function (label, color) { return '<div class="legend-item"><div class="legend-color" style="background-color: ' + color + ';"></div><span>' + esc(label) + '</span></div>'; };
     var shown = Array.from(msas.values()).filter(function (m) { return m.hasMatchingData !== false; });
     shown.forEach(function (m) {
-      var groups = colourGroups(m), coloured = m.colorOn || m.selected.size;
+      var nShown = shownSorted(m).length, groups = colourGroups(m), coloured = m.colorOn || nShown;
       if (shown.length > 1) html += '<div class="legend-subtitle">Alignment ' + m.id + '</div>';
       if (coloured) html += groups.filter(function (g) { return !g.grey; }).map(function (g) { return item(g.label, g.color); }).join('');
-      if (!m.colorOn) html += item(m.selected.size ? 'Grey (columns not highlighted)' : 'Residues (colours off)', lutOf(m).greyCss);
+      if (!m.colorOn) html += item(nShown ? 'Grey (columns not highlighted)' : 'Residues (colours off)', lutOf(m).greyCss);
       else if (m.consOn) html += item('Not the consensus (' + CONS_LEVELS.filter(function (x) { return x[0] === (m.consLevel || 50); })[0][1].toLowerCase() + ')', lutOf(m).greyCss);
     });
     box.innerHTML = html;
